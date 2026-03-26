@@ -103,6 +103,12 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 .quick-syms{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .quick-sym{background:var(--surface2);border:1px solid var(--border);color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:.7rem;padding:3px 10px;border-radius:4px;cursor:pointer;transition:all .15s}
 .quick-sym:hover{border-color:var(--cyan);color:var(--cyan)}
+.sym-suggestions{position:absolute;left:0;right:0;background:var(--bg);border:1px solid var(--border);border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;z-index:100;display:none}
+.sym-suggestions.open{display:block}
+.sug-item{padding:6px 12px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:.78rem;display:flex;justify-content:space-between;border-bottom:1px solid #ffffff06}
+.sug-item:hover{background:var(--surface2);color:var(--cyan)}
+.sug-sym{color:var(--cyan);font-weight:700}
+.sug-name{color:var(--dim);font-size:.7rem}
 /* Condition row */
 .cond-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px}
 .cond-row select,.cond-row input{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'Share Tech Mono',monospace;font-size:.82rem;padding:6px 10px;border-radius:4px}
@@ -431,49 +437,76 @@ function renderStrategies(strats){
 async function deleteStrat(sid){if(!confirm('Delete '+sid+'?'))return;await fetch(API+'/api/strategy/'+encodeURIComponent(sid),{method:'DELETE'});loadStrategies();}
 async function toggleStrat(sid,active){await fetch(API+'/api/strategy/'+encodeURIComponent(sid)+'/toggle?active='+active,{method:'PUT'});loadStrategies();}
 
-/* ── Symbol Search ────────────────────────────────────────────────────── */
-let _symTimers={};
+/* ── Symbol Search (client-side, instant) ─────────────────────────────── */
+let symbolDB={};
+(async function loadSymbolDB(){
+  try{const r=await fetch('/static/symbols.json');const d=await r.json();symbolDB=d.symbols||{};}catch(e){console.warn('symbols.json load failed:',e);}
+})();
+function searchSymbolLocal(query){
+  const q=query.trim().toUpperCase().replace(/\s/g,'');
+  if(!q)return null;
+  if(symbolDB[q])return symbolDB[q];
+  // Fuzzy: starts with or name contains
+  const matches=Object.entries(symbolDB).filter(([k,v])=>k.startsWith(q)||v.name.toUpperCase().includes(q)||v.symbol.startsWith(q));
+  return matches.length?matches[0][1]:null;
+}
+function getSuggestions(query){
+  const q=query.trim().toUpperCase();
+  if(!q||q.length<1)return[];
+  const seen=new Set();const results=[];
+  for(const [k,v] of Object.entries(symbolDB)){
+    if(seen.has(v.symbol))continue;
+    if(k.startsWith(q)||v.name.toUpperCase().includes(q)||v.symbol.startsWith(q)){
+      seen.add(v.symbol);results.push(v);if(results.length>=6)break;
+    }
+  }
+  return results;
+}
 function debounceSymSearch(prefix){
-  clearTimeout(_symTimers[prefix]);
-  _symTimers[prefix]=setTimeout(()=>doSymSearch(prefix),600);
+  const input=document.getElementById(prefix+'-symbol');
+  const val=input.value.trim();
+  showSuggestions(prefix,val);
+  applySymResult(prefix,val);
+}
+function showSuggestions(prefix,query){
+  let sugEl=document.getElementById(prefix+'-suggestions');
+  if(!sugEl){
+    sugEl=document.createElement('div');sugEl.id=prefix+'-suggestions';sugEl.className='sym-suggestions';
+    document.getElementById(prefix+'-symbol').parentNode.style.position='relative';
+    document.getElementById(prefix+'-symbol').parentNode.appendChild(sugEl);
+  }
+  const sugs=getSuggestions(query);
+  if(!sugs.length||!query){sugEl.classList.remove('open');return;}
+  sugEl.classList.add('open');
+  sugEl.innerHTML=sugs.map(s=>`<div class="sug-item" onclick="fillSym('${prefix}','${s.symbol}');document.getElementById('${prefix}-suggestions').classList.remove('open')"><span class="sug-sym">${s.symbol}</span><span class="sug-name">${s.name}</span></div>`).join('');
 }
 function fillSym(prefix,sym){
   document.getElementById(prefix+'-symbol').value=sym;
-  doSymSearch(prefix);
+  const sugEl=document.getElementById(prefix+'-suggestions');
+  if(sugEl)sugEl.classList.remove('open');
+  applySymResult(prefix,sym);
 }
-async function doSymSearch(prefix){
-  const input=document.getElementById(prefix+'-symbol');
+function applySymResult(prefix,val){
   const box=document.getElementById(prefix+'-sym-result');
-  const val=input.value.trim();
   if(!val){box.className='sym-result';return;}
-  if(!EMAIL){box.className='sym-result not-found';box.textContent='Register first to search symbols';return;}
-  box.className='sym-result searching';box.textContent='Searching...';
-  try{
-    const r=await fetch(API+'/api/symbol-search?query='+encodeURIComponent(val)+'&email='+encodeURIComponent(EMAIL));
-    const d=await r.json();
-    if(d.found){
-      box.className='sym-result found';
-      box.textContent=d.symbol+' — '+(d.name||'')+(d.exchange?' | '+d.exchange:'')+(d.currency?' | '+d.currency:'');
-      input.value=d.symbol;
-      // Auto-detect arena
-      const arenaEl=document.getElementById(prefix+'-arena');
-      if(arenaEl){
-        if(d.symbol.endsWith('.HK'))arenaEl.value='HK';
-        else if(d.symbol.endsWith('.US'))arenaEl.value='US';
-        else if(d.symbol.endsWith('.SH')||d.symbol.endsWith('.SZ'))arenaEl.value='CN';
-      }
-      // Lot size hint
-      const lotHint=document.getElementById(prefix+'-lot-hint');
-      if(lotHint){
-        const ls=d.lot_size||0;
-        if(ls>0)lotHint.textContent='Lot size: '+ls+' shares per lot';
-        else lotHint.textContent='';
-      }
-    }else{
-      box.className='sym-result not-found';box.textContent='Not found: '+(d.error||val)+'. Try: 700.HK, TQQQ.US, SPY.US';
+  const d=searchSymbolLocal(val);
+  if(d&&d.symbol){
+    box.className='sym-result found';
+    box.textContent=d.symbol+' — '+d.name+' | '+d.exchange+' | '+d.currency;
+    document.getElementById(prefix+'-symbol').value=d.symbol;
+    const arenaEl=document.getElementById(prefix+'-arena');
+    if(arenaEl){
+      if(d.symbol.endsWith('.HK'))arenaEl.value='HK';
+      else if(d.symbol.endsWith('.US'))arenaEl.value='US';
     }
-  }catch(e){box.className='sym-result not-found';box.textContent='Search error: '+e.message;}
+    const lotHint=document.getElementById(prefix+'-lot-hint');
+    if(lotHint&&d.lot_size)lotHint.textContent='Lot size: '+d.lot_size+' shares per lot';
+  }else{
+    box.className='sym-result not-found';box.textContent='Not in local database. Type exact symbol e.g. AAPL.US or 700.HK';
+  }
 }
+// Close suggestions on click outside
+document.addEventListener('click',e=>{document.querySelectorAll('.sym-suggestions').forEach(s=>{if(!s.contains(e.target))s.classList.remove('open');});});
 
 function buildQuickSyms(prefix){
   const el=document.getElementById(prefix+'-quick-all');

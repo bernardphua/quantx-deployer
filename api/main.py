@@ -15,9 +15,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from collections import defaultdict
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
@@ -182,9 +185,16 @@ _symbol_cache: dict[str, dict] = {
     "1299.HK": {"found": True, "symbol": "1299.HK", "name": "AIA Group Limited", "exchange": "HKEX", "lot_size": 200, "currency": "HKD"},
 }
 
+_executor = ThreadPoolExecutor(max_workers=4)
+
 static_dir = Path(__file__).parent.parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+@app.get("/health")
+async def health():
+    return {"ok": True}
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -550,6 +560,30 @@ async def trade_report(req: TradeReq):
     return {"status": "recorded", "cumulative_pnl": cum_pnl}
 
 
+def _fetch_symbol_lp(symbol: str, email: str) -> dict:
+    """Blocking LongPort symbol lookup — runs in thread pool."""
+    student = get_student(email) if email else None
+    if not student:
+        return {"found": False, "error": "Register to search unlisted symbols."}
+    try:
+        from longport.openapi import Config, QuoteContext
+        cfg = Config(app_key=student["app_key"], app_secret=student["app_secret"], access_token=student["access_token"])
+        ctx = QuoteContext(cfg)
+        result = ctx.static_info([symbol])
+        if result and len(result) > 0:
+            info = result[0]
+            return {
+                "found": True, "symbol": info.symbol,
+                "name": getattr(info, "name_en", "") or getattr(info, "name_cn", "") or str(info.symbol),
+                "exchange": getattr(info, "exchange", ""),
+                "lot_size": getattr(info, "lot_size", 0),
+                "currency": getattr(info, "currency", ""),
+            }
+        return {"found": False, "error": f"Symbol {symbol} not found"}
+    except Exception as e:
+        return {"found": False, "error": str(e)}
+
+
 @app.get("/api/symbol-search")
 async def symbol_search(query: str = Query(""), email: str = Query("")):
     symbol = query.upper().strip()
@@ -557,41 +591,15 @@ async def symbol_search(query: str = Query(""), email: str = Query("")):
         return {"found": False, "error": "Empty query"}
     if "." not in symbol:
         symbol = f"{symbol}.US"
-
-    # Check cache first (instant)
+    # Cache hit = instant
     if symbol in _symbol_cache:
         return _symbol_cache[symbol]
-
-    # Need LongPort for uncached symbols
-    email = email.lower().strip()
-    student = get_student(email) if email else None
-    if not student:
-        return {"found": False, "error": "Symbol not in cache. Register to search more."}
-
-    try:
-        from longport.openapi import Config, QuoteContext
-        cfg = Config(
-            app_key=student["app_key"],
-            app_secret=student["app_secret"],
-            access_token=student["access_token"],
-        )
-        ctx = QuoteContext(cfg)
-        result = ctx.static_info([symbol])
-        if result and len(result) > 0:
-            info = result[0]
-            entry = {
-                "found": True,
-                "symbol": info.symbol,
-                "name": getattr(info, "name_en", "") or getattr(info, "name_cn", "") or str(info.symbol),
-                "exchange": getattr(info, "exchange", ""),
-                "lot_size": getattr(info, "lot_size", 0),
-                "currency": getattr(info, "currency", ""),
-            }
-            _symbol_cache[symbol] = entry  # Cache for next time
-            return entry
-        return {"found": False, "error": f"Symbol {symbol} not found"}
-    except Exception as e:
-        return {"found": False, "error": str(e)}
+    # LongPort lookup in thread pool (non-blocking)
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(_executor, _fetch_symbol_lp, symbol, email.lower().strip())
+    if result.get("found"):
+        _symbol_cache[symbol] = result
+    return result
 
 
 @app.post("/api/test-connection")

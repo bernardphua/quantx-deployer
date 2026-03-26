@@ -41,11 +41,26 @@ def decrypt(token: str) -> str:
     return _fernet.decrypt(token.encode()).decode()
 
 
+import threading
+_local = threading.local()
+
+
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    """Get a thread-local SQLite connection with performance tuning."""
+    if hasattr(_local, "conn") and _local.conn is not None:
+        try:
+            _local.conn.execute("SELECT 1")
+            return _local.conn
+        except Exception:
+            _local.conn = None
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=10000")
+    conn.execute("PRAGMA temp_store=memory")
     conn.execute("PRAGMA foreign_keys=ON")
+    _local.conn = conn
     return conn
 
 
