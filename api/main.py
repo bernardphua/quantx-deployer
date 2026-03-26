@@ -160,6 +160,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="QuantX Deployer", lifespan=lifespan)
 
+# ── Symbol cache ────────────────────────────────────────────────────────────
+_symbol_cache: dict[str, dict] = {
+    "SPY.US": {"found": True, "symbol": "SPY.US", "name": "SPDR S&P 500 ETF Trust", "exchange": "AMEX", "lot_size": 1, "currency": "USD"},
+    "TQQQ.US": {"found": True, "symbol": "TQQQ.US", "name": "ProShares UltraPro QQQ", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "QQQ.US": {"found": True, "symbol": "QQQ.US", "name": "Invesco QQQ Trust", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "AAPL.US": {"found": True, "symbol": "AAPL.US", "name": "Apple Inc", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "MSFT.US": {"found": True, "symbol": "MSFT.US", "name": "Microsoft Corporation", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "META.US": {"found": True, "symbol": "META.US", "name": "Meta Platforms Inc", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "NVDA.US": {"found": True, "symbol": "NVDA.US", "name": "NVIDIA Corporation", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "TSLA.US": {"found": True, "symbol": "TSLA.US", "name": "Tesla Inc", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "AMZN.US": {"found": True, "symbol": "AMZN.US", "name": "Amazon.com Inc", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "GOOGL.US": {"found": True, "symbol": "GOOGL.US", "name": "Alphabet Inc Class A", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "SOXL.US": {"found": True, "symbol": "SOXL.US", "name": "Direxion Daily Semiconductor Bull 3X", "exchange": "NYSE", "lot_size": 1, "currency": "USD"},
+    "SQQQ.US": {"found": True, "symbol": "SQQQ.US", "name": "ProShares UltraPro Short QQQ", "exchange": "NASDAQ", "lot_size": 1, "currency": "USD"},
+    "GLD.US": {"found": True, "symbol": "GLD.US", "name": "SPDR Gold Shares", "exchange": "NYSE", "lot_size": 1, "currency": "USD"},
+    "700.HK": {"found": True, "symbol": "700.HK", "name": "Tencent Holdings Ltd", "exchange": "HKEX", "lot_size": 100, "currency": "HKD"},
+    "2800.HK": {"found": True, "symbol": "2800.HK", "name": "Tracker Fund of Hong Kong", "exchange": "HKEX", "lot_size": 500, "currency": "HKD"},
+    "9988.HK": {"found": True, "symbol": "9988.HK", "name": "Alibaba Group Holding", "exchange": "HKEX", "lot_size": 100, "currency": "HKD"},
+    "0005.HK": {"found": True, "symbol": "0005.HK", "name": "HSBC Holdings plc", "exchange": "HKEX", "lot_size": 400, "currency": "HKD"},
+    "1299.HK": {"found": True, "symbol": "1299.HK", "name": "AIA Group Limited", "exchange": "HKEX", "lot_size": 200, "currency": "HKD"},
+}
+
 static_dir = Path(__file__).parent.parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -518,16 +540,21 @@ async def trade_report(req: TradeReq):
 
 @app.get("/api/symbol-search")
 async def symbol_search(query: str = Query(""), email: str = Query("")):
-    email = email.lower().strip()
     symbol = query.upper().strip()
     if not symbol:
         return {"found": False, "error": "Empty query"}
     if "." not in symbol:
         symbol = f"{symbol}.US"
 
+    # Check cache first (instant)
+    if symbol in _symbol_cache:
+        return _symbol_cache[symbol]
+
+    # Need LongPort for uncached symbols
+    email = email.lower().strip()
     student = get_student(email) if email else None
     if not student:
-        return {"found": False, "error": "Student not registered. Register first."}
+        return {"found": False, "error": "Symbol not in cache. Register to search more."}
 
     try:
         from longport.openapi import Config, QuoteContext
@@ -540,7 +567,7 @@ async def symbol_search(query: str = Query(""), email: str = Query("")):
         result = ctx.static_info([symbol])
         if result and len(result) > 0:
             info = result[0]
-            return {
+            entry = {
                 "found": True,
                 "symbol": info.symbol,
                 "name": getattr(info, "name_en", "") or getattr(info, "name_cn", "") or str(info.symbol),
@@ -548,6 +575,8 @@ async def symbol_search(query: str = Query(""), email: str = Query("")):
                 "lot_size": getattr(info, "lot_size", 0),
                 "currency": getattr(info, "currency", ""),
             }
+            _symbol_cache[symbol] = entry  # Cache for next time
+            return entry
         return {"found": False, "error": f"Symbol {symbol} not found"}
     except Exception as e:
         return {"found": False, "error": str(e)}

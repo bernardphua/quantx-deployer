@@ -182,7 +182,7 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <div class="form-group"><label>Strategy Name</label><input type="text" id="pm-sname" placeholder="Strategy Name"></div>
 </div>
 <div class="form-row three">
-<div class="form-group"><label>Symbol</label><input type="text" id="pm-symbol" placeholder="e.g. 700.HK or TQQQ" autocomplete="off" oninput="debounceSymSearch('pm')"><div class="sym-result" id="pm-sym-result"></div><div class="hint">US: SPY, TQQQ | HK: 700.HK, 2800.HK</div><div id="pm-rec-syms" class="quick-syms"></div><div class="quick-syms" style="margin-top:4px"><span class="quick-sym" onclick="fillSym('pm','700.HK')">700.HK</span><span class="quick-sym" onclick="fillSym('pm','2800.HK')">2800.HK</span><span class="quick-sym" onclick="fillSym('pm','9988.HK')">9988.HK</span><span class="quick-sym" onclick="fillSym('pm','TQQQ.US')">TQQQ.US</span><span class="quick-sym" onclick="fillSym('pm','SPY.US')">SPY.US</span><span class="quick-sym" onclick="fillSym('pm','QQQ.US')">QQQ.US</span></div></div>
+<div class="form-group"><label>Symbol</label><input type="text" id="pm-symbol" placeholder="e.g. 700.HK or TQQQ" autocomplete="off" oninput="debounceSymSearch('pm')"><div class="sym-result" id="pm-sym-result"></div><div class="hint">US: SPY, TQQQ | HK: 700.HK, 2800.HK</div><div id="pm-rec-syms" class="quick-syms"></div><div id="pm-quick-all"></div></div>
 <div class="form-group"><label>Arena</label><select id="pm-arena"><option>US</option><option>HK</option><option>SG</option></select><div class="hint" id="pm-lot-hint"></div></div>
 <div class="form-group"><label>Timeframe</label><select id="pm-tf"></select></div>
 </div>
@@ -220,7 +220,7 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <label class="exit-check"><input type="checkbox" id="cu-ex-time"> Exit time <input type="text" id="cu-ex-time-val" value="15:50" style="width:60px"> SGT</label>
 </div>
 <div class="form-row three">
-<div class="form-group"><label>Symbol</label><input type="text" id="cu-symbol" placeholder="e.g. 700.HK or TQQQ" autocomplete="off" oninput="debounceSymSearch('cu')"><div class="sym-result" id="cu-sym-result"></div><div class="hint">US: SPY, TQQQ | HK: 700.HK</div><div class="quick-syms" style="margin-top:4px"><span class="quick-sym" onclick="fillSym('cu','700.HK')">700.HK</span><span class="quick-sym" onclick="fillSym('cu','TQQQ.US')">TQQQ.US</span><span class="quick-sym" onclick="fillSym('cu','SPY.US')">SPY.US</span><span class="quick-sym" onclick="fillSym('cu','AAPL.US')">AAPL.US</span></div></div>
+<div class="form-group"><label>Symbol</label><input type="text" id="cu-symbol" placeholder="e.g. 700.HK or TQQQ" autocomplete="off" oninput="debounceSymSearch('cu')"><div class="sym-result" id="cu-sym-result"></div><div class="hint">US: SPY, TQQQ | HK: 700.HK</div><div id="cu-quick-all"></div></div>
 <div class="form-group"><label>Arena</label><select id="cu-arena"><option>US</option><option>HK</option><option>SG</option></select></div>
 <div class="form-group"><label>Timeframe</label><select id="cu-tf"><option>1m</option><option>5m</option><option>15m</option><option>30m</option><option>1h</option></select></div>
 </div>
@@ -240,7 +240,7 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <div class="form-group"><label>Strategy Name</label><input type="text" id="sc-name" placeholder="My Script Strategy"></div>
 </div>
 <div class="form-row three">
-<div class="form-group"><label>Symbol</label><input type="text" id="sc-symbol" placeholder="e.g. 700.HK or TQQQ" autocomplete="off" oninput="debounceSymSearch('sc')"><div class="sym-result" id="sc-sym-result"></div><div class="hint">US: SPY, TQQQ | HK: 700.HK</div><div class="quick-syms" style="margin-top:4px"><span class="quick-sym" onclick="fillSym('sc','700.HK')">700.HK</span><span class="quick-sym" onclick="fillSym('sc','TQQQ.US')">TQQQ.US</span><span class="quick-sym" onclick="fillSym('sc','SPY.US')">SPY.US</span></div></div>
+<div class="form-group"><label>Symbol</label><input type="text" id="sc-symbol" placeholder="e.g. 700.HK or TQQQ" autocomplete="off" oninput="debounceSymSearch('sc')"><div class="sym-result" id="sc-sym-result"></div><div class="hint">US: SPY, TQQQ | HK: 700.HK</div><div id="sc-quick-all"></div></div>
 <div class="form-group"><label>Arena</label><select id="sc-arena"><option>US</option><option>HK</option><option>SG</option></select></div>
 <div class="form-group"><label>Timeframe</label><select id="sc-tf"><option>1m</option><option>5m</option><option>15m</option><option>30m</option></select></div>
 </div>
@@ -456,6 +456,19 @@ async function doSymSearch(prefix){
   }catch(e){box.className='sym-result not-found';box.textContent='Search error: '+e.message;}
 }
 
+function buildQuickSyms(prefix){
+  const el=document.getElementById(prefix+'-quick-all');
+  if(!el)return;
+  const groups=[
+    {label:'US Stocks',syms:['AAPL.US','MSFT.US','NVDA.US','TSLA.US','META.US','AMZN.US','GOOGL.US']},
+    {label:'US ETFs',syms:['SPY.US','QQQ.US','TQQQ.US','SOXL.US','GLD.US','SQQQ.US']},
+    {label:'HK Stocks',syms:['700.HK','9988.HK','0005.HK','1299.HK']},
+    {label:'HK ETFs',syms:['2800.HK']},
+  ];
+  el.innerHTML=groups.map(g=>`<div style="margin-top:6px"><span style="font-size:.6rem;color:var(--dim);font-family:'Share Tech Mono',monospace;margin-right:6px">${g.label}:</span>${g.syms.map(s=>`<span class="quick-sym" onclick="fillSym('${prefix}','${s}')">${s}</span>`).join('')}</div>`).join('');
+}
+['pm','cu','sc'].forEach(p=>buildQuickSyms(p));
+
 /* ── Library ──────────────────────────────────────────────────────────── */
 function getCentralUrl(){
   return CENTRAL||localStorage.getItem('qx_central_url')||localStorage.getItem('qx_central')||document.getElementById('reg-central').value.trim()||'http://localhost:8001';
@@ -555,21 +568,42 @@ async function savePremade(){
 
 /* ── Custom conditions ────────────────────────────────────────────────── */
 const INDICATORS=[
-  {id:'EMA_CROSS',label:'EMA Crossover',params:[{key:'fast_period',label:'Fast',def:5,min:2,max:50},{key:'slow_period',label:'Slow',def:20,min:5,max:200}]},
-  {id:'RSI',label:'RSI',params:[{key:'period',label:'Period',def:14,min:2,max:50},{key:'oversold',label:'Oversold',def:30,min:10,max:45},{key:'overbought',label:'Overbought',def:70,min:55,max:90}]},
-  {id:'MACD_SIGNAL',label:'MACD',params:[{key:'fast_period',label:'Fast',def:12,min:5,max:30},{key:'slow_period',label:'Slow',def:26,min:15,max:60},{key:'signal_period',label:'Signal',def:9,min:3,max:20}]},
-  {id:'BB_BREAKOUT',label:'Bollinger Bands',params:[{key:'period',label:'Period',def:20,min:10,max:50},{key:'num_std',label:'StdDev',def:2,min:1,max:3.5}]},
-  {id:'SUPERTREND',label:'SuperTrend',params:[{key:'atr_period',label:'ATR Period',def:10,min:5,max:30},{key:'multiplier',label:'Multiplier',def:3,min:1,max:6}]},
-  {id:'MOMENTUM',label:'Momentum',params:[{key:'lookback',label:'Lookback',def:10,min:3,max:60},{key:'threshold_pct',label:'Threshold%',def:0.5,min:0.1,max:5}]},
-  {id:'PRICE_CROSS',label:'Price Cross',params:[{key:'threshold',label:'Price',def:0,min:0,max:999999}]}
+  {id:'EMA_CROSS',cat:'Trend',label:'EMA Crossover',desc:'Buys when fast EMA crosses above slow EMA. Classic trend entry.',params:[{key:'fast_period',label:'Fast Period',def:5,min:2,max:50},{key:'slow_period',label:'Slow Period',def:20,min:5,max:200}]},
+  {id:'SMA_CROSS',cat:'Trend',label:'SMA Crossover',desc:'Same as EMA cross but using Simple Moving Average. Smoother signals.',params:[{key:'fast_period',label:'Fast Period',def:5,min:2,max:50},{key:'slow_period',label:'Slow Period',def:20,min:5,max:200}]},
+  {id:'SUPERTREND',cat:'Trend',label:'SuperTrend',desc:'ATR-based trend indicator. Flips between bullish/bearish bands.',params:[{key:'atr_period',label:'ATR Period',def:10,min:5,max:30},{key:'multiplier',label:'Multiplier',def:3,min:1,max:6}]},
+  {id:'PRICE_VS_MA',cat:'Trend',label:'Price vs MA',desc:'Buy when price crosses above moving average, sell below.',params:[{key:'ma_type',label:'MA Type (EMA/SMA)',def:'EMA',min:0,max:0},{key:'ma_period',label:'MA Period',def:20,min:5,max:200}]},
+  {id:'MACD_SIGNAL',cat:'Momentum',label:'MACD Signal',desc:'Buy on MACD bullish crossover, sell on bearish. Captures momentum shifts.',params:[{key:'fast_period',label:'Fast',def:12,min:5,max:30},{key:'slow_period',label:'Slow',def:26,min:15,max:60},{key:'signal_period',label:'Signal',def:9,min:3,max:20}]},
+  {id:'MOMENTUM',cat:'Momentum',label:'Momentum',desc:'Buy when rate of price change exceeds threshold. Simple but effective.',params:[{key:'lookback',label:'Lookback',def:5,min:2,max:60},{key:'threshold_pct',label:'Threshold %',def:0.05,min:0.01,max:5}]},
+  {id:'PCT_FROM_OPEN',cat:'Momentum',label:'% From Open',desc:'Buy/sell when price moves a certain % from daily open.',params:[{key:'threshold_pct',label:'Threshold %',def:0.5,min:0.1,max:5}]},
+  {id:'RSI',cat:'MeanRev',label:'RSI',desc:'Buys when oversold, sells when overbought. Best in ranging markets.',params:[{key:'period',label:'Period',def:14,min:2,max:50},{key:'oversold',label:'Oversold',def:30,min:10,max:45},{key:'overbought',label:'Overbought',def:70,min:55,max:90}]},
+  {id:'STOCH_RSI',cat:'MeanRev',label:'Stochastic RSI',desc:'RSI applied to RSI. More sensitive momentum oscillator.',params:[{key:'k_period',label:'%K Period',def:14,min:2,max:30},{key:'d_period',label:'%D Period',def:3,min:2,max:10},{key:'rsi_period',label:'RSI Period',def:14,min:5,max:30},{key:'oversold',label:'Oversold',def:20,min:5,max:40},{key:'overbought',label:'Overbought',def:80,min:60,max:95}]},
+  {id:'WILLIAMS_R',cat:'MeanRev',label:'Williams %R',desc:'Close relative to high-low range. Fast reversal signals.',params:[{key:'period',label:'Period',def:14,min:5,max:50},{key:'oversold',label:'Oversold',def:-80,min:-95,max:-60},{key:'overbought',label:'Overbought',def:-20,min:-40,max:-5}]},
+  {id:'CCI',cat:'MeanRev',label:'CCI',desc:'Commodity Channel Index. Buy below -threshold, sell above +threshold.',params:[{key:'period',label:'Period',def:20,min:5,max:50},{key:'threshold',label:'Threshold',def:100,min:50,max:300}]},
+  {id:'BB_BREAKOUT',cat:'Volatility',label:'Bollinger Bands',desc:'Buy at lower band (mean reversion), sell at upper band.',params:[{key:'period',label:'Period',def:20,min:10,max:50},{key:'num_std',label:'Std Dev',def:2,min:1,max:3.5}]},
+  {id:'KELTNER',cat:'Volatility',label:'Keltner Channel',desc:'EMA-based channel with ATR width. Smoother than Bollinger.',params:[{key:'ema_period',label:'EMA Period',def:20,min:5,max:50},{key:'atr_period',label:'ATR Period',def:10,min:5,max:30},{key:'multiplier',label:'Multiplier',def:1.5,min:0.5,max:4}]},
+  {id:'ATR_BREAKOUT',cat:'Volatility',label:'ATR Breakout',desc:'Buy when price moves more than ATR*multiplier from close.',params:[{key:'period',label:'ATR Period',def:14,min:5,max:50},{key:'multiplier',label:'Multiplier',def:1.5,min:0.5,max:4}]},
+  {id:'VWAP_DEV',cat:'Volume',label:'VWAP Deviation',desc:'Buy when price deviates below VWAP. Institutional fair value.',params:[{key:'deviation_pct',label:'Deviation %',def:0.1,min:0.05,max:2}]},
+  {id:'VOLUME_SPIKE',cat:'Volume',label:'Volume Spike',desc:'Signal when volume exceeds N times average. Confirms moves.',params:[{key:'lookback',label:'Lookback',def:20,min:5,max:60},{key:'threshold',label:'Multiplier',def:2,min:1.5,max:5}]},
+  {id:'OBV_TREND',cat:'Volume',label:'OBV Trend',desc:'On-Balance Volume trend direction. Confirms price moves.',params:[{key:'lookback',label:'Lookback',def:20,min:5,max:60}]},
+  {id:'NEW_HIGH_LOW',cat:'PriceAction',label:'New High/Low',desc:'Buy on new N-bar high, sell on new N-bar low. Breakout entry.',params:[{key:'lookback',label:'Lookback',def:20,min:5,max:100}]},
 ];
+const IND_CATS={Trend:'Trend Following',Momentum:'Momentum',MeanRev:'Mean Reversion',Volatility:'Volatility Breakout',Volume:'Volume',PriceAction:'Price Action'};
+function buildIndOpts(){
+  let h='';
+  const cats=[...new Set(INDICATORS.map(i=>i.cat))];
+  cats.forEach(c=>{
+    h+=`<optgroup label="${IND_CATS[c]||c}">`;
+    INDICATORS.filter(i=>i.cat===c).forEach(i=>{h+=`<option value="${i.id}">${i.label}</option>`;});
+    h+='</optgroup>';
+  });
+  return h;
+}
 function addConditionRow(){
   if(document.querySelectorAll('.cond-row').length>=5)return;
   const idx=condCounter++;
   const div=document.createElement('div');div.className='cond-row';div.id='cond-'+idx;
   const logicSel=idx>0?`<select class="cond-logic"><option>AND</option><option>OR</option></select>`:'';
-  let opts=INDICATORS.map(i=>`<option value="${i.id}">${i.label}</option>`).join('');
-  div.innerHTML=`${logicSel}<select class="cond-indicator" onchange="updateCondParams(${idx})">${opts}</select><button class="btn btn-danger btn-sm" onclick="document.getElementById('cond-${idx}').remove()" style="margin-left:auto">X</button><div class="cond-params" id="cond-params-${idx}"></div>`;
+  div.innerHTML=`${logicSel}<select class="cond-indicator" onchange="updateCondParams(${idx})">${buildIndOpts()}</select><button class="btn btn-danger btn-sm" onclick="document.getElementById('cond-${idx}').remove()" style="margin-left:auto">X</button><div class="cond-desc" id="cond-desc-${idx}" style="width:100%;font-size:.7rem;color:var(--dim);font-family:'Share Tech Mono',monospace;margin-top:4px"></div><div class="cond-params" id="cond-params-${idx}"></div>`;
   document.getElementById('cu-conditions').appendChild(div);
   updateCondParams(idx);
 }
@@ -577,8 +611,13 @@ function updateCondParams(idx){
   const row=document.getElementById('cond-'+idx);if(!row)return;
   const sel=row.querySelector('.cond-indicator');
   const ind=INDICATORS.find(i=>i.id===sel.value);if(!ind)return;
+  const desc=document.getElementById('cond-desc-'+idx);
+  if(desc)desc.textContent=ind.desc||'';
   const pp=document.getElementById('cond-params-'+idx);
-  pp.innerHTML=ind.params.map(p=>`<div><label>${p.label}</label><input type="number" data-key="${p.key}" value="${p.def}" min="${p.min}" max="${p.max}" step="${typeof p.def==='number'&&p.def%1!==0?0.1:1}"></div>`).join('');
+  pp.innerHTML=ind.params.map(p=>{
+    if(typeof p.def==='string')return `<div><label>${p.label}</label><input type="text" data-key="${p.key}" value="${p.def}" style="width:80px"></div>`;
+    return `<div><label>${p.label}</label><input type="number" data-key="${p.key}" value="${p.def}" min="${p.min}" max="${p.max}" step="${p.def%1!==0?0.01:1}"></div>`;
+  }).join('');
 }
 async function saveCustom(){
   const msg=document.getElementById('cu-msg');
