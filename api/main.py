@@ -197,6 +197,18 @@ async def root():
     return HTMLResponse("<h1>QuantX Deployer</h1>")
 
 
+@app.get("/api/indicators")
+async def get_indicators():
+    from api.indicators_library import INDICATOR_REGISTRY, CATEGORIES
+    by_cat = {}
+    for ind_id, meta in INDICATOR_REGISTRY.items():
+        cat = meta["cat"]
+        if cat not in by_cat:
+            by_cat[cat] = []
+        by_cat[cat].append({"id": ind_id, **meta})
+    return {"categories": CATEGORIES, "indicators": by_cat, "total": len(INDICATOR_REGISTRY)}
+
+
 @app.get("/api/config")
 async def get_config():
     return {

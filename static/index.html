@@ -123,6 +123,7 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <div class="tab" onclick="switchTab('strategies')">Strategies</div>
 <div class="tab" onclick="switchTab('deploy')">Deploy</div>
 <div class="tab" onclick="switchTab('dashboard')">Dashboard</div>
+<div class="tab" onclick="switchTab('options')" style="position:relative">Options <span style="position:absolute;top:-2px;right:-4px;font-size:.45rem;background:var(--magenta);color:#fff;padding:1px 4px;border-radius:3px;font-family:'Share Tech Mono',monospace">SOON</span></div>
 <div class="tab" onclick="switchTab('settings')">Settings</div>
 </div>
 
@@ -323,6 +324,24 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 </div>
 </div>
 
+<!-- TAB: OPTIONS (Coming Soon) -->
+<div class="tab-content" id="tab-options">
+<div style="text-align:center;padding:60px 20px">
+<div style="font-size:3rem;margin-bottom:16px">&#128274;</div>
+<h2 style="font-family:'Orbitron',monospace;font-size:1.2rem;color:var(--magenta);margin-bottom:8px">OPTIONS TRADING</h2>
+<span style="display:inline-block;padding:3px 12px;border-radius:4px;font-size:.65rem;font-family:'Share Tech Mono',monospace;background:var(--magenta);color:#fff;margin-bottom:20px">PHASE 3</span>
+<p style="color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:.85rem;max-width:500px;margin:0 auto;line-height:1.8">
+Coming in Phase 3:<br>
+&#9744; Options chain viewer<br>
+&#9744; Options strategy builder (spreads, iron condors)<br>
+&#9744; Greeks dashboard (delta, gamma, theta, vega)<br>
+&#9744; IV percentile scanner<br>
+&#9744; Auto-hedging with options<br>
+&#9744; Covered call / protective put automation
+</p>
+</div>
+</div>
+
 <!-- TAB: SETTINGS -->
 <div class="tab-content" id="tab-settings">
 <h2 style="font-family:'Orbitron',monospace;font-size:1rem;color:var(--cyan);margin-bottom:16px">SETTINGS</h2>
@@ -346,7 +365,7 @@ if(EMAIL)document.getElementById('hdr-email').textContent=EMAIL;
 
 /* ── Tabs ─────────────────────────────────────────────────────────────── */
 function switchTab(n){
-  const tabs=['register','strategies','deploy','dashboard','settings'];
+  const tabs=['register','strategies','deploy','dashboard','options','settings'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===n));
   document.querySelectorAll('.tab-content').forEach(tc=>tc.classList.remove('active'));
   document.getElementById('tab-'+n).classList.add('active');
@@ -566,38 +585,41 @@ async function savePremade(){
   }catch(e){msg.textContent=e.message;msg.className='msg err';}
 }
 
-/* ── Custom conditions ────────────────────────────────────────────────── */
-const INDICATORS=[
-  {id:'EMA_CROSS',cat:'Trend',label:'EMA Crossover',desc:'Buys when fast EMA crosses above slow EMA. Classic trend entry.',params:[{key:'fast_period',label:'Fast Period',def:5,min:2,max:50},{key:'slow_period',label:'Slow Period',def:20,min:5,max:200}]},
-  {id:'SMA_CROSS',cat:'Trend',label:'SMA Crossover',desc:'Same as EMA cross but using Simple Moving Average. Smoother signals.',params:[{key:'fast_period',label:'Fast Period',def:5,min:2,max:50},{key:'slow_period',label:'Slow Period',def:20,min:5,max:200}]},
-  {id:'SUPERTREND',cat:'Trend',label:'SuperTrend',desc:'ATR-based trend indicator. Flips between bullish/bearish bands.',params:[{key:'atr_period',label:'ATR Period',def:10,min:5,max:30},{key:'multiplier',label:'Multiplier',def:3,min:1,max:6}]},
-  {id:'PRICE_VS_MA',cat:'Trend',label:'Price vs MA',desc:'Buy when price crosses above moving average, sell below.',params:[{key:'ma_type',label:'MA Type (EMA/SMA)',def:'EMA',min:0,max:0},{key:'ma_period',label:'MA Period',def:20,min:5,max:200}]},
-  {id:'MACD_SIGNAL',cat:'Momentum',label:'MACD Signal',desc:'Buy on MACD bullish crossover, sell on bearish. Captures momentum shifts.',params:[{key:'fast_period',label:'Fast',def:12,min:5,max:30},{key:'slow_period',label:'Slow',def:26,min:15,max:60},{key:'signal_period',label:'Signal',def:9,min:3,max:20}]},
-  {id:'MOMENTUM',cat:'Momentum',label:'Momentum',desc:'Buy when rate of price change exceeds threshold. Simple but effective.',params:[{key:'lookback',label:'Lookback',def:5,min:2,max:60},{key:'threshold_pct',label:'Threshold %',def:0.05,min:0.01,max:5}]},
-  {id:'PCT_FROM_OPEN',cat:'Momentum',label:'% From Open',desc:'Buy/sell when price moves a certain % from daily open.',params:[{key:'threshold_pct',label:'Threshold %',def:0.5,min:0.1,max:5}]},
-  {id:'RSI',cat:'MeanRev',label:'RSI',desc:'Buys when oversold, sells when overbought. Best in ranging markets.',params:[{key:'period',label:'Period',def:14,min:2,max:50},{key:'oversold',label:'Oversold',def:30,min:10,max:45},{key:'overbought',label:'Overbought',def:70,min:55,max:90}]},
-  {id:'STOCH_RSI',cat:'MeanRev',label:'Stochastic RSI',desc:'RSI applied to RSI. More sensitive momentum oscillator.',params:[{key:'k_period',label:'%K Period',def:14,min:2,max:30},{key:'d_period',label:'%D Period',def:3,min:2,max:10},{key:'rsi_period',label:'RSI Period',def:14,min:5,max:30},{key:'oversold',label:'Oversold',def:20,min:5,max:40},{key:'overbought',label:'Overbought',def:80,min:60,max:95}]},
-  {id:'WILLIAMS_R',cat:'MeanRev',label:'Williams %R',desc:'Close relative to high-low range. Fast reversal signals.',params:[{key:'period',label:'Period',def:14,min:5,max:50},{key:'oversold',label:'Oversold',def:-80,min:-95,max:-60},{key:'overbought',label:'Overbought',def:-20,min:-40,max:-5}]},
-  {id:'CCI',cat:'MeanRev',label:'CCI',desc:'Commodity Channel Index. Buy below -threshold, sell above +threshold.',params:[{key:'period',label:'Period',def:20,min:5,max:50},{key:'threshold',label:'Threshold',def:100,min:50,max:300}]},
-  {id:'BB_BREAKOUT',cat:'Volatility',label:'Bollinger Bands',desc:'Buy at lower band (mean reversion), sell at upper band.',params:[{key:'period',label:'Period',def:20,min:10,max:50},{key:'num_std',label:'Std Dev',def:2,min:1,max:3.5}]},
-  {id:'KELTNER',cat:'Volatility',label:'Keltner Channel',desc:'EMA-based channel with ATR width. Smoother than Bollinger.',params:[{key:'ema_period',label:'EMA Period',def:20,min:5,max:50},{key:'atr_period',label:'ATR Period',def:10,min:5,max:30},{key:'multiplier',label:'Multiplier',def:1.5,min:0.5,max:4}]},
-  {id:'ATR_BREAKOUT',cat:'Volatility',label:'ATR Breakout',desc:'Buy when price moves more than ATR*multiplier from close.',params:[{key:'period',label:'ATR Period',def:14,min:5,max:50},{key:'multiplier',label:'Multiplier',def:1.5,min:0.5,max:4}]},
-  {id:'VWAP_DEV',cat:'Volume',label:'VWAP Deviation',desc:'Buy when price deviates below VWAP. Institutional fair value.',params:[{key:'deviation_pct',label:'Deviation %',def:0.1,min:0.05,max:2}]},
-  {id:'VOLUME_SPIKE',cat:'Volume',label:'Volume Spike',desc:'Signal when volume exceeds N times average. Confirms moves.',params:[{key:'lookback',label:'Lookback',def:20,min:5,max:60},{key:'threshold',label:'Multiplier',def:2,min:1.5,max:5}]},
-  {id:'OBV_TREND',cat:'Volume',label:'OBV Trend',desc:'On-Balance Volume trend direction. Confirms price moves.',params:[{key:'lookback',label:'Lookback',def:20,min:5,max:60}]},
-  {id:'NEW_HIGH_LOW',cat:'PriceAction',label:'New High/Low',desc:'Buy on new N-bar high, sell on new N-bar low. Breakout entry.',params:[{key:'lookback',label:'Lookback',def:20,min:5,max:100}]},
-];
-const IND_CATS={Trend:'Trend Following',Momentum:'Momentum',MeanRev:'Mean Reversion',Volatility:'Volatility Breakout',Volume:'Volume',PriceAction:'Price Action'};
+/* ── Custom conditions (dynamic from API) ────────────────────────────── */
+let INDICATORS=[];
+let IND_CATS_ORDER=[];
+async function loadIndicators(){
+  try{
+    const r=await fetch(API+'/api/indicators');const d=await r.json();
+    IND_CATS_ORDER=d.categories||[];
+    INDICATORS=[];
+    for(const cat of IND_CATS_ORDER){
+      (d.indicators[cat]||[]).forEach(i=>{
+        INDICATORS.push({id:i.id,cat:cat,label:i.name,desc:i.desc,params:(i.params||[]).map(p=>({key:p.key,label:p.label,def:p.default,min:p.min,max:p.max,type:p.type}))});
+      });
+    }
+  }catch(e){
+    // Fallback minimal set
+    INDICATORS=[
+      {id:'EMA_CROSS',cat:'Trend Following',label:'EMA Crossover',desc:'Fast EMA crosses above slow EMA.',params:[{key:'fast_period',label:'Fast',def:5,min:2,max:50},{key:'slow_period',label:'Slow',def:20,min:5,max:200}]},
+      {id:'RSI',cat:'Mean Reversion',label:'RSI',desc:'Buy oversold, sell overbought.',params:[{key:'period',label:'Period',def:14,min:5,max:50},{key:'oversold',label:'Oversold',def:30,min:10,max:45},{key:'overbought',label:'Overbought',def:70,min:55,max:90}]},
+    ];
+    IND_CATS_ORDER=['Trend Following','Mean Reversion'];
+  }
+}
 function buildIndOpts(){
   let h='';
-  const cats=[...new Set(INDICATORS.map(i=>i.cat))];
-  cats.forEach(c=>{
-    h+=`<optgroup label="${IND_CATS[c]||c}">`;
-    INDICATORS.filter(i=>i.cat===c).forEach(i=>{h+=`<option value="${i.id}">${i.label}</option>`;});
+  const seen=new Set();
+  for(const cat of IND_CATS_ORDER){
+    const inds=INDICATORS.filter(i=>i.cat===cat);
+    if(!inds.length)continue;
+    h+=`<optgroup label="${cat}">`;
+    inds.forEach(i=>{if(!seen.has(i.id)){h+=`<option value="${i.id}">${i.label}</option>`;seen.add(i.id);}});
     h+='</optgroup>';
-  });
+  }
   return h;
 }
+loadIndicators();
 function addConditionRow(){
   if(document.querySelectorAll('.cond-row').length>=5)return;
   const idx=condCounter++;
