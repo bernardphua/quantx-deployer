@@ -191,6 +191,29 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <button class="btn btn-sm" style="background:var(--surface);color:var(--dim);border:1px solid var(--border);margin-left:8px" onclick="showWelcome()">Cancel</button>
 <div class="msg" id="upd-msg"></div>
 </div>
+<!-- MODE D: Pending approval -->
+<div id="reg-pending" style="display:none;max-width:500px;margin:40px auto;text-align:center">
+<div style="font-size:2.5rem;margin-bottom:12px">&#9203;</div>
+<h2 style="font-family:'Orbitron',monospace;font-size:1.1rem;color:var(--yellow);margin-bottom:12px">PENDING APPROVAL</h2>
+<div style="background:var(--surface);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:20px;margin:16px 0;text-align:left">
+<p style="font-family:'Rajdhani',sans-serif;font-size:.9rem;color:var(--text);line-height:1.6;margin-bottom:12px">Your registration has been submitted successfully.</p>
+<p style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--dim)">Email: <span id="pend-email" style="color:var(--cyan)"></span></p>
+<p style="font-family:'Rajdhani',sans-serif;font-size:.88rem;color:var(--dim);margin-top:12px;line-height:1.5">Your instructor will review and approve your account. This usually takes a few minutes during class hours.</p>
+</div>
+<button class="btn btn-primary btn-sm" onclick="checkApprovalStatus()">Check Status</button>
+<button class="btn btn-sm" style="background:var(--surface);color:var(--dim);border:1px solid var(--border);margin-left:8px" onclick="doLogout()">Change Email</button>
+<div style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);margin-top:12px" id="pend-poll-msg">Auto-checking every 30 seconds...</div>
+</div>
+<!-- MODE E: Rejected -->
+<div id="reg-rejected" style="display:none;max-width:500px;margin:40px auto;text-align:center">
+<div style="font-size:2.5rem;margin-bottom:12px">&#10007;</div>
+<h2 style="font-family:'Orbitron',monospace;font-size:1.1rem;color:var(--red);margin-bottom:12px">REGISTRATION NOT APPROVED</h2>
+<div style="background:var(--surface);border:1px solid rgba(255,51,102,.2);border-radius:8px;padding:20px;margin:16px 0">
+<p style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--dim)">Email: <span id="rej-email" style="color:var(--red)"></span></p>
+<p style="font-family:'Rajdhani',sans-serif;font-size:.9rem;color:var(--red);margin-top:12px" id="rej-reason">Please contact your instructor for assistance.</p>
+</div>
+<button class="btn btn-sm" style="background:var(--surface);color:var(--dim);border:1px solid var(--border)" onclick="doLogout()">Try Different Email</button>
+</div>
 </div>
 
 <!-- TAB: STRATEGIES -->
@@ -438,22 +461,59 @@ function openStratForm(mode){
 
 /* ── Register / Login ─────────────────────────────────────────────────── */
 function showWelcome(){
+  hideAllRegModes();
   document.getElementById('reg-welcome').style.display='block';
-  document.getElementById('reg-form').style.display='none';
-  document.getElementById('reg-update').style.display='none';
   document.getElementById('wb-email').textContent=EMAIL;
   document.getElementById('wb-name').textContent=UNAME;
 }
 function showRegForm(){
-  document.getElementById('reg-welcome').style.display='none';
+  hideAllRegModes();
   document.getElementById('reg-form').style.display='block';
-  document.getElementById('reg-update').style.display='none';
 }
 function showUpdateCreds(){
-  document.getElementById('reg-welcome').style.display='none';
-  document.getElementById('reg-form').style.display='none';
+  hideAllRegModes();
   document.getElementById('reg-update').style.display='block';
   document.getElementById('upd-email').value=EMAIL;
+}
+function showPending(){
+  hideAllRegModes();
+  document.getElementById('reg-pending').style.display='block';
+  document.getElementById('pend-email').textContent=EMAIL;
+  startPendingPoll();
+}
+function showRejected(reason){
+  hideAllRegModes();
+  document.getElementById('reg-rejected').style.display='block';
+  document.getElementById('rej-email').textContent=EMAIL;
+  document.getElementById('rej-reason').textContent=reason||'Please contact your instructor for assistance.';
+}
+function hideAllRegModes(){
+  ['reg-welcome','reg-form','reg-update','reg-pending','reg-rejected'].forEach(function(id){document.getElementById(id).style.display='none';});
+}
+let _pendingPoll=null;
+function startPendingPoll(){
+  if(_pendingPoll)clearInterval(_pendingPoll);
+  _pendingPoll=setInterval(checkApprovalStatus,30000);
+}
+async function checkApprovalStatus(){
+  if(!EMAIL)return;
+  document.getElementById('pend-poll-msg').textContent='Checking...';
+  try{
+    const r=await fetch(API+'/api/approval-status?email='+encodeURIComponent(EMAIL));
+    const d=await r.json();
+    if(d.status==='approved'){
+      if(_pendingPoll){clearInterval(_pendingPoll);_pendingPoll=null;}
+      setUser(EMAIL,d.name||UNAME,CENTRAL);
+      showWelcome();
+      setTimeout(function(){switchTab('strategies');},1500);
+      return;
+    }
+    if(d.status==='rejected'){
+      if(_pendingPoll){clearInterval(_pendingPoll);_pendingPoll=null;}
+      showRejected(d.reason);return;
+    }
+    document.getElementById('pend-poll-msg').textContent='Still pending. Auto-checking every 30s...';
+  }catch(e){document.getElementById('pend-poll-msg').textContent='Check failed. Retrying...';}
 }
 function continueAsUser(){
   switchTab(localStorage.getItem('qx_last_tab')||'strategies');
@@ -466,12 +526,21 @@ async function doRegister(){
   try{
     const central=document.getElementById('reg-central').value.trim();
     const r=await fetch(API+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,name:document.getElementById('reg-name').value.trim(),app_key:document.getElementById('reg-appkey').value,app_secret:document.getElementById('reg-appsecret').value,access_token:document.getElementById('reg-token').value,central_api_url:central})});
-    const d=await r.json();if(!r.ok)throw new Error(d.detail||'Failed');
-    setUser(email,d.name,central);
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||d.message||'Failed');
+    setUser(email,d.name||'',central);
     if(central){try{await fetch(API+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:EMAIL,central_api_url:central})});}catch(e){}}
     LIB_CACHE=null;
-    msg.textContent='Registered! Redirecting...';msg.className='msg ok';
-    setTimeout(function(){switchTab('strategies');},1000);
+    if(d.status==='registered'||d.status==='approved'){
+      msg.textContent='Registered! Redirecting...';msg.className='msg ok';
+      setTimeout(function(){switchTab('strategies');},1000);
+    }else if(d.status==='pending'){
+      showPending();
+    }else if(d.status==='rejected'){
+      showRejected(d.message);
+    }else{
+      msg.textContent=d.message||d.status||'Unknown status';msg.className='msg err';
+    }
   }catch(e){msg.textContent=e.message;msg.className='msg err';}
 }
 
@@ -1088,15 +1157,22 @@ document.getElementById('sc-code').value=[
       const d=await r.json();
       if(d.found){
         setUser(d.email,d.name,d.central_api_url||CENTRAL);
+        // Check approval status
+        try{
+          const sr=await fetch(API+'/api/approval-status?email='+encodeURIComponent(EMAIL));
+          const sd=await sr.json();
+          if(sd.status==='pending'){showPending();return;}
+          if(sd.status==='rejected'){showRejected(sd.reason);return;}
+          if(sd.status==='suspended'){showRejected('Account suspended');return;}
+        }catch(e){}
+        // Approved — show welcome and auto-advance
         showWelcome();
-        // Auto-advance to last tab after 1.5s
         const lastTab=localStorage.getItem('qx_last_tab')||'strategies';
         setTimeout(function(){switchTab(lastTab);},1500);
         return;
       }
     }catch(e){}
   }
-  // New student — show registration form
   showRegForm();
   if(EMAIL)document.getElementById('reg-email').value=EMAIL;
 })();

@@ -239,6 +239,28 @@ async def me(email: str = Query("")):
     }
 
 
+@app.get("/api/approval-status")
+async def approval_status(email: str = Query("")):
+    email = email.lower().strip()
+    if not email:
+        return {"status": "unknown"}
+    # Check central API
+    student = get_student(email)
+    central_url = (student.get("central_api_url", "") if student else "") or CENTRAL_API_URL
+    if central_url:
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(f"{central_url.rstrip('/')}/api/check-status?email={email}")
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception:
+            pass
+    # Fallback: if student exists locally, assume approved
+    if student:
+        return {"status": "approved", "name": student.get("name", "")}
+    return {"status": "unknown"}
+
+
 @app.get("/api/indicators")
 async def get_indicators():
     from api.indicators_library import INDICATOR_REGISTRY, CATEGORIES
@@ -295,26 +317,48 @@ async def strategies_library():
 @app.post("/api/register")
 async def register(req: RegisterReq):
     email = req.email.lower().strip()
-    # Validate against central API
-    if req.central_api_url:
-        async with httpx.AsyncClient(timeout=10) as client:
-            try:
-                resp = await client.post(
-                    f"{req.central_api_url.rstrip('/')}/api/register-check",
-                    json={"email": email},
-                )
-                if resp.status_code != 200:
-                    data = resp.json()
-                    raise HTTPException(403, data.get("detail", "Email not pre-approved"))
-                central_data = resp.json()
-            except httpx.HTTPError as e:
-                raise HTTPException(502, f"Cannot reach central API: {e}")
-    else:
-        central_data = {"name": req.name}
+    central_url = req.central_api_url or CENTRAL_API_URL
+    approval_status = "approved"  # Default: allow if no central
 
-    name = central_data.get("name") or req.name
-    save_student(email, name, req.app_key, req.app_secret, req.access_token, req.central_api_url)
-    return {"status": "registered", "email": email, "name": name}
+    if central_url and central_url != "http://localhost:8001":
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                # Use self-register (creates pending if new)
+                resp = await client.post(
+                    f"{central_url.rstrip('/')}/api/self-register",
+                    json={"email": email, "name": req.name},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    approval_status = data.get("status", "approved")
+                else:
+                    # Fallback to register-check
+                    resp2 = await client.post(
+                        f"{central_url.rstrip('/')}/api/register-check",
+                        json={"email": email},
+                    )
+                    if resp2.status_code == 200:
+                        approval_status = "approved"
+                    else:
+                        d = resp2.json()
+                        return {"status": "rejected", "message": d.get("detail", "Not approved")}
+        except Exception as e:
+            _log.warning("Central API unreachable during register: %s — allowing offline", e)
+
+    # Always store credentials locally (even if pending — ready when approved)
+    name = req.name
+    save_student(email, name, req.app_key, req.app_secret, req.access_token, central_url)
+
+    if approval_status == "approved":
+        return {"status": "registered", "email": email, "name": name}
+    elif approval_status == "pending":
+        return {"status": "pending", "email": email, "name": name,
+                "message": "Registration pending instructor approval"}
+    elif approval_status == "rejected":
+        return {"status": "rejected", "email": email,
+                "message": "Registration rejected. Contact your instructor."}
+    else:
+        return {"status": approval_status, "email": email}
 
 
 @app.post("/api/strategy")
