@@ -207,6 +207,38 @@ async def root():
     return HTMLResponse("<h1>QuantX Deployer</h1>")
 
 
+@app.post("/api/login")
+async def login(req: RegisterReq):
+    email = req.email.lower().strip()
+    student = get_student(email)
+    if not student:
+        return {"found": False}
+    return {
+        "found": True,
+        "email": student["email"],
+        "name": student["name"],
+        "has_credentials": bool(student.get("app_key")),
+        "central_api_url": student.get("central_api_url", ""),
+    }
+
+
+@app.get("/api/me")
+async def me(email: str = Query("")):
+    email = email.lower().strip()
+    if not email:
+        return {"found": False}
+    student = get_student(email)
+    if not student:
+        return {"found": False}
+    return {
+        "found": True,
+        "email": student["email"],
+        "name": student["name"],
+        "has_credentials": bool(student.get("app_key")),
+        "central_api_url": student.get("central_api_url", ""),
+    }
+
+
 @app.get("/api/indicators")
 async def get_indicators():
     from api.indicators_library import INDICATOR_REGISTRY, CATEGORIES

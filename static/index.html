@@ -123,7 +123,7 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 </head>
 <body>
 <div class="scanline"></div>
-<div class="header"><h1>QUANTX DEPLOYER</h1><div class="email-display" id="hdr-email">NOT REGISTERED</div></div>
+<div class="header"><h1>QUANTX DEPLOYER</h1><div id="hdr-right" style="display:flex;align-items:center;gap:12px"><span class="email-display" id="hdr-email"></span><span id="hdr-logout" style="display:none;font-family:'Share Tech Mono',monospace;font-size:.65rem;color:var(--dim);cursor:pointer;text-decoration:underline" onclick="doLogout()">logout</span></div></div>
 <div class="tabs">
 <div class="tab active" onclick="switchTab('register')">Register</div>
 <div class="tab" onclick="switchTab('strategies')">Strategies</div>
@@ -147,6 +147,23 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 
 <!-- TAB: REGISTER -->
 <div class="tab-content active" id="tab-register">
+<!-- MODE A: Welcome back -->
+<div id="reg-welcome" style="display:none;max-width:500px;margin:40px auto;text-align:center">
+<div style="font-size:2rem;margin-bottom:12px">&#128075;</div>
+<h2 style="font-family:'Orbitron',monospace;font-size:1.1rem;color:var(--cyan);margin-bottom:8px">WELCOME BACK</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin:16px 0">
+<div style="font-family:'Orbitron',monospace;font-size:.85rem;color:var(--cyan)" id="wb-email"></div>
+<div style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--dim);margin-top:4px" id="wb-name"></div>
+</div>
+<button class="btn btn-success" onclick="continueAsUser()" style="margin:8px">CONTINUE</button>
+<button class="btn btn-sm" style="background:var(--surface);color:var(--dim);border:1px solid var(--border);margin:8px" onclick="showRegForm()">Switch Account</button>
+<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+<span style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim)">Need to update LongPort credentials?</span><br>
+<button class="btn btn-sm btn-magenta" style="margin-top:8px" onclick="showUpdateCreds()">Update Credentials</button>
+</div>
+</div>
+<!-- MODE B: New registration -->
+<div id="reg-form" style="display:none">
 <h2 style="font-family:'Orbitron',monospace;font-size:1rem;color:var(--cyan);margin-bottom:20px">STUDENT REGISTRATION</h2>
 <div style="max-width:600px">
 <div class="form-group"><label>Email</label><input type="email" id="reg-email" placeholder="student@example.com"></div>
@@ -159,6 +176,20 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <div class="form-group"><label>LongPort Access Token</label><input type="password" id="reg-token" placeholder="Access Token"></div>
 <button class="btn btn-primary" onclick="doRegister()">REGISTER</button>
 <div class="msg" id="reg-msg"></div>
+</div>
+</div>
+<!-- MODE C: Update credentials -->
+<div id="reg-update" style="display:none;max-width:500px">
+<h2 style="font-family:'Orbitron',monospace;font-size:1rem;color:var(--magenta);margin-bottom:16px">UPDATE LONGPORT CREDENTIALS</h2>
+<div class="form-group"><label>Email</label><input type="email" id="upd-email" readonly style="opacity:.6"></div>
+<div class="form-row">
+<div class="form-group"><label>LongPort App Key</label><input type="password" id="upd-appkey" placeholder="New App Key"></div>
+<div class="form-group"><label>LongPort App Secret</label><input type="password" id="upd-appsecret" placeholder="New App Secret"></div>
+</div>
+<div class="form-group"><label>LongPort Access Token</label><input type="password" id="upd-token" placeholder="New Access Token"></div>
+<button class="btn btn-primary" onclick="doUpdateCreds()">SAVE CREDENTIALS</button>
+<button class="btn btn-sm" style="background:var(--surface);color:var(--dim);border:1px solid var(--border);margin-left:8px" onclick="showWelcome()">Cancel</button>
+<div class="msg" id="upd-msg"></div>
 </div>
 </div>
 
@@ -361,13 +392,27 @@ Coming in Phase 3:<br>
 <script>
 const API='';
 let EMAIL=localStorage.getItem('qx_email')||'';
+let UNAME=localStorage.getItem('qx_name')||'';
 let CENTRAL=localStorage.getItem('qx_central_url')||localStorage.getItem('qx_central')||'';
 let LIB_CACHE=null;
 let selectedLib=null;
 let scriptValidated=false;
 let condCounter=0;
 
-if(EMAIL)document.getElementById('hdr-email').textContent=EMAIL;
+function setUser(email,name,central){
+  EMAIL=email;UNAME=name||'';if(central)CENTRAL=central;
+  localStorage.setItem('qx_email',email);localStorage.setItem('qx_name',name||'');
+  if(central){localStorage.setItem('qx_central',central);localStorage.setItem('qx_central_url',central);}
+  localStorage.setItem('qx_last_tab','strategies');
+  document.getElementById('hdr-email').textContent=email;
+  document.getElementById('hdr-logout').style.display=email?'inline':'none';
+}
+function doLogout(){
+  localStorage.removeItem('qx_email');localStorage.removeItem('qx_name');localStorage.removeItem('qx_last_tab');
+  EMAIL='';UNAME='';
+  document.getElementById('hdr-email').textContent='';document.getElementById('hdr-logout').style.display='none';
+  showRegForm();switchTab('register');
+}
 
 /* ── Tabs ─────────────────────────────────────────────────────────────── */
 function switchTab(n){
@@ -378,6 +423,7 @@ function switchTab(n){
   if(n==='strategies')loadStrategies();
   if(n==='deploy')loadDeploySummary();
   if(n==='dashboard')refreshDashboard();
+  if(n!=='register')localStorage.setItem('qx_last_tab',n);
 }
 function closeAllForms(){
   ['form-library','form-custom','form-script'].forEach(id=>document.getElementById(id).classList.remove('open'));
@@ -390,20 +436,52 @@ function openStratForm(mode){
   if(mode==='custom'&&document.getElementById('cu-conditions').children.length===0)addConditionRow();
 }
 
-/* ── Register ─────────────────────────────────────────────────────────── */
+/* ── Register / Login ─────────────────────────────────────────────────── */
+function showWelcome(){
+  document.getElementById('reg-welcome').style.display='block';
+  document.getElementById('reg-form').style.display='none';
+  document.getElementById('reg-update').style.display='none';
+  document.getElementById('wb-email').textContent=EMAIL;
+  document.getElementById('wb-name').textContent=UNAME;
+}
+function showRegForm(){
+  document.getElementById('reg-welcome').style.display='none';
+  document.getElementById('reg-form').style.display='block';
+  document.getElementById('reg-update').style.display='none';
+}
+function showUpdateCreds(){
+  document.getElementById('reg-welcome').style.display='none';
+  document.getElementById('reg-form').style.display='none';
+  document.getElementById('reg-update').style.display='block';
+  document.getElementById('upd-email').value=EMAIL;
+}
+function continueAsUser(){
+  switchTab(localStorage.getItem('qx_last_tab')||'strategies');
+}
+
 async function doRegister(){
   const msg=document.getElementById('reg-msg');
   const email=document.getElementById('reg-email').value.trim();
   if(!email){msg.textContent='Email required';msg.className='msg err';return;}
   try{
-    const r=await fetch(API+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,name:document.getElementById('reg-name').value.trim(),app_key:document.getElementById('reg-appkey').value,app_secret:document.getElementById('reg-appsecret').value,access_token:document.getElementById('reg-token').value,central_api_url:document.getElementById('reg-central').value.trim()})});
+    const central=document.getElementById('reg-central').value.trim();
+    const r=await fetch(API+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,name:document.getElementById('reg-name').value.trim(),app_key:document.getElementById('reg-appkey').value,app_secret:document.getElementById('reg-appsecret').value,access_token:document.getElementById('reg-token').value,central_api_url:central})});
     const d=await r.json();if(!r.ok)throw new Error(d.detail||'Failed');
-    EMAIL=email;CENTRAL=document.getElementById('reg-central').value.trim();
-    localStorage.setItem('qx_email',email);localStorage.setItem('qx_central',CENTRAL);localStorage.setItem('qx_central_url',CENTRAL);
-    // Also persist central URL to backend
-    if(CENTRAL){try{await fetch(API+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:EMAIL,central_api_url:CENTRAL})});}catch(e){}}
+    setUser(email,d.name,central);
+    if(central){try{await fetch(API+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:EMAIL,central_api_url:central})});}catch(e){}}
     LIB_CACHE=null;
-    document.getElementById('hdr-email').textContent=email;msg.textContent='Registered: '+d.name;msg.className='msg ok';
+    msg.textContent='Registered! Redirecting...';msg.className='msg ok';
+    setTimeout(function(){switchTab('strategies');},1000);
+  }catch(e){msg.textContent=e.message;msg.className='msg err';}
+}
+
+async function doUpdateCreds(){
+  const msg=document.getElementById('upd-msg');
+  try{
+    const r=await fetch(API+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:EMAIL,name:UNAME,app_key:document.getElementById('upd-appkey').value,app_secret:document.getElementById('upd-appsecret').value,access_token:document.getElementById('upd-token').value,central_api_url:CENTRAL})});
+    const d=await r.json();if(!r.ok)throw new Error(d.detail||'Failed');
+    msg.textContent='Credentials updated!';msg.className='msg ok';
+    setTimeout(showWelcome,1000);
   }catch(e){msg.textContent=e.message;msg.className='msg err';}
 }
 
@@ -966,49 +1044,61 @@ async function saveSettings(){
   }else{msg.textContent='Saved locally';msg.className='msg ok';}
 }
 
+// Auto-refresh intervals
 setInterval(()=>{
   if(document.getElementById('tab-dashboard').classList.contains('active'))refreshDashboard();
   if(document.getElementById('tab-deploy').classList.contains('active'))loadDeploySummary();
 },5000);
-document.getElementById('set-central').value=CENTRAL;document.getElementById('reg-central').value=CENTRAL;
-if(EMAIL)document.getElementById('reg-email').value=EMAIL;
 
-// Fix 3: Set script template via JS to preserve exact indentation
-document.getElementById('sc-code').value = [
+// Pre-fill settings
+document.getElementById('set-central').value=CENTRAL;
+document.getElementById('reg-central').value=CENTRAL;
+
+// Script template
+document.getElementById('sc-code').value=[
   'def get_signal(self, closes, highs, lows, vols):',
-  '    """',
-  '    Custom signal logic.',
+  '    """','    Custom signal logic.',
   '    Helpers: self.ema(data, period), self.sma(data, period),',
   '             self.rsi(data, period), self.atr(highs, lows, closes, period)',
-  '    Returns: \'buy\', \'sell\', or None',
-  '    """',
-  '    r = self.rsi(closes, 14)',
-  '    if r is None:',
-  '        return None',
-  '    if r < 30:',
-  '        return \'buy\'',
-  '    if r > 70:',
-  '        return \'sell\'',
-  '    return None',
+  "    Returns: 'buy', 'sell', or None",'    """',
+  '    r = self.rsi(closes, 14)','    if r is None:','        return None',
+  '    if r < 30:',"        return 'buy'",'    if r > 70:',
+  "        return 'sell'",'    return None',
 ].join('\n');
 
-// Auto-load server config (for Railway hosted mode)
-(async function loadServerConfig(){
+// ── Smart Login Flow ─────────────────────────────────────────────────────
+(async function initSession(){
+  // Load server config first
   try{
-    const r=await fetch(API+'/api/config');
-    const cfg=await r.json();
+    const r=await fetch(API+'/api/config');const cfg=await r.json();
     if(cfg.central_api_url&&cfg.central_api_url!=='http://localhost:8001'){
-      CENTRAL=cfg.central_api_url;
-      localStorage.setItem('qx_central_url',cfg.central_api_url);
-      document.getElementById('set-central').value=cfg.central_api_url;
-      document.getElementById('reg-central').value=cfg.central_api_url;
+      CENTRAL=cfg.central_api_url;localStorage.setItem('qx_central_url',CENTRAL);
+      document.getElementById('set-central').value=CENTRAL;
+      document.getElementById('reg-central').value=CENTRAL;
     }
     if(cfg.hosting==='railway'){
-      // Lock the central URL field on Railway
-      const regC=document.getElementById('reg-central');
-      if(regC){regC.readOnly=true;regC.style.opacity='0.6';}
+      const rc=document.getElementById('reg-central');if(rc){rc.readOnly=true;rc.style.opacity='.6';}
     }
   }catch(e){}
+
+  // Check if returning student
+  if(EMAIL){
+    try{
+      const r=await fetch(API+'/api/me?email='+encodeURIComponent(EMAIL));
+      const d=await r.json();
+      if(d.found){
+        setUser(d.email,d.name,d.central_api_url||CENTRAL);
+        showWelcome();
+        // Auto-advance to last tab after 1.5s
+        const lastTab=localStorage.getItem('qx_last_tab')||'strategies';
+        setTimeout(function(){switchTab(lastTab);},1500);
+        return;
+      }
+    }catch(e){}
+  }
+  // New student — show registration form
+  showRegForm();
+  if(EMAIL)document.getElementById('reg-email').value=EMAIL;
 })();
 </script>
 </body>
