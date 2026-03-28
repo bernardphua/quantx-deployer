@@ -84,7 +84,8 @@
           "TQQQ 5/20 on 5m generates 3-5 signals/day"
         ],
         "risk_warning": "EMA crossovers lag - by the time the signal fires, the move has already started."
-      }
+      },
+      "section": "trend_following"
     },
     {
       "id": "RSI_MEAN_REVERSION",
@@ -179,7 +180,8 @@
           "Never fight a strong trend with RSI alone"
         ],
         "risk_warning": "In downtrends, RSI can stay oversold for extended periods. Always use stop losses."
-      }
+      },
+      "section": "mean_reversion"
     },
     {
       "id": "BB_GRID",
@@ -264,7 +266,8 @@
           "Watch middle band as profit target"
         ],
         "risk_warning": "Price can walk the band during trends. Use stop losses."
-      }
+      },
+      "section": "grid_trading"
     },
     {
       "id": "MOMENTUM_BREAKOUT",
@@ -338,7 +341,8 @@
           "Use trailing stop = 2x ATR"
         ],
         "risk_warning": "Lower win rate (40-50%) but large average wins. Be comfortable with small losses."
-      }
+      },
+      "section": "breakout"
     },
     {
       "id": "MACD_MOMENTUM",
@@ -432,7 +436,8 @@
           "Histogram turning positive precedes crossover"
         ],
         "risk_warning": "MACD lags price. In fast markets, crossover comes after most of the move."
-      }
+      },
+      "section": "trend_following"
     },
     {
       "id": "VWAP_REVERSION",
@@ -508,7 +513,8 @@
           "Most powerful in first 2 hours"
         ],
         "risk_warning": "On trending days, price stays far from VWAP all session."
-      }
+      },
+      "section": "mean_reversion"
     },
     {
       "id": "SYMMETRIC_GRID",
@@ -620,7 +626,800 @@
           "More levels = more trades but more capital"
         ],
         "risk_warning": "If price trends down all day, buys fill but sells may not reach before close."
+      },
+      "section": "grid_trading"
+    },
+    {
+      "id": "BUFFETT_BOT",
+      "name": "Buffett Bot",
+      "section": "famous_investors",
+      "category": "Quality + Trend",
+      "difficulty": 2,
+      "stars": 4,
+      "investor": "Warren Buffett",
+      "philosophy": "Buy wonderful companies at fair prices",
+      "description": "Quality stocks in established uptrends. Uses long-term trend + low volatility + RSI zone as proxies for business quality.",
+      "signal_logic": "BUY when price > SMA(200) AND RSI between 40-65 AND ATR below average. SELL when price < SMA(200).",
+      "indicator": "BUFFETT_BOT",
+      "default_timeframe": "30m",
+      "allowed_timeframes": [
+        "15m",
+        "30m"
+      ],
+      "params": [
+        {
+          "key": "trend_period",
+          "label": "Trend SMA Period",
+          "default": 200,
+          "min": 50,
+          "max": 500,
+          "type": "int",
+          "hint": "Long-term trend filter."
+        },
+        {
+          "key": "rsi_min",
+          "label": "RSI Min",
+          "default": 40,
+          "min": 20,
+          "max": 50,
+          "type": "int",
+          "hint": "Don't buy in panic."
+        },
+        {
+          "key": "rsi_max",
+          "label": "RSI Max",
+          "default": 65,
+          "min": 55,
+          "max": 80,
+          "type": "int",
+          "hint": "Don't chase peaks."
+        },
+        {
+          "key": "vol_filter",
+          "label": "ATR Ratio Filter",
+          "default": 1.2,
+          "min": 0.5,
+          "max": 3.0,
+          "type": "float",
+          "hint": "Only buy in calm conditions."
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 2.0,
+        "sl_pct": 1.0,
+        "trail_pct": 0.5,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "AAPL.US",
+        "MSFT.US",
+        "700.HK",
+        "NVDA.US"
+      ],
+      "recommended_timeframes": [
+        "30m"
+      ],
+      "learn": {
+        "what_it_is": "Implements Buffett's core principle: buy quality businesses at reasonable prices during calm markets.",
+        "how_it_works": "Three filters: price above 200 SMA (uptrend), RSI 40-65 (fair price zone), ATR below average (calm market).",
+        "entry_signal": [
+          "BUY when all 3 conditions met: trend + calm + fair price"
+        ],
+        "exit_signal": [
+          "SELL when price below 200 SMA",
+          "TP 2%, trailing 0.5%"
+        ],
+        "best_conditions": [
+          "Quality large-cap stocks",
+          "Normal market conditions",
+          "30m timeframe"
+        ],
+        "avoid_when": [
+          "Bear markets",
+          "Earnings announcements",
+          "Speculative stocks"
+        ],
+        "parameters_explained": {
+          "trend_period": "200 bars SMA for trend",
+          "rsi_min": "Min RSI to avoid panic buying",
+          "rsi_max": "Max RSI to avoid chasing",
+          "vol_filter": "ATR must be below average x this"
+        },
+        "pro_tips": [
+          "Buffett's edge is holding long term - this captures the ENTRY philosophy",
+          "The volatility filter forces buying in calm, not chaos",
+          "Works best on stocks you believe in fundamentally"
+        ],
+        "risk_warning": "In bear markets, 200 SMA breaks and bot stops entering - correct behavior."
       }
+    },
+    {
+      "id": "GRAHAM_BOT",
+      "name": "Graham Bot",
+      "section": "famous_investors",
+      "category": "Deep Value",
+      "difficulty": 3,
+      "stars": 3,
+      "investor": "Benjamin Graham",
+      "philosophy": "Buy when others are fearful",
+      "description": "Contrarian strategy that buys beaten-down stocks near their lows with oversold RSI. Father of value investing.",
+      "signal_logic": "BUY when price within 10% of lookback low AND RSI < 35. SELL when RSI > 60 OR +15% from entry.",
+      "indicator": "GRAHAM_BOT",
+      "default_timeframe": "5m",
+      "allowed_timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "params": [
+        {
+          "key": "low_lookback",
+          "label": "Low Lookback",
+          "default": 252,
+          "min": 50,
+          "max": 500,
+          "type": "int",
+          "hint": "How far back for the low."
+        },
+        {
+          "key": "proximity_pct",
+          "label": "Max % Above Low",
+          "default": 10,
+          "min": 2,
+          "max": 25,
+          "type": "float",
+          "hint": "Only buy near the low."
+        },
+        {
+          "key": "rsi_threshold",
+          "label": "RSI Oversold",
+          "default": 35,
+          "min": 15,
+          "max": 45,
+          "type": "int",
+          "hint": "Must be oversold."
+        },
+        {
+          "key": "target_pct",
+          "label": "Profit Target %",
+          "default": 15,
+          "min": 5,
+          "max": 50,
+          "type": "float",
+          "hint": "Graham expected 15-30% gains."
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 15.0,
+        "sl_pct": 5.0,
+        "trail_pct": 0.0,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "700.HK",
+        "9988.HK",
+        "BABA.US"
+      ],
+      "recommended_timeframes": [
+        "5m",
+        "15m"
+      ],
+      "learn": {
+        "what_it_is": "Benjamin Graham's deep value approach - buy statistically cheap stocks expecting mean reversion.",
+        "how_it_works": "Price near lookback low + RSI oversold = statistically cheap with momentum confirming fear.",
+        "entry_signal": [
+          "BUY near lookback low AND RSI oversold"
+        ],
+        "exit_signal": [
+          "SELL when RSI > 60 or +15%"
+        ],
+        "best_conditions": [
+          "After sell-offs",
+          "Market corrections",
+          "Liquid stocks"
+        ],
+        "avoid_when": [
+          "Bankruptcy risk stocks",
+          "Systemic crashes",
+          "Low liquidity"
+        ],
+        "parameters_explained": {
+          "low_lookback": "Defines the low reference",
+          "proximity_pct": "How close to low to trigger",
+          "rsi_threshold": "Oversold confirmation",
+          "target_pct": "Expected recovery gain"
+        },
+        "pro_tips": [
+          "Works best on quality stocks unfairly sold off",
+          "Be patient - recovery can take time",
+          "Never use on deteriorating fundamentals"
+        ],
+        "risk_warning": "Value traps are real. Always use stop losses."
+      }
+    },
+    {
+      "id": "LIVERMORE_BOT",
+      "name": "Livermore Bot",
+      "section": "famous_investors",
+      "category": "Pivot Breakout",
+      "difficulty": 3,
+      "stars": 4,
+      "investor": "Jesse Livermore",
+      "philosophy": "Never argue with the tape",
+      "description": "Breakout with volume confirmation and ATR expansion. Enters on new highs with institutional volume.",
+      "signal_logic": "BUY on new N-bar high AND volume > 1.5x average AND ATR expanding. Trail with 2x ATR stop.",
+      "indicator": "LIVERMORE_BOT",
+      "default_timeframe": "5m",
+      "allowed_timeframes": [
+        "1m",
+        "5m",
+        "15m",
+        "30m"
+      ],
+      "params": [
+        {
+          "key": "breakout_period",
+          "label": "Breakout Lookback",
+          "default": 20,
+          "min": 5,
+          "max": 100,
+          "type": "int",
+          "hint": "New high period."
+        },
+        {
+          "key": "volume_mult",
+          "label": "Volume Multiplier",
+          "default": 1.5,
+          "min": 1.1,
+          "max": 5.0,
+          "type": "float",
+          "hint": "Volume above average x this."
+        },
+        {
+          "key": "atr_expansion",
+          "label": "ATR Expansion Ratio",
+          "default": 1.1,
+          "min": 1.0,
+          "max": 2.0,
+          "type": "float",
+          "hint": "Confirms real move."
+        },
+        {
+          "key": "trail_atr_mult",
+          "label": "Trailing ATR Mult",
+          "default": 2.0,
+          "min": 1.0,
+          "max": 5.0,
+          "type": "float",
+          "hint": "Stop at 2x ATR below."
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 1.5,
+        "sl_pct": 0.5,
+        "trail_pct": 0.3,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "TQQQ.US",
+        "NVDA.US",
+        "TSLA.US",
+        "700.HK"
+      ],
+      "recommended_timeframes": [
+        "5m",
+        "15m"
+      ],
+      "learn": {
+        "what_it_is": "Jesse Livermore turned $1,000 into $100 million trading breakouts. This implements his pivot point system.",
+        "how_it_works": "New high + volume surge + ATR expansion = real breakout, not fake-out.",
+        "entry_signal": [
+          "BUY on new N-bar high with volume and ATR confirmation"
+        ],
+        "exit_signal": [
+          "2x ATR trailing stop"
+        ],
+        "best_conditions": [
+          "Trending markets",
+          "High-volume stocks",
+          "Active hours"
+        ],
+        "avoid_when": [
+          "Choppy markets",
+          "Low volume",
+          "Sharp downtrends"
+        ],
+        "parameters_explained": {
+          "breakout_period": "Lookback for new high",
+          "volume_mult": "Volume confirmation threshold",
+          "atr_expansion": "Volatility expansion filter",
+          "trail_atr_mult": "Trailing stop distance"
+        },
+        "pro_tips": [
+          "Volume filter is critical - rejects false breakouts",
+          "Let winners run with trailing stops",
+          "Only trade in direction of larger trend"
+        ],
+        "risk_warning": "40-50% win rate but large average winners. Many small losses before big wins."
+      }
+    },
+    {
+      "id": "DALIO_BOT",
+      "name": "Dalio Bot",
+      "section": "famous_investors",
+      "category": "All Weather",
+      "difficulty": 2,
+      "stars": 3,
+      "investor": "Ray Dalio",
+      "philosophy": "Balance risk, not dollars",
+      "description": "Low-volatility trend strategy. Only enters when trend is clear, price is near VWAP, and market is calm.",
+      "signal_logic": "BUY when EMA(50) rising AND price within 0.5% of VWAP AND ATR below average. SELL when EMA turns down.",
+      "indicator": "DALIO_BOT",
+      "default_timeframe": "15m",
+      "allowed_timeframes": [
+        "5m",
+        "15m",
+        "30m"
+      ],
+      "params": [
+        {
+          "key": "trend_ema",
+          "label": "Trend EMA",
+          "default": 50,
+          "min": 20,
+          "max": 200,
+          "type": "int",
+          "hint": "Main trend filter."
+        },
+        {
+          "key": "vwap_proximity",
+          "label": "VWAP Proximity %",
+          "default": 0.5,
+          "min": 0.1,
+          "max": 2.0,
+          "type": "float",
+          "hint": "Max distance from VWAP."
+        },
+        {
+          "key": "vol_threshold",
+          "label": "Vol Threshold",
+          "default": 1.0,
+          "min": 0.5,
+          "max": 2.0,
+          "type": "float",
+          "hint": "ATR must be below avg x this."
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.8,
+        "sl_pct": 0.4,
+        "trail_pct": 0.2,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "SPY.US",
+        "QQQ.US",
+        "2800.HK",
+        "GLD.US"
+      ],
+      "recommended_timeframes": [
+        "15m",
+        "30m"
+      ],
+      "learn": {
+        "what_it_is": "Ray Dalio built the world's largest hedge fund on balanced risk. This captures his patient, systematic approach.",
+        "how_it_works": "Three conditions: EMA rising (trend), near VWAP (fair value), low ATR (calm).",
+        "entry_signal": [
+          "BUY when trend + fair value + calm all align"
+        ],
+        "exit_signal": [
+          "SELL when EMA turns down or 2% above VWAP"
+        ],
+        "best_conditions": [
+          "Calm trending markets",
+          "ETFs and liquid instruments",
+          "Morning sessions"
+        ],
+        "avoid_when": [
+          "High volatility days",
+          "Choppy price action",
+          "Fed announcements"
+        ],
+        "parameters_explained": {
+          "trend_ema": "EMA period for trend",
+          "vwap_proximity": "Max distance from VWAP",
+          "vol_threshold": "ATR filter for calm conditions"
+        },
+        "pro_tips": [
+          "Works beautifully on ETFs (SPY, QQQ)",
+          "VWAP filter prevents buying at tops",
+          "On calm days generates multiple clean entries"
+        ],
+        "risk_warning": "Rarely trades on volatile days - intentional. Dalio's philosophy: do less, do it better."
+      }
+    },
+    {
+      "id": "SIMONS_BOT",
+      "name": "Simons Bot",
+      "section": "famous_investors",
+      "category": "Statistical Reversion",
+      "difficulty": 4,
+      "stars": 4,
+      "investor": "Jim Simons",
+      "philosophy": "Find the pattern, quantify the edge, execute systematically",
+      "description": "Pure statistical mean reversion using Z-score. Enters when price is 2+ standard deviations from mean with RSI confirmation.",
+      "signal_logic": "BUY when Z-score < -2.0 AND RSI < 30. SELL when Z-score returns to 0 (mean).",
+      "indicator": "SIMONS_BOT",
+      "default_timeframe": "1m",
+      "allowed_timeframes": [
+        "tick",
+        "1m",
+        "5m"
+      ],
+      "params": [
+        {
+          "key": "zscore_period",
+          "label": "Z-Score Lookback",
+          "default": 20,
+          "min": 10,
+          "max": 100,
+          "type": "int",
+          "hint": "Rolling window for statistics."
+        },
+        {
+          "key": "zscore_threshold",
+          "label": "Z-Score Threshold",
+          "default": 2.0,
+          "min": 1.5,
+          "max": 4.0,
+          "type": "float",
+          "hint": "Entry at this many std devs."
+        },
+        {
+          "key": "rsi_period",
+          "label": "RSI Period",
+          "default": 14,
+          "min": 5,
+          "max": 30,
+          "type": "int",
+          "hint": "RSI confirmation."
+        },
+        {
+          "key": "rsi_threshold",
+          "label": "RSI Oversold",
+          "default": 30,
+          "min": 15,
+          "max": 40,
+          "type": "int",
+          "hint": "Must be oversold."
+        },
+        {
+          "key": "exit_zscore",
+          "label": "Exit Z-Score",
+          "default": 0.0,
+          "min": -1.0,
+          "max": 1.0,
+          "type": "float",
+          "hint": "Exit at this Z level. 0=mean."
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.5,
+        "sl_pct": 0.3,
+        "trail_pct": 0.0,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "TQQQ.US",
+        "700.HK",
+        "SPY.US"
+      ],
+      "recommended_timeframes": [
+        "tick",
+        "1m"
+      ],
+      "learn": {
+        "what_it_is": "Jim Simons founded Renaissance Technologies with 66% annual returns over 30 years. This implements statistical mean reversion.",
+        "how_it_works": "Z-score below -2.0 = price is statistically extreme. RSI confirms oversold. Enter and wait for reversion to mean.",
+        "entry_signal": [
+          "BUY when Z-score < -2.0 AND RSI < 30"
+        ],
+        "exit_signal": [
+          "SELL when Z-score returns to 0"
+        ],
+        "best_conditions": [
+          "Liquid high-volume instruments",
+          "Ranging markets",
+          "Tick or 1m timeframe"
+        ],
+        "avoid_when": [
+          "Strong trends",
+          "Low liquidity",
+          "Earnings/news"
+        ],
+        "parameters_explained": {
+          "zscore_period": "Window for mean/std calc",
+          "zscore_threshold": "How extreme for entry",
+          "rsi_period": "RSI lookback",
+          "rsi_threshold": "Oversold confirmation",
+          "exit_zscore": "Exit level (0=mean)"
+        },
+        "pro_tips": [
+          "Z-score of -3.0 is extremely rare and strong",
+          "Run on many instruments for diversification",
+          "Statistical edge exists across many trades"
+        ],
+        "risk_warning": "In trending markets Z-score can stay extreme. Never risk more than you can afford on any single signal."
+      }
+    },
+    {
+      "id": "TURTLE_TRADER",
+      "name": "Turtle Trader",
+      "section": "famous_investors",
+      "category": "Donchian Breakout",
+      "difficulty": 3,
+      "stars": 5,
+      "investor": "Richard Dennis",
+      "philosophy": "Trend following with mechanical rules",
+      "description": "The original Turtle Trading system from 1983. Buy 20-bar highs, exit on 10-bar lows. Turned $1,600 into $200 million.",
+      "signal_logic": "BUY on new 20-bar high. EXIT on new 10-bar low. Position size based on ATR risk.",
+      "indicator": "TURTLE_TRADER",
+      "default_timeframe": "15m",
+      "allowed_timeframes": [
+        "5m",
+        "15m",
+        "30m"
+      ],
+      "params": [
+        {
+          "key": "entry_period",
+          "label": "Entry Breakout",
+          "default": 20,
+          "min": 10,
+          "max": 55,
+          "type": "int",
+          "hint": "System 1=20, System 2=55."
+        },
+        {
+          "key": "exit_period",
+          "label": "Exit Lookback",
+          "default": 10,
+          "min": 5,
+          "max": 30,
+          "type": "int",
+          "hint": "Exit on new low over this."
+        },
+        {
+          "key": "atr_period",
+          "label": "ATR Period",
+          "default": 14,
+          "min": 7,
+          "max": 30,
+          "type": "int",
+          "hint": "For position sizing."
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.0,
+        "sl_pct": 2.0,
+        "trail_pct": 0.5,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "TQQQ.US",
+        "NVDA.US",
+        "700.HK",
+        "QQQ.US"
+      ],
+      "recommended_timeframes": [
+        "15m",
+        "30m"
+      ],
+      "learn": {
+        "what_it_is": "In 1983 Richard Dennis taught 23 novices his exact rules. They made $100M+ each. This is that system.",
+        "how_it_works": "Buy new 20-bar high (System 1). Exit on new 10-bar low. Simple mechanical rules.",
+        "entry_signal": [
+          "BUY on new 20-bar high"
+        ],
+        "exit_signal": [
+          "EXIT on new 10-bar low",
+          "2x ATR hard stop"
+        ],
+        "best_conditions": [
+          "Strong trending markets",
+          "TQQQ and momentum stocks",
+          "15m-30m timeframes"
+        ],
+        "avoid_when": [
+          "Choppy markets",
+          "Earnings weeks",
+          "Low volume"
+        ],
+        "parameters_explained": {
+          "entry_period": "20=System 1, 55=System 2",
+          "exit_period": "Original used 10 (half entry)",
+          "atr_period": "For volatility-based sizing"
+        },
+        "pro_tips": [
+          "The entry doesn't matter, the exit does",
+          "40% win rate but 3:1 win:loss ratio",
+          "Never cut a winner short",
+          "Trade multiple uncorrelated symbols"
+        ],
+        "risk_warning": "Extended drawdown periods are normal. Trust the system."
+      }
+    },
+    {
+      "id": "SOROS_BOT",
+      "name": "Soros Bot",
+      "section": "famous_investors",
+      "category": "Reflexivity Momentum",
+      "difficulty": 4,
+      "stars": 4,
+      "investor": "George Soros",
+      "philosophy": "Markets are reflexive - price affects fundamentals in self-reinforcing loops",
+      "description": "Identifies self-reinforcing trends via full EMA alignment + accelerating MACD + expanding volume.",
+      "signal_logic": "BUY when EMA(5)>EMA(20)>EMA(50) AND MACD histogram positive+growing AND volume above average.",
+      "indicator": "SOROS_BOT",
+      "default_timeframe": "5m",
+      "allowed_timeframes": [
+        "1m",
+        "5m",
+        "15m"
+      ],
+      "params": [
+        {
+          "key": "ema_fast",
+          "label": "Fast EMA",
+          "default": 5,
+          "min": 3,
+          "max": 20,
+          "type": "int",
+          "hint": "Fastest layer."
+        },
+        {
+          "key": "ema_mid",
+          "label": "Mid EMA",
+          "default": 20,
+          "min": 10,
+          "max": 50,
+          "type": "int",
+          "hint": "Middle layer."
+        },
+        {
+          "key": "ema_slow",
+          "label": "Slow EMA",
+          "default": 50,
+          "min": 20,
+          "max": 200,
+          "type": "int",
+          "hint": "Major trend."
+        },
+        {
+          "key": "macd_fast",
+          "label": "MACD Fast",
+          "default": 12,
+          "min": 5,
+          "max": 20,
+          "type": "int",
+          "hint": "Standard 12."
+        },
+        {
+          "key": "macd_slow",
+          "label": "MACD Slow",
+          "default": 26,
+          "min": 15,
+          "max": 50,
+          "type": "int",
+          "hint": "Standard 26."
+        },
+        {
+          "key": "macd_signal",
+          "label": "MACD Signal",
+          "default": 9,
+          "min": 3,
+          "max": 20,
+          "type": "int",
+          "hint": "Standard 9."
+        },
+        {
+          "key": "volume_mult",
+          "label": "Volume Mult",
+          "default": 1.2,
+          "min": 1.0,
+          "max": 3.0,
+          "type": "float",
+          "hint": "Volume above avg x this."
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.8,
+        "sl_pct": 0.4,
+        "trail_pct": 0.2,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "TQQQ.US",
+        "700.HK",
+        "9988.HK",
+        "NVDA.US"
+      ],
+      "recommended_timeframes": [
+        "5m",
+        "15m"
+      ],
+      "learn": {
+        "what_it_is": "George Soros made $1B in one day breaking the Bank of England. His reflexivity theory explains self-reinforcing trends.",
+        "how_it_works": "Full EMA alignment + accelerating MACD + volume = the reflexivity loop is active.",
+        "entry_signal": [
+          "BUY when EMA(5)>EMA(20)>EMA(50) AND MACD growing AND volume above avg"
+        ],
+        "exit_signal": [
+          "SELL when EMA alignment breaks OR MACD turns negative"
+        ],
+        "best_conditions": [
+          "Strong momentum days",
+          "High-volume liquid stocks",
+          "Morning sessions"
+        ],
+        "avoid_when": [
+          "Choppy days",
+          "After extended trends",
+          "Low volume"
+        ],
+        "parameters_explained": {
+          "ema_fast": "Fastest moving average",
+          "ema_mid": "Middle confirmation",
+          "ema_slow": "Major trend",
+          "macd_fast": "MACD fast EMA",
+          "macd_slow": "MACD slow EMA",
+          "macd_signal": "Signal smoothing",
+          "volume_mult": "Volume threshold"
+        },
+        "pro_tips": [
+          "Full EMA alignment is rare but powerful",
+          "Soros's edge was SIZE when confident",
+          "Reflexivity loops can persist for days on TQQQ"
+        ],
+        "risk_warning": "Concentrates in momentum - suffers in reversals. Trailing stop is essential."
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": "famous_investors",
+      "title": "Famous Investor Bots",
+      "icon": "\ud83c\udfc6",
+      "description": "Strategies inspired by legendary investors.",
+      "style": "gold"
+    },
+    {
+      "id": "trend_following",
+      "title": "Trend Following",
+      "icon": "\ud83d\udcc8",
+      "description": "Ride the trend until it ends.",
+      "style": "cyan"
+    },
+    {
+      "id": "mean_reversion",
+      "title": "Mean Reversion",
+      "icon": "\u21a9",
+      "description": "Buy oversold, sell overbought.",
+      "style": "purple"
+    },
+    {
+      "id": "breakout",
+      "title": "Breakout",
+      "icon": "\ud83d\udca5",
+      "description": "Enter when price breaks key levels.",
+      "style": "orange"
+    },
+    {
+      "id": "grid_trading",
+      "title": "Grid Trading",
+      "icon": "\u2b21",
+      "description": "Profit from price oscillation.",
+      "style": "green"
     }
   ]
 }

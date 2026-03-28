@@ -759,33 +759,50 @@ async function loadLibrary(){
   try{
     const r=await fetch(API+'/api/strategies-library');
     if(!r.ok)throw new Error('HTTP '+r.status);
-    const d=await r.json();LIB_CACHE=d.strategies||[];renderLibrary(LIB_CACHE);
+    const d=await r.json();LIB_CACHE=d.strategies||[];LIB_SECTIONS=d.sections||[];renderLibrary(LIB_CACHE);
   }catch(e){document.getElementById('lib-grid').innerHTML='<p style="color:var(--red);font-family:Share Tech Mono,monospace;font-size:.8rem">Failed to load strategy library: '+e.message+'</p>';}
 }
 const CAT_COLORS={'Trend Following':'var(--cyan)','Mean Reversion':'#b066ff','Grid Trading':'var(--yellow)','Breakout':'#ff8833','Momentum':'var(--green)','VWAP':'#ff66aa'};
 function catColor(cat){return CAT_COLORS[cat]||'var(--dim)';}
 function renderLibrary(libs){
-  document.getElementById('lib-grid').innerHTML=libs.map(s=>{
-    const stars='\u2605'.repeat(s.stars||3)+'\u2606'.repeat(5-(s.stars||3));
-    const diff='\u25A0'.repeat(s.difficulty)+'\u25A1'.repeat(5-s.difficulty);
-    const cc=catColor(s.category);
-    const syms=(s.recommended_symbols||[]).map(sym=>`<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:.6rem;background:rgba(255,255,255,.06);color:var(--dim);margin-right:4px;margin-top:4px">${sym}</span>`).join('');
-    return `<div class="lib-card" data-id="${s.id}" onclick="selectLib('${s.id}')">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:'Share Tech Mono',monospace;background:${cc}22;color:${cc};border:1px solid ${cc}44">${s.category}</span>
-        <span style="color:var(--yellow);font-size:.7rem">${stars}</span>
-      </div>
-      <div class="lc-name">${s.name}</div>
-      <div class="lc-desc" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${s.description}</div>
-      <div style="margin-top:6px">${syms}</div>
-      <div class="lc-diff">Difficulty: ${diff}</div>
-      <div style="display:flex;gap:6px;margin-top:8px">
-        <button onclick="event.stopPropagation();selectLib('${s.id}')" style="background:var(--cyan);color:#000;border:none;padding:3px 10px;border-radius:4px;font-family:'Orbitron',monospace;font-size:.55rem;cursor:pointer">USE</button>
-        <button onclick="event.stopPropagation();openLearnModal('${s.id}')" style="background:transparent;color:var(--magenta);border:1px solid var(--magenta);padding:3px 10px;border-radius:4px;font-family:'Orbitron',monospace;font-size:.55rem;cursor:pointer">LEARN</button>
-        <button onclick="event.stopPropagation();downloadStratScript('${s.id}')" class="btn-ghost">.py</button>
-      </div>
-    </div>`;
-  }).join('');
+  // Group by section
+  const sections=LIB_SECTIONS||[];
+  const bySection={};
+  libs.forEach(s=>{const sec=s.section||'other';if(!bySection[sec])bySection[sec]=[];bySection[sec].push(s);});
+  const sectionColors={famous_investors:'#ffd700',trend_following:'var(--cyan)',mean_reversion:'#b066ff',breakout:'#ff8833',grid_trading:'var(--green)'};
+  let html='';
+  (sections.length?sections:[{id:'other',title:'Strategies',icon:'',style:'cyan'}]).forEach(sec=>{
+    const strats=bySection[sec.id]||[];
+    if(!strats.length)return;
+    const sc=sectionColors[sec.id]||'var(--cyan)';
+    const isGold=sec.id==='famous_investors';
+    html+=`<div style="margin-bottom:20px;padding:14px;border:1px solid ${isGold?'#b8860b44':'var(--border)'};border-radius:8px;${isGold?'background:linear-gradient(rgba(184,134,11,0.04),transparent)':''}">`;
+    html+=`<h3 style="font-family:'Orbitron',monospace;font-size:.8rem;color:${sc};margin-bottom:10px">${sec.icon||''} ${sec.title||sec.id}</h3>`;
+    html+=`<div class="lib-grid" style="grid-template-columns:repeat(2,1fr)">`;
+    strats.forEach(s=>{html+=renderLibCard(s);});
+    html+=`</div></div>`;
+  });
+  // Any uncategorized
+  const other=bySection['other']||[];
+  if(other.length){html+=`<div class="lib-grid" style="grid-template-columns:repeat(2,1fr)">`;other.forEach(s=>{html+=renderLibCard(s);});html+=`</div>`;}
+  document.getElementById('lib-grid').innerHTML=html;
+}
+let LIB_SECTIONS=[];
+function renderLibCard(s){
+  const cc=catColor(s.category);
+  const inv=s.investor?`<span style="font-family:'Share Tech Mono',monospace;font-size:.65rem;color:var(--yellow)">${s.investor}</span><br>`:'';
+  return `<div class="lib-card" data-id="${s.id}" onclick="selectLib('${s.id}')">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="padding:1px 8px;border-radius:10px;font-size:.5rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:'Share Tech Mono',monospace;background:${cc}22;color:${cc};border:1px solid ${cc}44">${s.category}</span>
+    </div>
+    ${inv}<div class="lc-name">${s.name}</div>
+    <div class="lc-desc" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:.78rem">${s.description}</div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button onclick="event.stopPropagation();selectLib('${s.id}')" style="background:var(--cyan);color:#000;border:none;padding:3px 10px;border-radius:4px;font-family:'Orbitron',monospace;font-size:.55rem;cursor:pointer">USE</button>
+      <button onclick="event.stopPropagation();openLearnModal('${s.id}')" style="background:transparent;color:var(--magenta);border:1px solid var(--magenta);padding:3px 10px;border-radius:4px;font-family:'Orbitron',monospace;font-size:.55rem;cursor:pointer">LEARN</button>
+      <button onclick="event.stopPropagation();downloadStratScript('${s.id}')" class="btn-ghost">.py</button>
+    </div>
+  </div>`;
 }
 function openLearnModal(id){
   const s=LIB_CACHE?LIB_CACHE.find(x=>x.id===id):null;
