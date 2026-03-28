@@ -6,18 +6,85 @@
       "category": "Trend Following",
       "difficulty": 2,
       "stars": 4,
-      "description": "Classic trend-following strategy. Buys when the fast EMA crosses above the slow EMA — price momentum is shifting upward. Sells on the reverse cross. Works well on trending stocks like TQQQ and Tencent on 5m-15m timeframes.",
+      "description": "Classic trend-following strategy. Buys when the fast EMA crosses above the slow EMA \u2014 price momentum is shifting upward. Sells on the reverse cross. Works well on trending stocks like TQQQ and Tencent on 5m-15m timeframes.",
       "signal_logic": "BUY when EMA(fast) crosses above EMA(slow). SELL when EMA(fast) crosses below EMA(slow).",
       "indicator": "EMA_CROSS",
       "default_timeframe": "5m",
-      "allowed_timeframes": ["1m","5m","15m","30m"],
-      "params": [
-        {"key": "fast_period", "label": "Fast EMA Period", "default": 5, "min": 2, "max": 50, "type": "int", "hint": "Shorter = more sensitive to price changes"},
-        {"key": "slow_period", "label": "Slow EMA Period", "default": 20, "min": 5, "max": 200, "type": "int", "hint": "Longer = smoother, fewer signals"}
+      "allowed_timeframes": [
+        "1m",
+        "5m",
+        "15m",
+        "30m"
       ],
-      "default_risk": {"tp_pct": 0.5, "sl_pct": 0.3, "trail_pct": 0.0, "lots": 1},
-      "recommended_symbols": ["TQQQ.US", "700.HK", "2800.HK"],
-      "recommended_timeframes": ["5m", "15m"]
+      "params": [
+        {
+          "key": "fast_period",
+          "label": "Fast EMA Period",
+          "default": 5,
+          "min": 2,
+          "max": 50,
+          "type": "int",
+          "hint": "Shorter = more sensitive to price changes"
+        },
+        {
+          "key": "slow_period",
+          "label": "Slow EMA Period",
+          "default": 20,
+          "min": 5,
+          "max": 200,
+          "type": "int",
+          "hint": "Longer = smoother, fewer signals"
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.5,
+        "sl_pct": 0.3,
+        "trail_pct": 0.0,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "TQQQ.US",
+        "700.HK",
+        "2800.HK"
+      ],
+      "recommended_timeframes": [
+        "5m",
+        "15m"
+      ],
+      "learn": {
+        "what_it_is": "EMA Crossover tracks two exponential moving averages - a fast one and a slow one. When they cross, it signals a potential trend change.",
+        "how_it_works": "Fast EMA reacts quickly. Slow EMA reflects broader trend. When fast crosses above slow, buyers gaining momentum.",
+        "entry_signal": [
+          "BUY when Fast EMA crosses ABOVE Slow EMA",
+          "SELL when Fast EMA crosses BELOW Slow EMA"
+        ],
+        "exit_signal": [
+          "Opposite signal fires",
+          "Take Profit % hit",
+          "Stop Loss % hit"
+        ],
+        "best_conditions": [
+          "Strong trending markets",
+          "Higher timeframes (5m, 15m) reduce noise",
+          "Volatile stocks like TQQQ, 700.HK"
+        ],
+        "avoid_when": [
+          "Choppy sideways markets",
+          "Very short timeframes",
+          "Around major news events"
+        ],
+        "parameters_explained": {
+          "fast_period": "How many bars fast EMA looks back. Lower=more sensitive. Try 5-10.",
+          "slow_period": "How many bars slow EMA looks back. Higher=smoother. Try 20-50."
+        },
+        "pro_tips": [
+          "Fast period should be less than half slow period",
+          "Classic combo: 5/20 intraday, 50/200 swing",
+          "Add RSI to filter false crossovers",
+          "TQQQ 5/20 on 5m generates 3-5 signals/day"
+        ],
+        "risk_warning": "EMA crossovers lag - by the time the signal fires, the move has already started."
+      }
     },
     {
       "id": "RSI_MEAN_REVERSION",
@@ -29,15 +96,90 @@
       "signal_logic": "BUY when RSI drops below oversold threshold (e.g. 30). SELL when RSI rises above overbought threshold (e.g. 70).",
       "indicator": "RSI",
       "default_timeframe": "5m",
-      "allowed_timeframes": ["tick","1m","5m","15m"],
-      "params": [
-        {"key": "period", "label": "RSI Period", "default": 14, "min": 5, "max": 50, "type": "int", "hint": "Standard is 14. Lower = faster signals"},
-        {"key": "oversold", "label": "Oversold Level", "default": 30, "min": 10, "max": 45, "type": "int", "hint": "Buy signal fires below this level"},
-        {"key": "overbought", "label": "Overbought Level", "default": 70, "min": 55, "max": 90, "type": "int", "hint": "Sell signal fires above this level"}
+      "allowed_timeframes": [
+        "tick",
+        "1m",
+        "5m",
+        "15m"
       ],
-      "default_risk": {"tp_pct": 0.4, "sl_pct": 0.3, "trail_pct": 0.0, "lots": 1},
-      "recommended_symbols": ["700.HK", "TQQQ.US", "2800.HK"],
-      "recommended_timeframes": ["1m", "5m"]
+      "params": [
+        {
+          "key": "period",
+          "label": "RSI Period",
+          "default": 14,
+          "min": 5,
+          "max": 50,
+          "type": "int",
+          "hint": "Standard is 14. Lower = faster signals"
+        },
+        {
+          "key": "oversold",
+          "label": "Oversold Level",
+          "default": 30,
+          "min": 10,
+          "max": 45,
+          "type": "int",
+          "hint": "Buy signal fires below this level"
+        },
+        {
+          "key": "overbought",
+          "label": "Overbought Level",
+          "default": 70,
+          "min": 55,
+          "max": 90,
+          "type": "int",
+          "hint": "Sell signal fires above this level"
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.4,
+        "sl_pct": 0.3,
+        "trail_pct": 0.0,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "700.HK",
+        "TQQQ.US",
+        "2800.HK"
+      ],
+      "recommended_timeframes": [
+        "1m",
+        "5m"
+      ],
+      "learn": {
+        "what_it_is": "RSI measures how overbought or oversold a stock is on 0-100 scale. Created by Wilder in 1978.",
+        "how_it_works": "Below 30 = oversold (potential bounce). Above 70 = overbought (potential pullback).",
+        "entry_signal": [
+          "BUY when RSI drops below oversold (30)",
+          "SELL when RSI rises above overbought (70)"
+        ],
+        "exit_signal": [
+          "Opposite signal fires",
+          "Take Profit % reached",
+          "Stop Loss % hit"
+        ],
+        "best_conditions": [
+          "Sideways/ranging markets",
+          "Liquid stocks with regular pullbacks",
+          "Tick or 1m for fast mean reversion"
+        ],
+        "avoid_when": [
+          "Strong trending markets",
+          "Low liquidity",
+          "Major news releases"
+        ],
+        "parameters_explained": {
+          "period": "Lookback. 14 standard. Lower=more signals.",
+          "oversold": "Buy threshold. 30 standard.",
+          "overbought": "Sell threshold. 70 standard."
+        },
+        "pro_tips": [
+          "RSI below 20 is STRONG oversold",
+          "Combine with BB: RSI oversold + lower band = high probability",
+          "Never fight a strong trend with RSI alone"
+        ],
+        "risk_warning": "In downtrends, RSI can stay oversold for extended periods. Always use stop losses."
+      }
     },
     {
       "id": "BB_GRID",
@@ -49,14 +191,80 @@
       "signal_logic": "BUY when price touches or breaks below the lower Bollinger Band. SELL when price touches or breaks above the upper Bollinger Band.",
       "indicator": "BB_BREAKOUT",
       "default_timeframe": "5m",
-      "allowed_timeframes": ["1m","5m","15m","30m"],
-      "params": [
-        {"key": "period", "label": "BB Period", "default": 20, "min": 5, "max": 100, "type": "int", "hint": "Lookback period for moving average. 20 is standard"},
-        {"key": "num_std", "label": "Standard Deviations", "default": 2.0, "min": 1.0, "max": 4.0, "type": "float", "hint": "Width of bands. Higher = fewer but stronger signals"}
+      "allowed_timeframes": [
+        "1m",
+        "5m",
+        "15m",
+        "30m"
       ],
-      "default_risk": {"tp_pct": 0.4, "sl_pct": 0.25, "trail_pct": 0.0, "lots": 1},
-      "recommended_symbols": ["700.HK", "TQQQ.US"],
-      "recommended_timeframes": ["5m", "15m"]
+      "params": [
+        {
+          "key": "period",
+          "label": "BB Period",
+          "default": 20,
+          "min": 5,
+          "max": 100,
+          "type": "int",
+          "hint": "Lookback period for moving average. 20 is standard"
+        },
+        {
+          "key": "num_std",
+          "label": "Standard Deviations",
+          "default": 2.0,
+          "min": 1.0,
+          "max": 4.0,
+          "type": "float",
+          "hint": "Width of bands. Higher = fewer but stronger signals"
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.4,
+        "sl_pct": 0.25,
+        "trail_pct": 0.0,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "700.HK",
+        "TQQQ.US"
+      ],
+      "recommended_timeframes": [
+        "5m",
+        "15m"
+      ],
+      "learn": {
+        "what_it_is": "Bollinger Bands create a dynamic price channel that adapts to volatility. Buy at lower band, sell at upper band.",
+        "how_it_works": "Price stays within bands 95% of time. Lower band = cheap. Upper band = expensive.",
+        "entry_signal": [
+          "BUY at lower Bollinger Band",
+          "SELL at upper Bollinger Band"
+        ],
+        "exit_signal": [
+          "Price reaches other band",
+          "Take Profit %",
+          "Stop Loss %"
+        ],
+        "best_conditions": [
+          "Ranging/sideways markets",
+          "After volatility squeeze",
+          "Liquid instruments",
+          "5m-15m timeframes"
+        ],
+        "avoid_when": [
+          "Strong trending markets",
+          "After major breakouts",
+          "Very narrow bands"
+        ],
+        "parameters_explained": {
+          "period": "MA period. 20 standard.",
+          "num_std": "Band width. 2.0 = 95% containment."
+        },
+        "pro_tips": [
+          "BB Squeeze precedes big moves",
+          "Combine with RSI for confirmation",
+          "Watch middle band as profit target"
+        ],
+        "risk_warning": "Price can walk the band during trends. Use stop losses."
+      }
     },
     {
       "id": "MOMENTUM_BREAKOUT",
@@ -68,13 +276,69 @@
       "signal_logic": "BUY when current price makes a new high over the lookback period. SELL when current price makes a new low over the lookback period.",
       "indicator": "NEW_HIGH_LOW",
       "default_timeframe": "15m",
-      "allowed_timeframes": ["5m","15m","30m"],
-      "params": [
-        {"key": "lookback", "label": "Lookback Bars", "default": 20, "min": 5, "max": 100, "type": "int", "hint": "Number of bars to look back for high/low. Higher = stronger breakout required"}
+      "allowed_timeframes": [
+        "5m",
+        "15m",
+        "30m"
       ],
-      "default_risk": {"tp_pct": 0.8, "sl_pct": 0.4, "trail_pct": 0.2, "lots": 1},
-      "recommended_symbols": ["TQQQ.US", "700.HK"],
-      "recommended_timeframes": ["15m", "30m"]
+      "params": [
+        {
+          "key": "lookback",
+          "label": "Lookback Bars",
+          "default": 20,
+          "min": 5,
+          "max": 100,
+          "type": "int",
+          "hint": "Number of bars to look back for high/low. Higher = stronger breakout required"
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.8,
+        "sl_pct": 0.4,
+        "trail_pct": 0.2,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "TQQQ.US",
+        "700.HK"
+      ],
+      "recommended_timeframes": [
+        "15m",
+        "30m"
+      ],
+      "learn": {
+        "what_it_is": "Buy new highs, sell new lows. Core of the Turtle Trading system from the 1980s.",
+        "how_it_works": "New N-bar high = strongest buyers in N bars. Ride the trend until reversal.",
+        "entry_signal": [
+          "BUY new high over lookback",
+          "SELL new low over lookback"
+        ],
+        "exit_signal": [
+          "New low (reversal)",
+          "Trailing stop",
+          "Take Profit %"
+        ],
+        "best_conditions": [
+          "Trending markets",
+          "Higher timeframes (15m, 30m)",
+          "High-momentum stocks",
+          "News-driven moves"
+        ],
+        "avoid_when": [
+          "Choppy markets",
+          "Low liquidity",
+          "Near major resistance"
+        ],
+        "parameters_explained": {
+          "lookback": "Bars to look back. 20 on 5m = 100 minutes."
+        },
+        "pro_tips": [
+          "Turtle system: 20-bar entry, 10-bar exit",
+          "Add volume confirmation",
+          "Use trailing stop = 2x ATR"
+        ],
+        "risk_warning": "Lower win rate (40-50%) but large average wins. Be comfortable with small losses."
+      }
     },
     {
       "id": "MACD_MOMENTUM",
@@ -86,15 +350,89 @@
       "signal_logic": "BUY when MACD line crosses above Signal line. SELL when MACD line crosses below Signal line.",
       "indicator": "MACD_SIGNAL",
       "default_timeframe": "15m",
-      "allowed_timeframes": ["5m","15m","30m"],
-      "params": [
-        {"key": "fast", "label": "Fast Period", "default": 12, "min": 5, "max": 50, "type": "int", "hint": "Standard is 12"},
-        {"key": "slow", "label": "Slow Period", "default": 26, "min": 10, "max": 100, "type": "int", "hint": "Standard is 26"},
-        {"key": "signal", "label": "Signal Period", "default": 9, "min": 3, "max": 50, "type": "int", "hint": "Standard is 9. Smoothing of MACD line"}
+      "allowed_timeframes": [
+        "5m",
+        "15m",
+        "30m"
       ],
-      "default_risk": {"tp_pct": 0.6, "sl_pct": 0.35, "trail_pct": 0.15, "lots": 1},
-      "recommended_symbols": ["TQQQ.US", "700.HK"],
-      "recommended_timeframes": ["5m", "15m"]
+      "params": [
+        {
+          "key": "fast",
+          "label": "Fast Period",
+          "default": 12,
+          "min": 5,
+          "max": 50,
+          "type": "int",
+          "hint": "Standard is 12"
+        },
+        {
+          "key": "slow",
+          "label": "Slow Period",
+          "default": 26,
+          "min": 10,
+          "max": 100,
+          "type": "int",
+          "hint": "Standard is 26"
+        },
+        {
+          "key": "signal",
+          "label": "Signal Period",
+          "default": 9,
+          "min": 3,
+          "max": 50,
+          "type": "int",
+          "hint": "Standard is 9. Smoothing of MACD line"
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.6,
+        "sl_pct": 0.35,
+        "trail_pct": 0.15,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "TQQQ.US",
+        "700.HK"
+      ],
+      "recommended_timeframes": [
+        "5m",
+        "15m"
+      ],
+      "learn": {
+        "what_it_is": "MACD tracks relationship between two EMAs to identify momentum shifts. Created by Gerald Appel in 1970s.",
+        "how_it_works": "MACD = Fast EMA minus Slow EMA. When it crosses above signal line, momentum shifting up.",
+        "entry_signal": [
+          "BUY on bullish MACD cross",
+          "SELL on bearish MACD cross"
+        ],
+        "exit_signal": [
+          "Opposite crossover",
+          "Take Profit %",
+          "Stop Loss %"
+        ],
+        "best_conditions": [
+          "Medium-term trends (5m-30m)",
+          "Stocks with cyclical momentum",
+          "After consolidation",
+          "Crosses above/below zero line"
+        ],
+        "avoid_when": [
+          "Very choppy markets",
+          "Tick timeframes",
+          "Low volume stocks"
+        ],
+        "parameters_explained": {
+          "fast": "Fast EMA. 12 standard.",
+          "slow": "Slow EMA. 26 standard.",
+          "signal": "Signal smoothing. 9 standard."
+        },
+        "pro_tips": [
+          "Standard (12,26,9) watched by institutions",
+          "Cross ABOVE zero line is stronger",
+          "Histogram turning positive precedes crossover"
+        ],
+        "risk_warning": "MACD lags price. In fast markets, crossover comes after most of the move."
+      }
     },
     {
       "id": "VWAP_REVERSION",
@@ -102,17 +440,75 @@
       "category": "VWAP",
       "difficulty": 2,
       "stars": 4,
-      "description": "Trades mean reversion back to VWAP (Volume Weighted Average Price) — the fair value benchmark used by institutional traders. Buys when price drops significantly below VWAP, sells when it rises significantly above. Excellent intraday strategy for liquid stocks like Tencent and TQQQ.",
+      "description": "Trades mean reversion back to VWAP (Volume Weighted Average Price) \u2014 the fair value benchmark used by institutional traders. Buys when price drops significantly below VWAP, sells when it rises significantly above. Excellent intraday strategy for liquid stocks like Tencent and TQQQ.",
       "signal_logic": "BUY when price deviates below VWAP by more than deviation_pct%. SELL when price deviates above VWAP by more than deviation_pct%.",
       "indicator": "VWAP_DEV",
       "default_timeframe": "tick",
-      "allowed_timeframes": ["tick","1m","5m"],
-      "params": [
-        {"key": "deviation_pct", "label": "Deviation % from VWAP", "default": 0.1, "min": 0.05, "max": 2.0, "type": "float", "hint": "How far price must deviate from VWAP to trigger. Lower = more trades, higher = stronger signals"}
+      "allowed_timeframes": [
+        "tick",
+        "1m",
+        "5m"
       ],
-      "default_risk": {"tp_pct": 0.3, "sl_pct": 0.2, "trail_pct": 0.0, "lots": 1},
-      "recommended_symbols": ["700.HK", "TQQQ.US", "2800.HK"],
-      "recommended_timeframes": ["tick", "1m"]
+      "params": [
+        {
+          "key": "deviation_pct",
+          "label": "Deviation % from VWAP",
+          "default": 0.1,
+          "min": 0.05,
+          "max": 2.0,
+          "type": "float",
+          "hint": "How far price must deviate from VWAP to trigger. Lower = more trades, higher = stronger signals"
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.3,
+        "sl_pct": 0.2,
+        "trail_pct": 0.0,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "700.HK",
+        "TQQQ.US",
+        "2800.HK"
+      ],
+      "recommended_timeframes": [
+        "tick",
+        "1m"
+      ],
+      "learn": {
+        "what_it_is": "VWAP is the most important intraday benchmark. Represents true average price weighted by volume.",
+        "how_it_works": "Institutions buy below VWAP, sell above. When price deviates, smart money pulls it back.",
+        "entry_signal": [
+          "BUY when price falls X% below VWAP",
+          "SELL when price rises X% above VWAP"
+        ],
+        "exit_signal": [
+          "Price reverts to VWAP",
+          "Take Profit %",
+          "Stop Loss %"
+        ],
+        "best_conditions": [
+          "Liquid stocks",
+          "Tick or 1m timeframes",
+          "No strong trend",
+          "Normal trading sessions"
+        ],
+        "avoid_when": [
+          "Strong trending days",
+          "First 15 min of session",
+          "Low volume periods"
+        ],
+        "parameters_explained": {
+          "deviation_pct": "How far from VWAP to trigger. 0.1% = sensitive, 0.5% = significant only."
+        },
+        "pro_tips": [
+          "VWAP resets daily",
+          "0.1-0.3% for HK, 0.2-0.5% for US",
+          "Combine with RSI for stronger signal",
+          "Most powerful in first 2 hours"
+        ],
+        "risk_warning": "On trending days, price stays far from VWAP all session."
+      }
     },
     {
       "id": "SYMMETRIC_GRID",
@@ -124,17 +520,107 @@
       "signal_logic": "DAILY OPEN: Calculates ATR(14), sets grid spacing = ATR x multiplier, places N buy limits below CMP. ON BUY FILL: Places sell TP above. ON TP FILL: Replenishes buy. AT CLOSE: Cancels all, closes positions. NEXT OPEN: Rebuilds with fresh ATR.",
       "indicator": "SYMMETRIC_GRID",
       "default_timeframe": "tick",
-      "allowed_timeframes": ["tick"],
-      "params": [
-        {"key": "grid_levels", "label": "Grid Levels (each side)", "default": 4, "min": 1, "max": 10, "type": "int", "hint": "Number of buy levels below CMP + same number of sell levels above CMP"},
-        {"key": "atr_multiplier", "label": "ATR Multiplier", "default": 0.75, "min": 0.3, "max": 2.0, "type": "float", "hint": "Grid spacing = ATR(14) x this value. 0.75 = 75% of daily range per level. Higher = wider grid."},
-        {"key": "grid_spacing_pct", "label": "Fallback Spacing %", "default": 0.5, "min": 0.1, "max": 5.0, "type": "float", "hint": "Used only if ATR calculation fails"},
-        {"key": "tp_pct", "label": "Take Profit % per level", "default": 0.5, "min": 0.1, "max": 5.0, "type": "float", "hint": "TP per grid level. Usually same as grid spacing"},
-        {"key": "sl_boundary_pct", "label": "Emergency SL Boundary %", "default": 3.0, "min": 1.0, "max": 20.0, "type": "float", "hint": "If price moves this far from CMP at startup, flatten ALL positions immediately"}
+      "allowed_timeframes": [
+        "tick"
       ],
-      "default_risk": {"tp_pct": 0.5, "sl_pct": 0.0, "trail_pct": 0.0, "lots": 1},
-      "recommended_symbols": ["700.HK", "TQQQ.US", "2800.HK"],
-      "recommended_timeframes": ["tick"]
+      "params": [
+        {
+          "key": "grid_levels",
+          "label": "Grid Levels (each side)",
+          "default": 4,
+          "min": 1,
+          "max": 10,
+          "type": "int",
+          "hint": "Number of buy levels below CMP + same number of sell levels above CMP"
+        },
+        {
+          "key": "atr_multiplier",
+          "label": "ATR Multiplier",
+          "default": 0.75,
+          "min": 0.3,
+          "max": 2.0,
+          "type": "float",
+          "hint": "Grid spacing = ATR(14) x this value. 0.75 = 75% of daily range per level. Higher = wider grid."
+        },
+        {
+          "key": "grid_spacing_pct",
+          "label": "Fallback Spacing %",
+          "default": 0.5,
+          "min": 0.1,
+          "max": 5.0,
+          "type": "float",
+          "hint": "Used only if ATR calculation fails"
+        },
+        {
+          "key": "tp_pct",
+          "label": "Take Profit % per level",
+          "default": 0.5,
+          "min": 0.1,
+          "max": 5.0,
+          "type": "float",
+          "hint": "TP per grid level. Usually same as grid spacing"
+        },
+        {
+          "key": "sl_boundary_pct",
+          "label": "Emergency SL Boundary %",
+          "default": 3.0,
+          "min": 1.0,
+          "max": 20.0,
+          "type": "float",
+          "hint": "If price moves this far from CMP at startup, flatten ALL positions immediately"
+        }
+      ],
+      "default_risk": {
+        "tp_pct": 0.5,
+        "sl_pct": 0.0,
+        "trail_pct": 0.0,
+        "lots": 1
+      },
+      "recommended_symbols": [
+        "700.HK",
+        "TQQQ.US",
+        "2800.HK"
+      ],
+      "recommended_timeframes": [
+        "tick"
+      ],
+      "learn": {
+        "what_it_is": "Automated market-making strategy. Profits from price oscillation without predicting direction. Buy below, sell above, repeat.",
+        "how_it_works": "At open, calculates ATR(14) for spacing. Places buy limits below. On fill, places sell above. On sell fill, replaces buy. Every cycle = profit.",
+        "entry_signal": [
+          "BUY limits below CMP at open",
+          "Spacing from ATR(14) x 0.75",
+          "No direction prediction needed"
+        ],
+        "exit_signal": [
+          "Each BUY paired with SELL above",
+          "TP = one grid spacing per cycle",
+          "Emergency SL if price falls X%"
+        ],
+        "best_conditions": [
+          "Ranging markets with oscillations",
+          "Liquid stocks: 700.HK, TQQQ",
+          "Normal volatility days",
+          "Full session operation"
+        ],
+        "avoid_when": [
+          "Strong trending days",
+          "Earnings announcements",
+          "Very low volatility"
+        ],
+        "parameters_explained": {
+          "grid_levels": "Buy orders below CMP. More = more capital, more profit potential.",
+          "atr_multiplier": "Spacing = ATR x this. 0.75 = 75% of daily range.",
+          "sl_boundary_pct": "Emergency stop distance from CMP."
+        },
+        "pro_tips": [
+          "Rebuilds daily with fresh ATR",
+          "All cancelled at close - no overnight risk",
+          "Start with 3 levels, scale to 5-7",
+          "More levels = more trades but more capital"
+        ],
+        "risk_warning": "If price trends down all day, buys fill but sells may not reach before close."
+      }
     }
   ]
 }

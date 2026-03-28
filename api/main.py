@@ -84,6 +84,17 @@ class SettingsReq(BaseModel):
     central_api_url: str = ""
 
 
+class DownloadScriptReq(BaseModel):
+    email: str
+    library_id: str
+    strategy_id: str = ""
+    symbol: str = "TQQQ.US"
+    arena: str = "US"
+    timeframe: str = "5m"
+    params: dict = {}
+    risk: dict = {}
+
+
 class TradeReq(BaseModel):
     email: str
     student_name: str = ""
@@ -237,6 +248,32 @@ async def me(email: str = Query("")):
         "has_credentials": bool(student.get("app_key")),
         "central_api_url": student.get("central_api_url", ""),
     }
+
+
+@app.post("/api/download-script")
+async def download_script(req: DownloadScriptReq):
+    email = req.email.lower().strip()
+    student = get_student(email)
+    if not student:
+        raise HTTPException(404, "Student not found. Register first.")
+    strat = {
+        "strategy_id": req.strategy_id or f"{req.library_id}_DL",
+        "strategy_name": req.library_id.replace("_", " ").title(),
+        "symbol": req.symbol, "arena": req.arena.upper(),
+        "timeframe": req.timeframe, "mode": "library",
+        "library_id": req.library_id,
+        "conditions": {"type": req.library_id, "params": req.params},
+        "exit_rules": {}, "risk": req.risk or {"tp_pct": 0.5, "sl_pct": 0.3, "lots": 1},
+        "is_active": True, "custom_script": "",
+    }
+    path = generate_master_bot(email, [strat], student)
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    from datetime import date
+    header = f'#!/usr/bin/env python3\n# QuantX Strategy Bot - {req.library_id}\n# Symbol: {req.symbol} | Generated: {date.today()} | Student: {email}\n# Run: pip install longport httpx && python this_file.py\n\n'
+    filename = f"quantx_{req.library_id.lower()}_{req.symbol.replace('.','_').lower()}_{date.today()}.py"
+    return Response(content=header + content, media_type="text/plain",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @app.get("/api/approval-status")
