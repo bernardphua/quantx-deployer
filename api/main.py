@@ -84,6 +84,14 @@ class SettingsReq(BaseModel):
     central_api_url: str = ""
 
 
+class ScreenNowReq(BaseModel):
+    email: str
+    strategy_id: str
+    bot_type: str
+    arena: str = "US"
+    custom_tickers: list = []
+
+
 class DownloadScriptReq(BaseModel):
     email: str
     library_id: str
@@ -274,6 +282,39 @@ async def download_script(req: DownloadScriptReq):
     filename = f"quantx_{req.library_id.lower()}_{req.symbol.replace('.','_').lower()}_{date.today()}.py"
     return Response(content=header + content, media_type="text/plain",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.post("/api/screen-now")
+async def screen_now(req: ScreenNowReq):
+    email = req.email.lower().strip()
+    student = get_student(email)
+    if not student:
+        raise HTTPException(404, "Student not found")
+    from api.universe import get_universe
+    from api.screener import run_screener
+    universe = get_universe(req.bot_type, req.arena, req.custom_tickers)
+
+    def _run():
+        from longport.openapi import Config, QuoteContext
+        cfg = Config(app_key=student["app_key"], app_secret=student["app_secret"], access_token=student["access_token"])
+        ctx = QuoteContext(cfg)
+        from api.config import DB_PATH
+        return run_screener(ctx, req.bot_type, universe, DB_PATH, email, req.strategy_id)
+
+    result = await asyncio.get_event_loop().run_in_executor(_executor, _run)
+    return result
+
+
+@app.get("/api/screener-results")
+async def get_screener_results(email: str = Query(""), strategy_id: str = Query("")):
+    from api.config import DB_PATH
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE IF NOT EXISTS screener_results (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, strategy_id TEXT, bot_type TEXT, symbol TEXT, score INTEGER, max_score INTEGER, shortlisted INTEGER, reasons TEXT, price REAL, run_at TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+    rows = conn.execute("SELECT symbol,score,max_score,shortlisted,reasons,price,run_at,bot_type FROM screener_results WHERE email=? AND strategy_id=? ORDER BY score DESC", (email.lower().strip(), strategy_id)).fetchall()
+    conn.close()
+    return {"results": [dict(r) for r in rows], "count": len(rows), "shortlisted": sum(1 for r in rows if r["shortlisted"])}
 
 
 @app.get("/api/approval-status")
