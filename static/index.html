@@ -1832,18 +1832,33 @@ function renderBotCard(s,isLive){
   }
   const statusPill=isLive?'<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);background:rgba(0,255,136,.08);padding:2px 8px;border-radius:10px"><span class="live-dot" style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>LIVE</span>'
     :'<span style="font-size:10px;color:#555;background:#1a1a2e;padding:2px 8px;border-radius:10px">Saved</span>';
-  // Metrics row — grid cells
+  // Metrics rows — live vivid + BT muted
   const mf=(v,suf='%')=>v!==undefined&&v!==null?(typeof v==='number'?v.toFixed(1):v)+suf:'\u2014';
-  function mkMetricCell(label,val,color){return `<div style="background:#0D0D1A;border-radius:4px;padding:6px 8px;text-align:center"><div style="font-size:9px;text-transform:uppercase;color:#6B6B8A;margin-bottom:2px">${label}</div><div style="font-size:14px;font-weight:600;color:${color}">${val}</div></div>`;}
   let metricsHtml='';
-  const src=bt.total_return_pct!==undefined?bt:(lr.total_return_pct!==undefined?lr:null);
-  if(src){
-    metricsHtml+=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px">`;
-    metricsHtml+=mkMetricCell('CAGR',mf(src.cagr_pct),(src.cagr_pct||0)>=0?'#4ECBA0':'#E24B4A');
-    metricsHtml+=mkMetricCell('SHARPE',mf(src.sharpe_ratio,''),'#E0E0F0');
-    metricsHtml+=mkMetricCell('WIN RATE',mf(src.win_rate_pct),'#E0E0F0');
-    metricsHtml+=mkMetricCell('MAX DD',mf(src.max_drawdown_pct),'#E24B4A');
+  // LIVE row (only for live bots with data)
+  if(isLive){
+    const hasLive=lr&&lr.total_return_pct!==undefined;
+    metricsHtml+=`<div style="background:#0A1A12;border-radius:6px;padding:8px;margin-top:8px">`;
+    metricsHtml+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:9px;padding:1px 6px;border-radius:4px;background:#0F3028;color:#4ECBA0;border:.5px solid #1D9E75">LIVE</span></div>`;
+    metricsHtml+=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">`;
+    metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">CAGR</div><div style="font-size:16px;font-weight:700;color:${hasLive&&(lr.cagr_pct||0)>=0?'#4ECBA0':hasLive?'#E24B4A':'#3A3A5A'}">${hasLive?mf(lr.cagr_pct):'\u2014'}</div></div>`;
+    metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">Sharpe</div><div style="font-size:16px;font-weight:700;color:${hasLive?'#E0E0F0':'#3A3A5A'}">${hasLive?mf(lr.sharpe_ratio,''):'\u2014'}</div></div>`;
+    metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">Win Rate</div><div style="font-size:16px;font-weight:700;color:${hasLive&&(lr.win_rate_pct||0)>50?'#4ECBA0':hasLive?'#E24B4A':'#3A3A5A'}">${hasLive?mf(lr.win_rate_pct):'\u2014'}</div></div>`;
+    metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">Max DD</div><div style="font-size:16px;font-weight:700;color:${hasLive?'#E24B4A':'#3A3A5A'}">${hasLive?mf(lr.max_drawdown_pct):'\u2014'}</div></div>`;
     metricsHtml+=`</div>`;
+    if(!hasLive)metricsHtml+=`<div style="font-size:10px;color:#3A3A5A;text-align:center;margin-top:4px">No trades yet</div>`;
+    metricsHtml+=`</div>`;
+  }
+  // BT row (for all cards that have backtest data)
+  if(bt&&bt.total_return_pct!==undefined){
+    metricsHtml+=`<div style="background:#0D0D1A;border-radius:6px;padding:8px;margin-top:${isLive?'1':'8'}px;${isLive?'border-top:.5px solid #1E1E35;border-top-left-radius:0;border-top-right-radius:0':''}">`;
+    metricsHtml+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:9px;padding:1px 6px;border-radius:4px;background:#1A1A2E;color:#6B6B8A;border:.5px solid #2A2A45">BACKTEST</span></div>`;
+    metricsHtml+=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">`;
+    metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">CAGR</div><div style="font-size:13px;font-weight:500;color:#5A5A7A">${mf(bt.cagr_pct)}</div></div>`;
+    metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">Sharpe</div><div style="font-size:13px;font-weight:500;color:#5A5A7A">${mf(bt.sharpe_ratio,'')}</div></div>`;
+    metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">Win Rate</div><div style="font-size:13px;font-weight:500;color:#5A5A7A">${mf(bt.win_rate_pct)}</div></div>`;
+    metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">Max DD</div><div style="font-size:13px;font-weight:500;color:#6B3A3A">${mf(bt.max_drawdown_pct)}</div></div>`;
+    metricsHtml+=`</div></div>`;
   }
   return `<div onclick="showBotDetail('${sid}')" style="background:#16162A;border:1px solid #222;border-left:3px solid ${bc};border-radius:8px;padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor='#444'" onmouseout="this.style.borderColor='#222'">
     <div style="display:flex;align-items:center;gap:10px">
@@ -1871,17 +1886,18 @@ function showBotDetail(sid){
     h+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><span style="font-family:Inter,sans-serif;font-size:18px;font-weight:600;color:#E8E8E8">${d.strategy_name||sid}</span><span style="color:var(--cyan);font-size:12px">${d.symbol}</span><span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#1a1a2e;color:#888">${d.library_id||d.mode}</span>`;
     h+=isLive?'<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);background:rgba(0,255,136,.08);padding:2px 8px;border-radius:10px"><span class="live-dot" style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>LIVE</span>':'<span style="font-size:10px;color:#555;background:#1a1a2e;padding:2px 8px;border-radius:10px">Saved</span>';
     h+=`</div>`;
-    // Metric cards
+    // Metric cards — 4 cards, LIVE values (vivid)
+    const hasLive=lr&&lr.total_pnl!==undefined;
     h+=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">`;
-    h+=`<div class="card"><div class="label">TOTAL P&L</div><div class="value" style="font-size:1rem;color:${(lr.total_pnl||0)>=0?'var(--green)':'var(--red)'}">$${mf(lr.total_pnl,'')}</div></div>`;
-    h+=`<div class="card"><div class="label">SHARPE</div><div class="value" style="font-size:1rem">${mf(lr.sharpe_ratio||bt.sharpe_ratio,'')}</div><div style="font-size:.6rem;color:var(--dim)">BT: ${mf(bt.sharpe_ratio,'')}</div></div>`;
-    h+=`<div class="card"><div class="label">WIN RATE</div><div class="value" style="font-size:1rem">${mf(lr.win_rate_pct||bt.win_rate_pct)}</div></div>`;
-    h+=`<div class="card"><div class="label">MAX DD</div><div class="value" style="font-size:1rem;color:var(--red)">${mf(lr.max_drawdown_pct||bt.max_drawdown_pct)}</div><div style="font-size:.6rem;color:var(--dim)">BT: ${mf(bt.max_drawdown_pct)}</div></div>`;
+    h+=`<div class="card"><div class="label">TOTAL P&L</div><div class="value" style="font-size:1.1rem;color:${hasLive&&(lr.total_pnl||0)>=0?'#4ECBA0':'#E24B4A'}">${hasLive?'$'+(lr.total_pnl||0):'\u2014'}</div>${hasLive?`<div style="font-size:.6rem;color:#5A5A7A">${mf(lr.total_return_pct)} return</div>`:''}</div>`;
+    h+=`<div class="card"><div class="label">SHARPE</div><div class="value" style="font-size:1.1rem;color:#E0E0F0">${hasLive?mf(lr.sharpe_ratio,''):mf(bt.sharpe_ratio,'')}</div><div style="font-size:.6rem;color:#5A5A7A">BT: ${mf(bt.sharpe_ratio,'')}</div></div>`;
+    h+=`<div class="card"><div class="label">WIN RATE</div><div class="value" style="font-size:1.1rem;color:${hasLive&&(lr.win_rate_pct||0)>50?'#4ECBA0':'#E24B4A'}">${hasLive?mf(lr.win_rate_pct):mf(bt.win_rate_pct)}</div>${hasLive&&lr.total_trades?`<div style="font-size:.6rem;color:#5A5A7A">${Math.round((lr.win_rate_pct||0)/100*(lr.total_trades||0))}W / ${(lr.total_trades||0)-Math.round((lr.win_rate_pct||0)/100*(lr.total_trades||0))}L</div>`:''}</div>`;
+    h+=`<div class="card"><div class="label">MAX DD</div><div class="value" style="font-size:1.1rem;color:#E24B4A">${hasLive?mf(lr.max_drawdown_pct):mf(bt.max_drawdown_pct)}</div><div style="font-size:.6rem;color:#6B3A3A">BT: ${mf(bt.max_drawdown_pct)}</div></div>`;
     h+=`</div>`;
     // Comparison table
-    h+=`<div class="table-wrap" style="margin-bottom:16px"><table><thead><tr><th></th><th>Return</th><th>Sharpe</th><th>Win Rate</th><th>Max DD</th><th>Trades</th></tr></thead><tbody>`;
-    h+=`<tr><td><span style="color:var(--green);font-size:10px">LIVE</span></td><td>${mf(lr.total_return_pct)}</td><td>${mf(lr.sharpe_ratio,'')}</td><td>${mf(lr.win_rate_pct)}</td><td style="color:var(--red)">${mf(lr.max_drawdown_pct)}</td><td>${lr.total_trades||0}</td></tr>`;
-    h+=`<tr style="color:#555"><td><span style="font-size:10px">BT</span></td><td>${mf(bt.total_return_pct)}</td><td>${mf(bt.sharpe_ratio,'')}</td><td>${mf(bt.win_rate_pct)}</td><td>${mf(bt.max_drawdown_pct)}</td><td>${bt.total_trades||0}</td></tr>`;
+    h+=`<div class="table-wrap" style="margin-bottom:16px"><table><thead><tr><th></th><th>Return</th><th>CAGR</th><th>Sharpe</th><th>Win Rate</th><th>Max DD</th><th>Trades</th></tr></thead><tbody>`;
+    h+=`<tr style="background:#0A1A12"><td><span style="font-size:9px;padding:1px 6px;border-radius:4px;background:#0F3028;color:#4ECBA0;border:.5px solid #1D9E75">LIVE</span></td><td style="color:${(lr.total_return_pct||0)>=0?'#4ECBA0':'#E24B4A'}">${mf(lr.total_return_pct)}</td><td style="color:${(lr.cagr_pct||0)>=0?'#4ECBA0':'#E24B4A'}">${mf(lr.cagr_pct)}</td><td style="color:#E0E0F0">${mf(lr.sharpe_ratio,'')}</td><td style="color:${(lr.win_rate_pct||0)>50?'#4ECBA0':'#E24B4A'}">${mf(lr.win_rate_pct)}</td><td style="color:#E24B4A">${mf(lr.max_drawdown_pct)}</td><td style="color:#E0E0F0">${lr.total_trades||0}</td></tr>`;
+    h+=`<tr style="background:#0D0D1A"><td><span style="font-size:9px;padding:1px 6px;border-radius:4px;background:#1A1A2E;color:#6B6B8A;border:.5px solid #2A2A45">BT</span></td><td style="color:#5A5A7A">${mf(bt.total_return_pct)}</td><td style="color:#5A5A7A">${mf(bt.cagr_pct)}</td><td style="color:#5A5A7A">${mf(bt.sharpe_ratio,'')}</td><td style="color:#5A5A7A">${mf(bt.win_rate_pct)}</td><td style="color:#6B3A3A">${mf(bt.max_drawdown_pct)}</td><td style="color:#5A5A7A">${bt.total_trades||0}</td></tr>`;
     h+=`</tbody></table></div>`;
     // Recent trades
     h+=`<h3 style="font-family:Inter,sans-serif;font-size:12px;font-weight:600;color:#888;margin-bottom:8px">RECENT TRADES</h3>`;
@@ -2107,8 +2123,8 @@ async function saveSettings(){
 // Auto-refresh intervals
 setInterval(()=>{
   if(document.getElementById('tab-dashboard').classList.contains('active'))refreshDashboard();
-  if(document.getElementById('tab-deploy').classList.contains('active'))loadDeploySummary();
-},5000);
+  if(document.getElementById('tab-deploy').classList.contains('active')&&deployView==='list')loadDeploySummary();
+},10000);
 
 // Pre-fill settings
 document.getElementById('set-central').value=CENTRAL;
