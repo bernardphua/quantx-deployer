@@ -234,6 +234,17 @@ async def health():
     return {"ok": True}
 
 
+@app.get("/api/debug-env")
+async def debug_env():
+    return {
+        "FMP_API_KEY_set": bool(os.environ.get("FMP_API_KEY")),
+        "FMP_API_KEY_length": len(os.environ.get("FMP_API_KEY", "")),
+        "CENTRAL_API_URL": os.environ.get("CENTRAL_API_URL", "not set"),
+        "HOSTING": os.environ.get("HOSTING", "not set"),
+        "R2_ENDPOINT_set": bool(os.environ.get("R2_ENDPOINT_URL")),
+    }
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)

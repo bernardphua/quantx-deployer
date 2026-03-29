@@ -6,10 +6,19 @@ import math
 import requests
 from datetime import datetime
 
-from .config import FMP_API_KEY as _FMP_CFG
-
-FMP_KEY = _FMP_CFG or os.environ.get("FMP_API_KEY", "")
 FMP_BASE = "https://financialmodelingprep.com/stable"
+
+
+def _get_fmp_key():
+    """Read FMP key at request time, not import time."""
+    key = os.environ.get("FMP_API_KEY", "")
+    if not key:
+        try:
+            from .config import FMP_API_KEY
+            key = FMP_API_KEY
+        except Exception:
+            pass
+    return key
 
 R2_ENDPOINT = os.environ.get("R2_ENDPOINT_URL", "")
 R2_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
@@ -67,14 +76,15 @@ def fetch_ohlcv(symbol, timeframe="1day", limit=1260):
         print(f"[BACKTEST] Cache hit: {symbol} ({len(bars)} bars)")
         return bars, "cache"
 
-    if not FMP_KEY:
-        raise ValueError("FMP_API_KEY not set")
+    fmp_key = _get_fmp_key()
+    if not fmp_key:
+        raise ValueError("FMP_API_KEY not set in environment")
 
     print(f"[BACKTEST] Fetching {symbol} {timeframe} from FMP...")
     if timeframe == "1day":
-        url = f"{FMP_BASE}/historical-price-eod/full?symbol={symbol}&limit={limit}&apikey={FMP_KEY}"
+        url = f"{FMP_BASE}/historical-price-eod/full?symbol={symbol}&limit={limit}&apikey={fmp_key}"
     else:
-        url = f"{FMP_BASE}/historical-chart/{timeframe}?symbol={symbol}&apikey={FMP_KEY}"
+        url = f"{FMP_BASE}/historical-chart/{timeframe}?symbol={symbol}&apikey={fmp_key}"
 
     r = requests.get(url, timeout=30)
     r.raise_for_status()
