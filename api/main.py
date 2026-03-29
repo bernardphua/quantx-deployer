@@ -359,6 +359,72 @@ async def download_script(req: DownloadScriptReq):
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
+@app.get("/api/strategies/{strategy_id}/detail")
+async def strategy_detail(strategy_id: str, email: str = Query("")):
+    email = email.lower().strip()
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM strategies WHERE strategy_id = ? AND email = ?", (strategy_id, email)).fetchone()
+        if not row:
+            raise HTTPException(404, "Strategy not found")
+        rk = row.keys()
+        return {
+            "strategy_id": row["strategy_id"], "strategy_name": row["strategy_name"],
+            "symbol": row["symbol"], "arena": row["arena"], "timeframe": row["timeframe"],
+            "conditions": json.loads(row["conditions_json"]), "risk": json.loads(row["risk_json"]),
+            "is_active": bool(row["is_active"]), "mode": row.get("mode", "library"),
+            "library_id": row.get("library_id", ""),
+            "allocation": float(row["allocation"]) if "allocation" in rk and row["allocation"] else 10000,
+            "backtest_results": json.loads(row["backtest_results_json"]) if "backtest_results_json" in rk and row["backtest_results_json"] else None,
+            "live_results": json.loads(row["live_results_json"]) if "live_results_json" in rk and row["live_results_json"] else None,
+            "trade_log": json.loads(row["trade_log_json"]) if "trade_log_json" in rk and row["trade_log_json"] else [],
+            "created_at": row["created_at"],
+        }
+    finally:
+        conn.close()
+
+
+@app.put("/api/strategies/{strategy_id}/allocation")
+async def update_allocation(strategy_id: str, body: dict):
+    conn = get_db()
+    try:
+        conn.execute("UPDATE strategies SET allocation = ? WHERE strategy_id = ?", (body.get("allocation", 10000), strategy_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/strategies/{strategy_id}/trade")
+async def log_bot_trade(strategy_id: str, body: dict):
+    """Called by running bot when a trade closes. Appends to trade_log, recalculates live_results."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT trade_log_json, allocation FROM strategies WHERE strategy_id = ?", (strategy_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Strategy not found")
+        log = json.loads(row["trade_log_json"]) if row["trade_log_json"] else []
+        log.append(body)
+        alloc = float(row["allocation"]) if row["allocation"] else 10000
+        # Recalculate live_results
+        pnls = [t.get("pnl", 0) for t in log]
+        total_pnl = sum(pnls)
+        wins = sum(1 for p in pnls if p > 0)
+        total_ret = total_pnl / alloc * 100 if alloc > 0 else 0
+        wr = wins / len(pnls) * 100 if pnls else 0
+        # Max drawdown from cumulative
+        cum = 0; peak = 0; max_dd = 0
+        for p in pnls:
+            cum += p; peak = max(peak, cum); dd = (peak - cum) / alloc * 100 if alloc > 0 else 0; max_dd = max(max_dd, dd)
+        live = {"total_return_pct": round(total_ret, 2), "win_rate_pct": round(wr, 1), "max_drawdown_pct": round(max_dd, 2), "total_trades": len(pnls), "total_pnl": round(total_pnl, 2)}
+        conn.execute("UPDATE strategies SET trade_log_json = ?, live_results_json = ? WHERE strategy_id = ?",
+                     (json.dumps(log), json.dumps(live), strategy_id))
+        conn.commit()
+        return {"ok": True, "live_results": live}
+    finally:
+        conn.close()
+
+
 @app.post("/api/backtest/run")
 async def backtest_run(body: BacktestReq):
     from api.backtest import fetch_ohlcv, run_backtest

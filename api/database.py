@@ -125,6 +125,16 @@ def init_db():
         );
     """)
     conn.commit()
+    # Migration: add new strategy columns
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(strategies)").fetchall()}
+        for col, default in [("allocation", "'10000'"), ("backtest_results_json", "NULL"),
+                              ("live_results_json", "NULL"), ("trade_log_json", "NULL")]:
+            if col not in cols:
+                conn.execute(f"ALTER TABLE strategies ADD COLUMN {col} TEXT DEFAULT {default}")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
 
 
@@ -213,6 +223,7 @@ def get_strategies(email: str, active_only: bool = False) -> list[dict]:
         rows = conn.execute(q, (email,)).fetchall()
         result = []
         for r in rows:
+            rk = r.keys()
             d = {
                 "strategy_id": r["strategy_id"],
                 "strategy_name": r["strategy_name"],
@@ -224,9 +235,13 @@ def get_strategies(email: str, active_only: bool = False) -> list[dict]:
                 "risk": json.loads(r["risk_json"]),
                 "is_active": bool(r["is_active"]),
                 "created_at": r["created_at"],
-                "mode": r["mode"] if "mode" in r.keys() else "library",
-                "library_id": r["library_id"] if "library_id" in r.keys() else "",
-                "custom_script": r["custom_script"] if "custom_script" in r.keys() else "",
+                "mode": r["mode"] if "mode" in rk else "library",
+                "library_id": r["library_id"] if "library_id" in rk else "",
+                "custom_script": r["custom_script"] if "custom_script" in rk else "",
+                "allocation": float(r["allocation"]) if "allocation" in rk and r["allocation"] else 10000,
+                "backtest_results": json.loads(r["backtest_results_json"]) if "backtest_results_json" in rk and r["backtest_results_json"] else None,
+                "live_results": json.loads(r["live_results_json"]) if "live_results_json" in rk and r["live_results_json"] else None,
+                "trade_log": json.loads(r["trade_log_json"]) if "trade_log_json" in rk and r["trade_log_json"] else [],
             }
             result.append(d)
         return result
