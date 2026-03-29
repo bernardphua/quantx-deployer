@@ -65,12 +65,24 @@ def load_from_r2(symbol, timeframe):
     try:
         obj = r2.get_object(Bucket=R2_BUCKET, Key=_r2_key(symbol, timeframe))
         data = json.loads(obj["Body"].read().decode())
+        bars = data.get("bars", [])
+        if not bars:
+            return None, None
         cached_at = data.get("cached_at", "")
         if cached_at:
             age = (datetime.utcnow() - datetime.fromisoformat(cached_at)).total_seconds()
-            if age < _ttl_seconds(timeframe):
-                return data.get("bars", []), "cache"
-            print(f"[R2] Stale: {symbol}/{timeframe} (age={int(age)}s, ttl={_ttl_seconds(timeframe)}s)")
+            ttl = _ttl_seconds(timeframe)
+            # Bulk-preloaded data (1000+ bars) uses extended TTL (30 days)
+            if len(bars) >= 1000:
+                ttl = 30 * 86400  # 30 days
+            if age < ttl:
+                print(f"[R2] HIT: {symbol}/{timeframe} ({len(bars)} bars, age={int(age)}s)")
+                return bars, "cache"
+            print(f"[R2] Stale: {symbol}/{timeframe} (age={int(age)}s, ttl={int(ttl)}s, bars={len(bars)})")
+        else:
+            # No cached_at timestamp — bulk upload without timestamp, always accept
+            print(f"[R2] HIT (no timestamp): {symbol}/{timeframe} ({len(bars)} bars)")
+            return bars, "cache"
         return None, None
     except Exception:
         return None, None
