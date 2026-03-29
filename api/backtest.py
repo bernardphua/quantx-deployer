@@ -7,6 +7,7 @@ import requests
 from datetime import datetime
 
 FMP_BASE = "https://financialmodelingprep.com/stable"
+FMP_V3 = "https://financialmodelingprep.com/api/v3"
 
 
 def _get_fmp_key():
@@ -124,9 +125,9 @@ def fetch_ohlcv(symbol, timeframe="1day", limit=1260):
         save_to_r2(symbol, "1week", bars)
         return bars[:limit] if limit else bars, "live"
     elif timeframe in INTRADAY:
-        url = f"{FMP_BASE}/historical-chart/{timeframe}/{fmp_sym}?apikey={fmp_key}"
+        url = f"{FMP_V3}/historical-chart/{timeframe}/{fmp_sym}?apikey={fmp_key}"
     else:
-        # 1day (default)
+        # 1day (default) — /stable/ endpoint works for daily
         url = f"{FMP_BASE}/historical-price-eod/full?symbol={fmp_sym}&limit={limit}&apikey={fmp_key}"
 
     r = requests.get(url, timeout=30)
@@ -480,13 +481,24 @@ def run_backtest(bars, strategy, params, initial_capital=10000):
     if equity and eq_s[-1] != equity[-1]:
         eq_s.append(equity[-1])
 
-    return {
+    no_trades = len(sells) == 0
+    NO_TRADE_HINTS = {
+        "BUFFETT_BOT": "Buffett Bot works best on large-cap quality stocks (AAPL, MSFT, JNJ) on daily timeframe.",
+        "GRAHAM_BOT": "Graham Bot needs beaten-down stocks near 52-week lows. Try 9988.HK or during corrections.",
+        "SIMONS_BOT": "Simons Bot needs statistically extreme deviations. Try liquid ETFs (TQQQ, SPY) on 1m-5m.",
+    }
+    result = {
         "metrics": {"total_return_pct": round(ret, 2), "cagr_pct": round(cagr, 2), "sharpe_ratio": round(sharpe, 2),
                      "max_drawdown_pct": round(max_dd, 2), "win_rate_pct": round(wr, 1), "total_trades": len(sells),
                      "final_value": round(final, 2), "initial_capital": initial_capital, "bars_tested": len(bars)},
         "equity_curve": eq_s,
         "trades": trades[-20:],
     }
+    if no_trades:
+        hint = NO_TRADE_HINTS.get(strategy.upper(), "Try adjusting parameters or selecting a longer time period.")
+        result["no_trades"] = True
+        result["no_trades_message"] = f"No signals generated with these parameters. {hint}"
+    return result
 
 
 def run_optimization(bars, strategy, param_grid, initial_capital=10000):

@@ -468,36 +468,34 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 
 <!-- TAB: DEPLOY -->
 <div class="tab-content" id="tab-deploy">
-<h2 style="font-family:'Orbitron',monospace;font-size:1rem;color:var(--cyan);margin-bottom:16px">DEPLOY</h2>
-<!-- Market hours info -->
-<div id="deploy-market-info" style="padding:8px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);margin-bottom:12px;display:flex;justify-content:space-between"></div>
-<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">
-<h3 style="font-family:'Orbitron',monospace;font-size:.85rem;color:var(--cyan);margin-bottom:12px">Active Strategies to Deploy</h3>
-<div id="deploy-strat-list"><p style="color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:.8rem">Loading...</p></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h2 style="font-family:'Orbitron',monospace;font-size:1rem;color:var(--cyan)">DEPLOY</h2>
+<button class="btn btn-primary btn-sm" onclick="switchTab('develop')">+ New Strategy</button>
 </div>
-<!-- Screener panel (for famous investor bots) -->
-<div id="screener-panel" style="display:none;background:rgba(0,30,60,.3);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-<span style="font-family:'Orbitron',monospace;font-size:.75rem;color:var(--cyan);letter-spacing:2px">STOCK SCREENER</span>
-<span id="screener-last-run" style="font-family:'Share Tech Mono',monospace;font-size:.65rem;color:var(--dim)">Not yet run</span>
+<!-- Strategy table -->
+<div id="deploy-table-wrap">
+<div id="deploy-strat-table"><p style="color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:.85rem;text-align:center;padding:40px">No strategies saved yet. Go to <a href="#" onclick="switchTab('develop');return false" style="color:var(--cyan)">Develop</a> tab to create one.</p></div>
 </div>
-<div id="screener-shortlist" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:32px">
-<span style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--yellow)">Click SCREEN NOW to find stocks for your bot</span>
-</div>
-<button id="btn-screen-now" onclick="runScreener()" style="background:linear-gradient(135deg,#1a3a5c,#0d2540);border:1px solid var(--cyan);color:var(--cyan);font-family:'Orbitron',monospace;font-size:.65rem;letter-spacing:2px;padding:10px 20px;cursor:pointer;width:100%;border-radius:4px">SCREEN NOW</button>
-</div>
-
+<!-- Market hours -->
+<div id="deploy-market-info" style="padding:8px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);margin:16px 0;display:flex;justify-content:space-between"></div>
+<!-- Advanced: existing deploy controls -->
+<details style="margin-top:12px">
+<summary style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);cursor:pointer">Advanced: Manual Bot Control</summary>
+<div style="margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+<div id="deploy-strat-list" style="margin-bottom:12px"><p style="color:var(--dim);font-size:.8rem">Loading...</p></div>
 <div style="display:flex;gap:12px">
-<button class="btn btn-success" id="deploy-btn" onclick="doDeploy()">DEPLOY MASTER BOT</button>
-<button class="btn btn-danger" onclick="doStop()">STOP BOT</button>
-<button class="btn btn-magenta" onclick="doRestart()">RESTART</button>
+<button class="btn btn-success btn-sm" id="deploy-btn" onclick="doDeploy()">DEPLOY MASTER BOT</button>
+<button class="btn btn-danger btn-sm" onclick="doStop()">STOP BOT</button>
+<button class="btn btn-magenta btn-sm" onclick="doRestart()">RESTART</button>
 </div>
 <div class="msg" id="deploy-msg"></div>
-<div style="margin-top:16px;display:flex;gap:16px;align-items:center">
-<span id="deploy-dot" style="width:12px;height:12px;border-radius:50%;background:var(--dim);display:inline-block"></span>
-<div class="card" style="min-width:200px"><div class="label">Bot Status</div><div class="value" id="deploy-status" style="font-size:1rem">STOPPED</div></div>
-<div class="card" style="min-width:200px"><div class="label">PID</div><div class="value" id="deploy-pid" style="font-size:1rem">—</div></div>
+<div style="margin-top:12px;display:flex;gap:12px;align-items:center">
+<span id="deploy-dot" style="width:10px;height:10px;border-radius:50%;background:var(--dim);display:inline-block"></span>
+<span id="deploy-status" style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--dim)">STOPPED</span>
+<span id="deploy-pid" style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim)"></span>
 </div>
+</div>
+</details>
 </div>
 
 <!-- TAB: DASHBOARD -->
@@ -1478,21 +1476,37 @@ function loadDevLibrary(){
   const libs=LIB_CACHE||[];
   const sections=LIB_SECTIONS||[];
   const bySec={};libs.forEach(s=>{const sec=s.section||'other';if(!bySec[sec])bySec[sec]=[];bySec[sec].push(s);});
-  let h='';
+  const collapsed=JSON.parse(localStorage.getItem('dev_collapsed')||'{}');
+  let h='';let first=true;
   ['famous_investors','trend_following','mean_reversion','breakout','grid_trading'].forEach(secId=>{
     const strats=bySec[secId];if(!strats)return;
     const sec=sections.find(x=>x.id===secId)||{title:secId};
     const ss=SEC_STYLE[secId]||{icon:'',bg:'#1a1a2e',badge:'#888'};
-    h+=`<div class="lib-section-hdr" style="margin:12px 0 6px">${ss.icon} ${sec.title||secId}</div>`;
+    const isOpen=collapsed[secId]===undefined?first:!collapsed[secId];
+    first=false;
+    h+=`<div onclick="toggleDevSec('${secId}')" style="display:flex;align-items:center;gap:6px;margin:10px 0 4px;cursor:pointer;user-select:none"><span style="font-size:10px;color:var(--dim)">${isOpen?'\u25BC':'\u25B6'}</span><span class="lib-section-hdr" style="margin:0" id="dev-sec-arrow-${secId}">${ss.icon} ${sec.title||secId}</span><span style="font-size:9px;color:#555">(${strats.length})</span></div>`;
+    h+=`<div id="dev-sec-${secId}" style="display:${isOpen?'block':'none'}">`;
     strats.forEach(s=>{
-      h+=`<div onclick="selectDevStrategy('${s.id}')" style="display:flex;align-items:center;gap:8px;padding:8px;border-radius:6px;cursor:pointer;transition:background .15s;border-left:3px solid transparent" class="dev-lib-row" data-sid="${s.id}">
+      h+=`<div onclick="selectDevStrategy('${s.id}')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .15s;border-left:3px solid transparent" class="dev-lib-row" data-sid="${s.id}">
         <div style="width:28px;height:28px;border-radius:6px;background:${ss.bg};display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${s.investor?s.name.charAt(0):ss.cardIcon||''}</div>
         <div style="min-width:0"><div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</div>
         <div style="font-size:9px;color:${ss.badge}">${s.category}</div></div>
       </div>`;
     });
+    h+=`</div>`;
   });
   el.innerHTML=h;
+}
+function toggleDevSec(secId){
+  const el=document.getElementById('dev-sec-'+secId);if(!el)return;
+  const isOpen=el.style.display!=='none';
+  el.style.display=isOpen?'none':'block';
+  const collapsed=JSON.parse(localStorage.getItem('dev_collapsed')||'{}');
+  collapsed[secId]=isOpen;
+  localStorage.setItem('dev_collapsed',JSON.stringify(collapsed));
+  // Update arrow
+  const arrow=el.previousElementSibling?.querySelector('span');
+  if(arrow)arrow.textContent=isOpen?'\u25B6':'\u25BC';
 }
 
 function selectDevStrategy(id){
@@ -1554,8 +1568,13 @@ async function runDevBacktest(){
       if(devEqChart)devEqChart.destroy();
       devEqChart=new Chart(ctx,{type:'line',data:{labels:d.equity_curve.map(p=>p.date),datasets:[{data:d.equity_curve.map(p=>p.value),borderColor:'#00ff88',borderWidth:2,pointRadius:0,fill:true,backgroundColor:'rgba(0,255,136,0.04)',tension:0.1}]},options:{responsive:true,animation:{duration:1200},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>'$'+c.raw.toLocaleString()}}},scales:{x:{ticks:{color:'#555',maxTicksLimit:8,font:{family:'Share Tech Mono'}},grid:{color:'rgba(255,255,255,0.03)'}},y:{ticks:{color:'#555',callback:v=>'$'+v.toLocaleString(),font:{family:'Share Tech Mono'}},grid:{color:'rgba(255,255,255,0.03)'}}}}});
     }
+    // No-trades check
+    if(d.no_trades){
+      document.getElementById('dev-bt-results').innerHTML=`<div style="padding:30px;text-align:center"><div style="font-size:2rem;margin-bottom:8px">&#8505;</div><div style="font-family:'Inter',sans-serif;font-size:14px;color:#E8E8E8;margin-bottom:8px">No trades generated</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#9A9AB0;line-height:1.6;max-width:400px;margin:0 auto">${d.no_trades_message||'Try adjusting parameters or a longer period.'}</div></div>`;
+      document.getElementById('dev-bt-results').style.display='block';
+      return;
+    }
     document.getElementById('dev-bt-results').style.display='block';
-    // Store for optimize
     window._lastDevBt=d;
   }catch(e){alert('Backtest error: '+e.message);}
 }
@@ -1647,50 +1666,41 @@ function getMarketInfo(symbol){
 }
 async function loadDeploySummary(){
   if(!EMAIL)return;
-  // Show IBOT journey if available
-  const ib=window.ibotState;
-  const jEl=document.getElementById('ibot-journey');
-  if(ib.ideation||ib.backtest||ib.optimize){
-    jEl.style.display='block';
-    document.getElementById('ij-i').style.color=ib.ideation?'var(--green)':'var(--dim)';
-    document.getElementById('ij-i').textContent=ib.ideation?'✓ I':'○ I';
-    document.getElementById('ij-b').style.color=ib.backtest?'var(--green)':'var(--dim)';
-    document.getElementById('ij-b').textContent=ib.backtest?'✓ B':'○ B';
-    document.getElementById('ij-o').style.color=ib.optimize?'var(--green)':'var(--dim)';
-    document.getElementById('ij-o').textContent=ib.optimize?'✓ O':'○ O';
-    let sum='';
-    if(ib.ideation)sum+=ib.ideation.symbol+' | '+ib.ideation.indicator;
-    if(ib.backtest)sum+=' | Return: '+ib.backtest.return_pct+'% | Sharpe: '+ib.backtest.sharpe;
-    if(ib.optimize)sum+=' | Best: '+JSON.stringify(ib.optimize.best_params||{}).substring(0,40);
-    document.getElementById('ij-summary').textContent=sum;
-  }else{jEl.style.display='none';}
   try{
     const r=await fetch(API+'/api/strategies/'+encodeURIComponent(EMAIL));const d=await r.json();
-    const active=(d.strategies||[]).filter(s=>s.is_active);
+    const all=d.strategies||[];
+    const active=all.filter(s=>s.is_active);
+    // Strategy table
+    const tbl=document.getElementById('deploy-strat-table');
+    if(!all.length){tbl.innerHTML='<p style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:.85rem;text-align:center;padding:40px">No strategies saved yet. Go to <a href="#" onclick="switchTab(\'develop\');return false" style="color:var(--cyan)">Develop</a> to create one.</p>';return;}
+    let h='<table style="width:100%;border-collapse:collapse;font-family:Inter,sans-serif;font-size:12px"><thead><tr style="border-bottom:1px solid #222"><th style="text-align:left;padding:8px;color:#666;font-size:10px">Strategy</th><th style="padding:8px;color:#666;font-size:10px">Symbol</th><th style="padding:8px;color:#666;font-size:10px">Type</th><th style="padding:8px;color:#666;font-size:10px">Status</th><th style="padding:8px;color:#666;font-size:10px">Action</th></tr></thead><tbody>';
+    all.forEach(s=>{
+      const isActive=s.is_active;
+      const ss=SEC_STYLE[s.mode]||SEC_STYLE['trend_following']||{badge:'#888',bg:'#1a1a2e'};
+      const cat=s.library_id||(s.conditions||{}).type||s.mode||'custom';
+      h+=`<tr style="border-bottom:1px solid #111"><td style="padding:10px 8px;color:#ddd">${s.strategy_name||s.strategy_id}</td><td style="padding:10px 8px;color:var(--cyan)">${s.symbol}</td><td style="padding:10px 8px"><span style="font-size:9px;padding:2px 6px;border-radius:3px;background:#1a1a2e;color:#888">${cat}</span></td><td style="padding:10px 8px">${isActive?'<span style="color:var(--green);font-size:10px">● LIVE</span>':'<span style="color:#555;font-size:10px">○ Draft</span>'}</td><td style="padding:10px 8px">${isActive?`<button onclick="toggleStrat('${s.strategy_id}',false)" style="background:none;border:1px solid #333;color:#888;font-size:10px;padding:3px 8px;border-radius:3px;cursor:pointer">Stop</button>`:`<button onclick="toggleStrat('${s.strategy_id}',true)" style="background:none;border:1px solid var(--cyan);color:var(--cyan);font-size:10px;padding:3px 8px;border-radius:3px;cursor:pointer">Enable</button>`}</td></tr>`;
+    });
+    h+='</tbody></table>';
+    tbl.innerHTML=h;
+    // Advanced section list
     const list=document.getElementById('deploy-strat-list');
-    if(!active.length){list.innerHTML='<p style="color:var(--dim)">No active strategies.</p>';return;}
-    list.innerHTML=active.map(s=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffffff08;font-family:'Share Tech Mono',monospace;font-size:.8rem"><span>${s.strategy_name||s.strategy_id} <span class="badge ${s.mode||'library'}" style="margin-left:6px">${(s.mode||'library').toUpperCase()}</span></span><span style="color:var(--cyan)">${s.symbol}</span></div>`).join('');
-
+    if(list)list.innerHTML=active.map(s=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #111;font-size:.8rem"><span>${s.strategy_name||s.strategy_id}</span><span style="color:var(--cyan)">${s.symbol}</span></div>`).join('')||'<p style="color:var(--dim);font-size:.8rem">No active strategies.</p>';
     // Market hours
-    const primarySymbol=active[0]?active[0].symbol:'';
-    const mi=getMarketInfo(primarySymbol);
+    const ps=active[0]?active[0].symbol:'';
+    const mi=getMarketInfo(ps);
     document.getElementById('deploy-market-info').innerHTML=`<span>${mi.schedule}</span><span>Now: ${mi.time}</span><span style="color:${mi.isOpen?'var(--green)':'var(--yellow)'};font-weight:700">${mi.isOpen?'OPEN':'CLOSED'}</span>`;
-
-    // Show screener panel if any famous bot is active
-    const FAMOUS_IDS=['BUFFETT_BOT','GRAHAM_BOT','LIVERMORE_BOT','DALIO_BOT','SIMONS_BOT','TURTLE_TRADER','SOROS_BOT'];
-    const hasFamous=active.some(s=>FAMOUS_IDS.includes(s.library_id)||FAMOUS_IDS.includes((s.conditions||{}).type));
-    document.getElementById('screener-panel').style.display=hasFamous?'block':'none';
-    if(hasFamous){loadScreenerResults(active);}
-
     // Bot status
     const sr=await fetch(API+'/api/status/'+encodeURIComponent(EMAIL));const sd=await sr.json();
     const bs=sd.bot_status||'stopped';
     const dot=document.getElementById('deploy-dot');
     const stEl=document.getElementById('deploy-status');
-    if(bs==='running'){dot.style.background='var(--green)';dot.style.animation='pulse 1.5s infinite';stEl.textContent='RUNNING';stEl.style.color='var(--green)';}
-    else if(bs==='error'){dot.style.background='var(--red)';dot.style.animation='pulse 1.5s infinite';stEl.textContent='ERROR';stEl.style.color='var(--red)';}
-    else{dot.style.background='var(--dim)';dot.style.animation='none';stEl.textContent='STOPPED';stEl.style.color='var(--dim)';}
-    document.getElementById('deploy-pid').textContent=sd.pid||'—';
+    if(dot&&stEl){
+      if(bs==='running'){dot.style.background='var(--green)';dot.style.animation='pulse 1.5s infinite';stEl.textContent='RUNNING';stEl.style.color='var(--green)';}
+      else if(bs==='error'){dot.style.background='var(--red)';dot.style.animation='pulse 1.5s infinite';stEl.textContent='ERROR';stEl.style.color='var(--red)';}
+      else{dot.style.background='var(--dim)';dot.style.animation='none';stEl.textContent='STOPPED';stEl.style.color='var(--dim)';}
+    }
+    const pidEl=document.getElementById('deploy-pid');
+    if(pidEl)pidEl.textContent=sd.pid?'PID: '+sd.pid:'';
   }catch(e){console.error(e);}
 }
 const FAMOUS_IDS_ALL=['BUFFETT_BOT','GRAHAM_BOT','LIVERMORE_BOT','DALIO_BOT','SIMONS_BOT','TURTLE_TRADER','SOROS_BOT'];
