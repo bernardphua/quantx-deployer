@@ -234,6 +234,35 @@ async def health():
     return {"ok": True}
 
 
+@app.get("/api/debug-fmp")
+async def debug_fmp():
+    import requests as _req
+    key = os.environ.get("FMP_API_KEY", "")
+    if not key:
+        return {"error": "FMP_API_KEY not set", "key_len": 0}
+    results = {}
+    tests = {
+        "v3_1min": f"https://financialmodelingprep.com/api/v3/historical-chart/1min/AAPL?apikey={key}&limit=3",
+        "v3_5min": f"https://financialmodelingprep.com/api/v3/historical-chart/5min/AAPL?apikey={key}&limit=3",
+        "v3_30min": f"https://financialmodelingprep.com/api/v3/historical-chart/30min/AAPL?apikey={key}&limit=3",
+        "v3_1hour": f"https://financialmodelingprep.com/api/v3/historical-chart/1hour/AAPL?apikey={key}&limit=3",
+        "stable_1min": f"https://financialmodelingprep.com/stable/historical-chart/1min/AAPL?apikey={key}&limit=3",
+        "stable_5min": f"https://financialmodelingprep.com/stable/historical-chart/5min/AAPL?apikey={key}&limit=3",
+        "stable_30min": f"https://financialmodelingprep.com/stable/historical-chart/30min/AAPL?apikey={key}&limit=3",
+        "stable_daily": f"https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=AAPL&limit=3&apikey={key}",
+        "v3_daily": f"https://financialmodelingprep.com/api/v3/historical-price-full/AAPL?apikey={key}&timeseries=3",
+    }
+    for name, url in tests.items():
+        try:
+            r = _req.get(url, timeout=10)
+            d = r.json() if r.status_code == 200 else None
+            bars = len(d) if isinstance(d, list) else (len(d.get("historical", [])) if isinstance(d, dict) and "historical" in d else 0)
+            results[name] = {"status": r.status_code, "bars": bars}
+        except Exception as e:
+            results[name] = {"status": "error", "msg": str(e)[:60]}
+    return {"key_set": True, "key_len": len(key), "tests": results}
+
+
 @app.get("/api/debug-env")
 async def debug_env():
     return {

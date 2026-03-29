@@ -125,14 +125,31 @@ def fetch_ohlcv(symbol, timeframe="1day", limit=1260):
         save_to_r2(symbol, "1week", bars)
         return bars[:limit] if limit else bars, "live"
     elif timeframe in INTRADAY:
-        url = f"{FMP_V3}/historical-chart/{timeframe}/{fmp_sym}?apikey={fmp_key}"
+        # Try multiple FMP paths — v3, stable, then v3 with /full
+        data = None
+        for base in [FMP_V3, FMP_BASE]:
+            url = f"{base}/historical-chart/{timeframe}/{fmp_sym}?apikey={fmp_key}"
+            print(f"[BACKTEST] Trying: {url[:80]}...")
+            try:
+                r = requests.get(url, timeout=30)
+                if r.status_code == 200:
+                    data = r.json()
+                    if data and isinstance(data, list) and len(data) > 0:
+                        print(f"[BACKTEST] Success via {base}")
+                        break
+                    data = None
+                else:
+                    print(f"[BACKTEST] {base} returned {r.status_code}")
+            except Exception as e:
+                print(f"[BACKTEST] {base} error: {e}")
+        if not data:
+            raise ValueError(f"Intraday {timeframe} unavailable for {symbol}. HTTP 403/404 from FMP. Try 1day timeframe.")
     else:
-        # 1day (default) — /stable/ endpoint works for daily
+        # 1day (default)
         url = f"{FMP_BASE}/historical-price-eod/full?symbol={fmp_sym}&limit={limit}&apikey={fmp_key}"
-
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
-    data = r.json()
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        data = r.json()
     if not data or not isinstance(data, list):
         raise ValueError(f"No data for {symbol} (FMP: {fmp_sym}). Check symbol is valid.")
 

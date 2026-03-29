@@ -1576,7 +1576,15 @@ async function runDevBacktest(){
     }
     document.getElementById('dev-bt-results').style.display='block';
     window._lastDevBt=d;
-  }catch(e){alert('Backtest error: '+e.message);}
+  }catch(e){
+    const msg=e.message||'';
+    if(msg.includes('403')||msg.includes('unavailable')||msg.includes('Intraday')){
+      // Show intraday unavailable panel
+      const re=document.getElementById('dev-bt-results');
+      re.innerHTML=`<div style="padding:24px;text-align:center;background:rgba(255,215,0,.04);border:1px solid rgba(255,215,0,.2);border-radius:8px"><div style="font-size:1.5rem;margin-bottom:8px">&#9888;</div><div style="font-family:'Inter',sans-serif;font-size:13px;color:#E8E8E8;margin-bottom:8px">Intraday data unavailable</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#9A9AB0;margin-bottom:12px">The selected timeframe is not available for this symbol on the current data plan. Try daily (1d) instead.</div><button onclick="document.getElementById('dev-timeframe').value='1day';runDevBacktest()" class="btn btn-primary btn-sm">Switch to 1d and retry</button></div>`;
+      re.style.display='block';
+    }else{alert('Backtest error: '+msg);}
+  }
 }
 
 function showDevOptimize(){
