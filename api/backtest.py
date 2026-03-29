@@ -171,6 +171,30 @@ def fetch_with_lock(symbol, timeframe, limit=1260):
             raise  # re-raise if no fallback available
 
 
+# ── FMP Fundamentals ─────────────────────────────────────────────────────────
+
+def get_fundamentals(symbol, limit=5):
+    """Fetch key financial metrics from FMP for fundamental strategies."""
+    fmp_key = _get_fmp_key()
+    if not fmp_key:
+        return None
+    clean = _fmp_symbol(symbol)
+    endpoints = {
+        "metrics": f"{FMP_V3}/key-metrics/{clean}?limit={limit}&apikey={fmp_key}",
+        "ratios": f"{FMP_V3}/ratios/{clean}?limit={limit}&apikey={fmp_key}",
+        "metrics_ttm": f"{FMP_V3}/key-metrics-ttm/{clean}?apikey={fmp_key}",
+    }
+    result = {}
+    for name, url in endpoints.items():
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                result[name] = r.json()
+        except Exception:
+            pass
+    return result if result else None
+
+
 # ── Prewarm ──────────────────────────────────────────────────────────────────
 
 PREWARM_SYMBOLS = [
@@ -661,3 +685,159 @@ def run_optimization(bars, strategy, param_grid, initial_capital=10000):
             pass
     results.sort(key=lambda x: x["metrics"]["sharpe_ratio"], reverse=True)
     return {"total_combinations": len(combos), "results": results, "best": results[0] if results else None}
+
+
+# ── Custom Script Backtest ───────────────────────────────────────────────────
+
+_FORBIDDEN_TOKENS = ["import ", "from ", "__", "open(", "exec(", "eval(", "compile(",
+                     "os.", "sys.", "subprocess", "shutil", "pathlib", "socket",
+                     "requests.", "urllib", "http."]
+
+
+def _calc_bbands(closes, period=20, std_dev=2.0):
+    """Bollinger Bands: returns (upper, mid, lower) lists."""
+    sma = calc_sma(closes, period)
+    upper, lower = [], []
+    for i in range(len(closes)):
+        if sma[i] is None:
+            upper.append(None); lower.append(None)
+        else:
+            window = closes[max(0, i - period + 1):i + 1]
+            avg = sum(window) / len(window)
+            sd = (sum((x - avg) ** 2 for x in window) / len(window)) ** 0.5
+            upper.append(sma[i] + std_dev * sd)
+            lower.append(sma[i] - std_dev * sd)
+    return upper, sma, lower
+
+
+def _calc_macd(closes, fast=12, slow=26, signal=9):
+    """MACD: returns (macd_line, signal_line, histogram) lists."""
+    fe = calc_ema(closes, fast)
+    se = calc_ema(closes, slow)
+    macd_line = [None if f is None or s is None else f - s for f, s in zip(fe, se)]
+    valid = [x for x in macd_line if x is not None]
+    sig_line = calc_ema(valid, signal) if len(valid) >= signal else [None] * len(valid)
+    # Pad signal line to match macd_line length
+    pad = len(macd_line) - len(sig_line)
+    sig_line = [None] * pad + sig_line
+    hist = [None if m is None or s is None else m - s for m, s in zip(macd_line, sig_line)]
+    return macd_line, sig_line, hist
+
+
+def run_backtest_script(bars, script, initial_capital=10000):
+    """Run a custom user script against bar data in a sandboxed exec()."""
+    if not script or not script.strip():
+        raise ValueError("Script is empty")
+    # Security check
+    for token in _FORBIDDEN_TOKENS:
+        if token in script:
+            raise ValueError(f"Forbidden token in script: '{token.strip()}'. Custom scripts cannot use imports or system calls.")
+
+    # Build data lists
+    closes = [b["close"] for b in bars]
+    opens = [b["open"] for b in bars]
+    highs = [b["high"] for b in bars]
+    lows = [b["low"] for b in bars]
+    volumes = [b["volume"] for b in bars]
+    dates = [b["date"] for b in bars]
+
+    # Sandbox globals
+    sandbox = {
+        "__builtins__": {
+            "len": len, "range": range, "list": list, "dict": dict, "tuple": tuple,
+            "min": min, "max": max, "abs": abs, "sum": sum, "round": round,
+            "zip": zip, "enumerate": enumerate, "print": print, "int": int, "float": float,
+            "True": True, "False": False, "None": None, "bool": bool, "str": str,
+            "sorted": sorted, "reversed": reversed, "map": map, "filter": filter,
+        },
+        "calc_ema": calc_ema,
+        "calc_sma": calc_sma,
+        "calc_rsi": calc_rsi,
+        "calc_atr": lambda period=14: calc_atr(highs, lows, closes, period),
+        "calc_bbands": _calc_bbands,
+        "calc_macd": _calc_macd,
+        # Data arrays
+        "opens": opens, "highs": highs, "lows": lows, "closes": closes,
+        "volumes": volumes, "dates": dates, "bars": bars,
+    }
+
+    try:
+        exec(script, sandbox)
+    except Exception as e:
+        raise ValueError(f"Script error: {type(e).__name__}: {e}")
+
+    gen_fn = sandbox.get("generate_signals")
+    if not gen_fn:
+        raise ValueError("Script must define a 'generate_signals()' function")
+
+    try:
+        signals = gen_fn()
+    except Exception as e:
+        raise ValueError(f"generate_signals() error: {type(e).__name__}: {e}")
+
+    if not isinstance(signals, list) or len(signals) != len(bars):
+        raise ValueError(f"generate_signals() must return a list of {len(bars)} values, got {type(signals).__name__} length {len(signals) if isinstance(signals, list) else '?'}")
+
+    # Convert signals to buy/sell/None format
+    bt_signals = []
+    for s in signals:
+        if s == 1 or s == "buy":
+            bt_signals.append("buy")
+        elif s == -1 or s == "sell":
+            bt_signals.append("sell")
+        else:
+            bt_signals.append(None)
+
+    # Run through standard backtest engine
+    capital, position, entry_px = initial_capital, 0, 0.0
+    trades, equity = [], []
+    for i, (bar, sig) in enumerate(zip(bars, bt_signals)):
+        price = bar["close"]
+        if sig == "buy" and position == 0:
+            shares = int(capital / price)
+            if shares > 0:
+                position, entry_px = shares, price
+                capital -= shares * price
+                trades.append({"date": bar["date"], "side": "buy", "price": round(price, 4), "shares": shares, "pnl": None})
+        elif sig == "sell" and position > 0:
+            pnl = (price - entry_px) * position
+            capital += position * price
+            trades.append({"date": bar["date"], "side": "sell", "price": round(price, 4), "shares": position, "pnl": round(pnl, 2)})
+            position, entry_px = 0, 0.0
+        equity.append({"date": bar["date"], "value": round(capital + position * price, 2)})
+
+    if position > 0:
+        lp = bars[-1]["close"]
+        pnl = (lp - entry_px) * position
+        capital += position * lp
+        trades.append({"date": bars[-1]["date"], "side": "sell (close)", "price": round(lp, 4), "shares": position, "pnl": round(pnl, 2)})
+
+    final = capital
+    ret = (final - initial_capital) / initial_capital * 100
+    ny = len(bars) / 252
+    cagr = ((final / initial_capital) ** (1 / max(ny, 0.1)) - 1) * 100
+    rets = [(equity[i]["value"] - equity[i - 1]["value"]) / equity[i - 1]["value"]
+            for i in range(1, len(equity)) if equity[i - 1]["value"] > 0]
+    avg_r = sum(rets) / len(rets) if rets else 0
+    std_r = (sum((r - avg_r) ** 2 for r in rets) / len(rets)) ** 0.5 if rets else 0
+    sharpe = (avg_r / std_r * (252 ** 0.5)) if std_r > 0 else 0
+    peak, max_dd = initial_capital, 0.0
+    for p in equity:
+        if p["value"] > peak: peak = p["value"]
+        dd = (peak - p["value"]) / peak * 100
+        max_dd = max(max_dd, dd)
+    sells = [t for t in trades if t["pnl"] is not None]
+    wins = sum(1 for t in sells if t["pnl"] > 0)
+    wr = (wins / len(sells) * 100) if sells else 0
+
+    step = max(1, len(equity) // 500)
+    eq_s = equity[::step]
+    if equity and eq_s[-1] != equity[-1]:
+        eq_s.append(equity[-1])
+
+    return {
+        "metrics": {"total_return_pct": round(ret, 2), "cagr_pct": round(cagr, 2), "sharpe_ratio": round(sharpe, 2),
+                     "max_drawdown_pct": round(max_dd, 2), "win_rate_pct": round(wr, 1), "total_trades": len(sells),
+                     "final_value": round(final, 2), "initial_capital": initial_capital, "bars_tested": len(bars)},
+        "equity_curve": eq_s, "trades": trades[-50:],
+    }

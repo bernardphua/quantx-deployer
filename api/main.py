@@ -102,6 +102,14 @@ class OptimizeReq(BaseModel):
     limit: int = 1260
 
 
+class ScriptBacktestReq(BaseModel):
+    symbol: str = "TQQQ.US"
+    timeframe: str = "1day"
+    script: str = ""
+    initial_capital: float = 10000
+    limit: int = 1260
+
+
 class ScreenNowReq(BaseModel):
     email: str
     strategy_id: str
@@ -486,6 +494,23 @@ async def backtest_optimize(body: OptimizeReq):
         result = run_optimization(bars, body.strategy, body.param_grid, body.initial_capital)
         result["source"] = source
         result["symbol"] = body.symbol
+        return result
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(_executor, _run)
+        return result
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/backtest/run-script")
+async def backtest_run_script(body: ScriptBacktestReq):
+    from api.backtest import fetch_ohlcv, run_backtest_script
+    def _run():
+        bars, source = fetch_ohlcv(body.symbol, body.timeframe, body.limit)
+        result = run_backtest_script(bars, body.script, body.initial_capital)
+        result["source"] = source
+        result["symbol"] = body.symbol
+        result["strategy"] = "CUSTOM_SCRIPT"
         return result
     try:
         result = await asyncio.get_event_loop().run_in_executor(_executor, _run)

@@ -254,8 +254,18 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <div style="display:grid;grid-template-columns:320px 1fr;gap:20px;min-height:600px">
 <!-- LEFT: Strategy Library -->
 <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;overflow-y:auto;max-height:700px">
+<div style="display:flex;gap:4px;margin-bottom:10px"><button id="dev-mode-lib" class="btn btn-primary" style="flex:1;font-size:.65rem;padding:5px 0" onclick="setDevMode('library')">LIBRARY</button><button id="dev-mode-script" class="btn" style="flex:1;font-size:.65rem;padding:5px 0;background:var(--surface2);border:1px solid var(--border);color:var(--dim)" onclick="setDevMode('script')">SCRIPT</button></div>
+<div id="dev-lib-panel">
 <h3 style="font-family:'Orbitron',monospace;font-size:.7rem;color:var(--cyan);margin-bottom:10px;letter-spacing:2px">STRATEGY LIBRARY</h3>
 <div id="dev-lib-list"></div>
+</div>
+<div id="dev-script-panel" style="display:none">
+<h3 style="font-family:'Orbitron',monospace;font-size:.7rem;color:var(--cyan);margin-bottom:10px;letter-spacing:2px">CUSTOM SCRIPT</h3>
+<div class="form-group" style="margin-bottom:8px"><label style="font-size:.65rem">Template</label><select id="dev-script-tpl" onchange="loadScriptTemplate()" style="font-size:.75rem"><option value="ema">EMA Crossover</option><option value="rsi">RSI Mean Reversion</option><option value="bband">Bollinger Band Breakout</option></select></div>
+<textarea id="dev-script-code" spellcheck="false" style="width:100%;min-height:320px;background:#0A0A18;color:#4ECBA0;font-family:'Share Tech Mono',monospace;font-size:12px;padding:12px;border:0.5px solid #2A2A45;border-radius:8px;resize:vertical;line-height:1.5;tab-size:4"></textarea>
+<div id="dev-script-error" style="display:none;margin-top:6px;padding:8px;background:rgba(255,0,0,.08);border:1px solid rgba(255,0,0,.2);border-radius:6px;font-family:'Share Tech Mono',monospace;font-size:.7rem;color:#ff5555"></div>
+<div id="dev-script-ok" style="display:none;margin-top:6px;padding:8px;background:rgba(0,255,0,.08);border:1px solid rgba(0,255,0,.2);border-radius:6px;font-family:'Share Tech Mono',monospace;font-size:.7rem;color:#55ff55"></div>
+</div>
 </div>
 <!-- RIGHT: Config + Results + Optimize -->
 <div>
@@ -1090,10 +1100,13 @@ function selectLib(id){
   const recSyms=selectedLib.recommended_symbols||[];
   const recEl=document.getElementById('pm-rec-syms');
   recEl.innerHTML=recSyms.map(s=>`<span class="quick-sym" onclick="fillSym('pm','${s}')" style="border-color:var(--magenta);color:var(--magenta)">${s}</span>`).join('');
-  // Pre-fill with first recommended and trigger search
+  // Pre-fill with first recommended ONLY if symbol field is empty/default
   const recSym=recSyms[0]||'';
-  document.getElementById('pm-symbol').value=recSym;
-  if(recSym){fillSym('pm',recSym);}
+  const curPmSym=(document.getElementById('pm-symbol').value||'').trim();
+  if(!curPmSym||['TQQQ.US','SPY.US','AAPL.US','AAPL',''].includes(curPmSym)){
+    document.getElementById('pm-symbol').value=recSym;
+    if(recSym){fillSym('pm',recSym);}
+  }
   // Arena set by search callback
   // Populate timeframe dropdown (only allowed)
   const tf=document.getElementById('pm-tf');
@@ -1519,8 +1532,91 @@ function backtestBest(){
 }
 
 /* ── Develop Tab ───────────────────────────────────────────────────────── */
-let devLimit=1260,devSelectedStrat=null,devEqChart=null;
+let devLimit=1260,devSelectedStrat=null,devEqChart=null,devMode='library';
+
 function setDevLimit(v,el){devLimit=v;el.parentElement.querySelectorAll('button').forEach(b=>{b.style.background='var(--surface2)';b.style.borderColor='var(--border)';b.style.color='var(--dim)';});el.style.background='rgba(0,240,255,.1)';el.style.borderColor='var(--cyan)';el.style.color='var(--cyan)';}
+
+function setDevMode(mode){
+  devMode=mode;
+  const libBtn=document.getElementById('dev-mode-lib'),scrBtn=document.getElementById('dev-mode-script');
+  const libP=document.getElementById('dev-lib-panel'),scrP=document.getElementById('dev-script-panel');
+  const paramsC=document.getElementById('dev-params-container');
+  if(mode==='library'){
+    libBtn.className='btn btn-primary';libBtn.style.cssText='flex:1;font-size:.65rem;padding:5px 0';
+    scrBtn.className='btn';scrBtn.style.cssText='flex:1;font-size:.65rem;padding:5px 0;background:var(--surface2);border:1px solid var(--border);color:var(--dim)';
+    libP.style.display='';scrP.style.display='none';
+    if(paramsC)paramsC.style.display='';
+    document.getElementById('dev-strat-name').textContent=devSelectedStrat?devSelectedStrat.name:'Select a strategy';
+  } else {
+    scrBtn.className='btn btn-primary';scrBtn.style.cssText='flex:1;font-size:.65rem;padding:5px 0';
+    libBtn.className='btn';libBtn.style.cssText='flex:1;font-size:.65rem;padding:5px 0;background:var(--surface2);border:1px solid var(--border);color:var(--dim)';
+    libP.style.display='none';scrP.style.display='';
+    if(paramsC)paramsC.style.display='none';
+    document.getElementById('dev-strat-name').textContent='Custom Script';
+    document.getElementById('dev-strat-badge').textContent='SCRIPT';
+    document.getElementById('dev-strat-badge').style.cssText='font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(78,203,160,.15);color:#4ECBA0';
+    if(!document.getElementById('dev-script-code').value)loadScriptTemplate();
+  }
+}
+
+const SCRIPT_TEMPLATES={
+ema:`# EMA Crossover Strategy
+# Buy when fast EMA crosses above slow EMA, sell on cross below
+
+def generate_signals():
+    ema_fast = calc_ema(closes, 10)
+    ema_slow = calc_ema(closes, 30)
+    signals = [0] * len(closes)
+    for i in range(1, len(closes)):
+        if ema_fast[i] and ema_slow[i] and ema_fast[i-1] and ema_slow[i-1]:
+            if ema_fast[i] > ema_slow[i] and ema_fast[i-1] <= ema_slow[i-1]:
+                signals[i] = 1   # BUY
+            elif ema_fast[i] < ema_slow[i] and ema_fast[i-1] >= ema_slow[i-1]:
+                signals[i] = -1  # SELL
+    return signals`,
+rsi:`# RSI Mean Reversion Strategy
+# Buy when RSI drops below oversold level, sell when above overbought
+
+def generate_signals():
+    rsi = calc_rsi(closes, 14)
+    signals = [0] * len(closes)
+    for i in range(len(closes)):
+        if rsi[i] is None:
+            continue
+        if rsi[i] < 30:
+            signals[i] = 1   # BUY (oversold)
+        elif rsi[i] > 70:
+            signals[i] = -1  # SELL (overbought)
+    return signals`,
+bband:`# Bollinger Band Breakout Strategy
+# Buy when price touches lower band, sell when price touches upper band
+
+def generate_signals():
+    upper, mid, lower = calc_bbands(closes, 20, 2.0)
+    signals = [0] * len(closes)
+    for i in range(len(closes)):
+        if upper[i] is None or lower[i] is None:
+            continue
+        if closes[i] <= lower[i]:
+            signals[i] = 1   # BUY (at lower band)
+        elif closes[i] >= upper[i]:
+            signals[i] = -1  # SELL (at upper band)
+    return signals`,
+};
+
+function loadScriptTemplate(){
+  const tpl=document.getElementById('dev-script-tpl').value;
+  document.getElementById('dev-script-code').value=SCRIPT_TEMPLATES[tpl]||SCRIPT_TEMPLATES.ema;
+  document.getElementById('dev-script-error').style.display='none';
+  document.getElementById('dev-script-ok').style.display='none';
+}
+// Tab key inserts spaces in script editor
+document.addEventListener('DOMContentLoaded',function(){
+  const ta=document.getElementById('dev-script-code');
+  if(ta)ta.addEventListener('keydown',function(e){
+    if(e.key==='Tab'){e.preventDefault();const s=this.selectionStart,end=this.selectionEnd;this.value=this.value.substring(0,s)+'    '+this.value.substring(end);this.selectionStart=this.selectionEnd=s+4;}
+  });
+});
 
 function loadDevLibrary(){
   const el=document.getElementById('dev-lib-list');if(!el)return;
@@ -1570,8 +1666,9 @@ function selectDevStrategy(id){
   document.getElementById('dev-strat-name').textContent=s.name;
   document.getElementById('dev-strat-badge').textContent=s.category;
   document.getElementById('dev-strat-badge').style.cssText=`font-size:10px;padding:2px 8px;border-radius:4px;background:${ss.bg};color:${ss.badge}`;
-  // Recommended symbol
-  if(s.recommended_symbols&&s.recommended_symbols[0]){document.getElementById('dev-symbol').value=s.recommended_symbols[0];}
+  // Recommended symbol — only set if field is empty/default
+  const curDevSym=(document.getElementById('dev-symbol').value||'').trim();
+  if(s.recommended_symbols&&s.recommended_symbols[0]&&(!curDevSym||['TQQQ.US','SPY.US','AAPL.US','AAPL',''].includes(curDevSym))){document.getElementById('dev-symbol').value=s.recommended_symbols[0];}
   // Default timeframe
   const tfSel=document.getElementById('dev-timeframe');
   const dtf=s.default_timeframe||'1day';
@@ -1607,6 +1704,7 @@ function showDevError(icon,title,msg,actions){
   if(e('dev-err-actions'))e('dev-err-actions').innerHTML=actions||'';
 }
 async function runDevBacktest(){
+  if(devMode==='script'){return runDevScriptBacktest();}
   if(!devSelectedStrat){showDevError('\u26A0','No strategy selected','Click a strategy in the left panel first.');return;}
   const sym=document.getElementById('dev-symbol').value.trim();
   const tf=document.getElementById('dev-timeframe').value;
@@ -1645,6 +1743,49 @@ async function runDevBacktest(){
       showDevError('\u26A0','Intraday data unavailable','The selected timeframe is not available. Try daily (1d) instead.','<button onclick="document.getElementById(\'dev-timeframe\').value=\'1day\';runDevBacktest()" class="btn btn-primary btn-sm">Switch to 1d and retry</button>');
     }else{
       showDevError('\u274C','Backtest error',msg);
+    }
+  }
+}
+
+async function runDevScriptBacktest(){
+  const script=(document.getElementById('dev-script-code').value||'').trim();
+  if(!script){showDevError('\u26A0','Empty script','Write a strategy script with a generate_signals() function.');return;}
+  const sym=document.getElementById('dev-symbol').value.trim();
+  const tf=document.getElementById('dev-timeframe').value;
+  const cap=parseFloat(document.getElementById('dev-capital').value)||10000;
+  const errEl=document.getElementById('dev-script-error');
+  const okEl=document.getElementById('dev-script-ok');
+  errEl.style.display='none';okEl.style.display='none';
+  showDevState('loading');
+  document.getElementById('dev-opt-panel').style.display='none';
+  try{
+    const r=await fetch(API+'/api/backtest/run-script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,script:script,initial_capital:cap,timeframe:tf,limit:devLimit})});
+    const d=await r.json();if(!r.ok)throw new Error(d.detail||'Failed');
+    if(d.no_trades){showDevError('\u2139','No trades generated','Script generated no buy/sell signals. Check your generate_signals() logic.');return;}
+    okEl.textContent='Script executed successfully';okEl.style.display='';
+    const m=d.metrics;
+    showDevState('results');
+    animM('dev-m-ret',m.total_return_pct,'%');animM('dev-m-cagr',m.cagr_pct,'%');
+    animM('dev-m-sharpe',m.sharpe_ratio,'');animM('dev-m-dd',-m.max_drawdown_pct,'%');animM('dev-m-wr',m.win_rate_pct,'%');
+    const trEl=document.getElementById('dev-m-trades');if(trEl){trEl.textContent=m.total_trades||0;trEl.style.color='#E0E0F0';}
+    const badge=document.getElementById('dev-bt-badge');
+    if(badge){badge.textContent='SCRIPT';badge.style.cssText='padding:3px 10px;border-radius:4px;font-family:Share Tech Mono,monospace;font-size:.65rem;background:rgba(78,203,160,.15);color:#4ECBA0';}
+    const info=document.getElementById('dev-bt-info');
+    if(info)info.textContent=d.symbol+' | Custom Script | '+m.bars_tested+' bars | $'+m.initial_capital+' -> $'+m.final_value;
+    if(typeof Chart!=='undefined'){
+      const cvs=document.getElementById('dev-equity-chart');
+      if(cvs){const ctx=cvs.getContext('2d');if(devEqChart)devEqChart.destroy();
+      devEqChart=new Chart(ctx,{type:'line',data:{labels:d.equity_curve.map(p=>p.date),datasets:[{data:d.equity_curve.map(p=>p.value),borderColor:'#4ECBA0',borderWidth:2,pointRadius:0,fill:true,backgroundColor:'rgba(78,203,160,0.04)',tension:0.1}]},options:{responsive:true,animation:{duration:1200},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>'$'+c.raw.toLocaleString()}}},scales:{x:{ticks:{color:'#555',maxTicksLimit:8,font:{family:'Share Tech Mono'}},grid:{color:'rgba(255,255,255,0.03)'}},y:{ticks:{color:'#555',callback:v=>'$'+v.toLocaleString(),font:{family:'Share Tech Mono'}},grid:{color:'rgba(255,255,255,0.03)'}}}}})}
+    }
+    window._lastDevBt=d;
+    setTimeout(()=>{document.getElementById('dev-section2').scrollIntoView({behavior:'smooth',block:'start'});},300);
+  }catch(e){
+    const msg=e.message||'';
+    errEl.textContent=msg;errEl.style.display='';
+    if(msg.includes('403')||msg.includes('unavailable')||msg.includes('Intraday')){
+      showDevError('\u26A0','Intraday data unavailable','Try daily (1d) instead.','<button onclick="document.getElementById(\'dev-timeframe\').value=\'1day\';runDevBacktest()" class="btn btn-primary btn-sm">Switch to 1d and retry</button>');
+    }else{
+      showDevError('\u274C','Script error',msg);
     }
   }
 }
