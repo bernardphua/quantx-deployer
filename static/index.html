@@ -556,6 +556,7 @@ function switchTab(n){
   document.querySelectorAll('.tab-content').forEach(tc=>tc.classList.remove('active'));
   document.getElementById('tab-'+n).classList.add('active');
   if(n==='strategies')loadStrategies();
+  if(n==='optimize'){populateOptStrategies();try{var ot=JSON.parse(sessionStorage.getItem('opt_transfer')||'{}');if(ot.symbol)document.getElementById('opt-symbol').value=ot.symbol;if(ot.strategy){document.getElementById('opt-strategy').value=ot.strategy;renderOptRanges();}if(ot.capital)document.getElementById('opt-capital').value=ot.capital;if(ot.limit)optLimit=ot.limit;}catch(e){}}
   if(n==='deploy')loadDeploySummary();
   if(n==='dashboard')refreshDashboard();
   if(n!=='register')localStorage.setItem('qx_last_tab',n);
@@ -1220,7 +1221,8 @@ async function runBt(){
     animM('bt-maxdd',-m.max_drawdown_pct,'%');animM('bt-winrate',m.win_rate_pct,'%');animM('bt-trades',m.total_trades,'');
     document.getElementById('bt-source-badge').textContent=d.source==='cache'?'CACHED':'LIVE DATA';
     document.getElementById('bt-source-badge').style.cssText='padding:3px 10px;border-radius:4px;font-family:Share Tech Mono,monospace;font-size:.65rem;'+(d.source==='cache'?'background:rgba(0,240,255,.1);color:var(--cyan)':'background:rgba(0,255,136,.1);color:var(--green)');
-    document.getElementById('bt-info').textContent=d.symbol+' | '+m.bars_tested+' bars | $'+m.initial_capital+' -> $'+m.final_value;
+    const periodLabel={252:'1Y',504:'2Y',756:'3Y',1260:'5Y',2520:'10Y'}[btLimit]||btLimit+'bars';
+    document.getElementById('bt-info').textContent=d.symbol+' | '+m.bars_tested+' bars | '+periodLabel+' | $'+m.initial_capital+' -> $'+m.final_value;
     // Equity chart
     if(typeof Chart!=='undefined'){
       const ctx=document.getElementById('equity-chart').getContext('2d');
@@ -1246,7 +1248,7 @@ async function runOpt(){
   const combos=Object.values(pg).reduce((a,b)=>a*b.length,1);
   document.getElementById('bt-loading-msg').textContent='Testing '+combos+' combinations...';
   try{
-    const r=await fetch(API+'/api/backtest/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('bt-symbol').value.trim(),strategy:s,param_grid:pg,initial_capital:parseFloat(document.getElementById('bt-capital').value)||10000,timeframe:'1day',limit:1260})});
+    const r=await fetch(API+'/api/backtest/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('bt-symbol').value.trim(),strategy:s,param_grid:pg,initial_capital:parseFloat(document.getElementById('bt-capital').value)||10000,timeframe:'1day',limit:btLimit})});
     const d=await r.json();if(!r.ok)throw new Error(d.detail||'Failed');
     document.getElementById('bt-loading').style.display='none';
     if(d.best){document.getElementById('opt-best').innerHTML='BEST: '+JSON.stringify(d.best.params)+' | Return: '+d.best.metrics.total_return_pct+'% | Sharpe: '+d.best.metrics.sharpe_ratio;}
@@ -1358,12 +1360,8 @@ function buildOptGrid(){
 function goToOptimize(){
   const sym=document.getElementById('bt-symbol')?.value||'';
   const strat=document.getElementById('bt-strategy')?.value||'';
-  document.getElementById('opt-symbol').value=sym;
-  populateOptStrategies();
-  setTimeout(()=>{
-    const sel=document.getElementById('opt-strategy');
-    if(sel){sel.value=strat;renderOptRanges();}
-  },100);
+  const capital=document.getElementById('bt-capital')?.value||'10000';
+  sessionStorage.setItem('opt_transfer',JSON.stringify({symbol:sym,strategy:strat,capital:capital,limit:btLimit}));
   switchTab('optimize');
 }
 async function runOptFull(){
