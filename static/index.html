@@ -129,6 +129,7 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <div class="tabs">
 <div class="tab active" onclick="switchTab('register')">Register</div>
 <div class="tab" onclick="switchTab('strategies')">Strategies</div>
+<div class="tab" onclick="switchTab('backtest')">Backtest</div>
 <div class="tab" onclick="switchTab('deploy')">Deploy</div>
 <div class="tab" onclick="switchTab('dashboard')">Dashboard</div>
 <div class="tab" onclick="switchTab('options')" style="position:relative">Options <span style="position:absolute;top:-2px;right:-4px;font-size:.45rem;background:var(--magenta);color:#fff;padding:1px 4px;border-radius:3px;font-family:'Share Tech Mono',monospace">SOON</span></div>
@@ -341,6 +342,46 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 </div>
 </div>
 
+<!-- TAB: BACKTEST -->
+<div class="tab-content" id="tab-backtest">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<div style="display:grid;grid-template-columns:280px 1fr;gap:20px">
+<!-- Config panel -->
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px">
+<h3 style="font-family:'Orbitron',monospace;font-size:.8rem;color:var(--cyan);margin-bottom:16px">BACKTEST CONFIG</h3>
+<div class="form-group"><label>Symbol</label><input type="text" id="bt-symbol" value="AAPL" placeholder="AAPL, TQQQ, 0700.HK"></div>
+<div class="form-group"><label>Strategy</label><select id="bt-strategy" onchange="updateBtParams()"><option value="TURTLE">Turtle Trader</option><option value="EMA_CROSS">EMA Crossover</option><option value="RSI">RSI Reversion</option><option value="MACD">MACD Momentum</option></select></div>
+<div class="form-group"><label>Capital ($)</label><input type="number" id="bt-capital" value="10000"></div>
+<div id="bt-params-container"></div>
+<button onclick="runBt()" class="btn btn-primary" style="width:100%;margin-top:12px">BACKTEST</button>
+<button onclick="runOpt()" class="btn btn-magenta" style="width:100%;margin-top:8px;font-size:.6rem">OPTIMIZE</button>
+</div>
+<!-- Results panel -->
+<div>
+<div id="bt-results" style="display:none">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span id="bt-source-badge" style="padding:3px 10px;border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:.65rem"></span><span id="bt-info" style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim)"></span></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+<div class="card"><div class="label">RETURN</div><div class="value" id="bt-return" style="font-size:1.2rem">—</div></div>
+<div class="card"><div class="label">CAGR</div><div class="value" id="bt-cagr" style="font-size:1.2rem">—</div></div>
+<div class="card"><div class="label">SHARPE</div><div class="value" id="bt-sharpe" style="font-size:1.2rem">—</div></div>
+<div class="card"><div class="label">MAX DD</div><div class="value" id="bt-maxdd" style="font-size:1.2rem">—</div></div>
+<div class="card"><div class="label">WIN RATE</div><div class="value" id="bt-winrate" style="font-size:1.2rem">—</div></div>
+<div class="card"><div class="label">TRADES</div><div class="value" id="bt-trades" style="font-size:1.2rem">—</div></div>
+</div>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px"><canvas id="equity-chart" style="width:100%;height:280px"></canvas></div>
+<div class="table-wrap"><table><thead><tr><th>Date</th><th>Side</th><th>Price</th><th>Shares</th><th>PnL</th></tr></thead><tbody id="bt-trades-tbody"></tbody></table></div>
+</div>
+<!-- Optimize results -->
+<div id="opt-results" style="display:none;margin-top:20px">
+<div id="opt-best" style="background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.2);border-radius:6px;padding:12px;margin-bottom:12px;font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--yellow)"></div>
+<div class="table-wrap"><table><thead><tr><th>Params</th><th>Return</th><th>Sharpe</th><th>Win Rate</th><th>Max DD</th></tr></thead><tbody id="opt-table-body"></tbody></table></div>
+</div>
+<div id="bt-loading" style="display:none;text-align:center;padding:60px"><div class="spinner"></div><p style="color:var(--dim);margin-top:12px;font-family:'Share Tech Mono',monospace;font-size:.8rem" id="bt-loading-msg">Running backtest...</p></div>
+<div id="bt-empty" style="text-align:center;padding:60px"><p style="color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:.85rem">Select a symbol and strategy, then click BACKTEST</p></div>
+</div>
+</div>
+</div>
+
 <!-- TAB: DEPLOY -->
 <div class="tab-content" id="tab-deploy">
 <h2 style="font-family:'Orbitron',monospace;font-size:1rem;color:var(--cyan);margin-bottom:16px">DEPLOY MASTER BOT</h2>
@@ -468,7 +509,7 @@ function doLogout(){
 
 /* ── Tabs ─────────────────────────────────────────────────────────────── */
 function switchTab(n){
-  const tabs=['register','strategies','deploy','dashboard','options','settings'];
+  const tabs=['register','strategies','backtest','deploy','dashboard','options','settings'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===n));
   document.querySelectorAll('.tab-content').forEach(tc=>tc.classList.remove('active'));
   document.getElementById('tab-'+n).classList.add('active');
@@ -1047,6 +1088,84 @@ async function saveScript(){
     const d=await r.json();if(!r.ok)throw new Error(d.detail||'Failed');
     msg.textContent='Saved!';msg.className='msg ok';closeAllForms();loadStrategies();
   }catch(e){msg.textContent=e.message;msg.className='msg err';}
+}
+
+/* ── Backtest ──────────────────────────────────────────────────────────── */
+const BT_PARAMS={TURTLE:[{k:'entry_period',l:'Entry Period',d:20},{k:'exit_period',l:'Exit Period',d:10}],EMA_CROSS:[{k:'fast_period',l:'Fast EMA',d:10},{k:'slow_period',l:'Slow EMA',d:30}],RSI:[{k:'rsi_period',l:'RSI Period',d:14},{k:'oversold',l:'Oversold',d:30},{k:'overbought',l:'Overbought',d:70}],MACD:[{k:'fast',l:'Fast',d:12},{k:'slow',l:'Slow',d:26},{k:'signal_period',l:'Signal',d:9}]};
+function updateBtParams(){
+  const s=document.getElementById('bt-strategy').value;
+  const c=document.getElementById('bt-params-container');
+  const ps=BT_PARAMS[s]||[];
+  c.innerHTML=ps.map(p=>`<div class="form-group"><label>${p.l}</label><input type="number" id="btp-${p.k}" value="${p.d}"></div>`).join('');
+}
+updateBtParams();
+function getBtParams(){
+  const s=document.getElementById('bt-strategy').value;
+  const ps=BT_PARAMS[s]||[];const r={};
+  ps.forEach(p=>{const el=document.getElementById('btp-'+p.k);if(el)r[p.k]=parseFloat(el.value);});
+  return r;
+}
+let eqChart=null;
+function animM(id,target,suf){
+  const el=document.getElementById(id);if(!el)return;
+  const dur=800,st=performance.now();
+  function up(now){
+    const prog=Math.min((now-st)/dur,1),ease=1-Math.pow(1-prog,3);
+    const cur=target*ease;
+    el.style.color=target>=0?'var(--green)':'var(--red)';
+    el.textContent=(target%1===0?Math.round(cur):cur.toFixed(1))+suf;
+    if(prog<1)requestAnimationFrame(up);
+  }
+  requestAnimationFrame(up);
+}
+async function runBt(){
+  document.getElementById('bt-results').style.display='none';
+  document.getElementById('opt-results').style.display='none';
+  document.getElementById('bt-empty').style.display='none';
+  document.getElementById('bt-loading').style.display='block';
+  document.getElementById('bt-loading-msg').textContent='Running backtest...';
+  try{
+    const r=await fetch(API+'/api/backtest/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('bt-symbol').value.trim(),strategy:document.getElementById('bt-strategy').value,params:getBtParams(),initial_capital:parseFloat(document.getElementById('bt-capital').value)||10000,timeframe:'1day',limit:1260})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'Failed');
+    document.getElementById('bt-loading').style.display='none';
+    const m=d.metrics;
+    animM('bt-return',m.total_return_pct,'%');animM('bt-cagr',m.cagr_pct,'%');animM('bt-sharpe',m.sharpe_ratio,'');
+    animM('bt-maxdd',-m.max_drawdown_pct,'%');animM('bt-winrate',m.win_rate_pct,'%');animM('bt-trades',m.total_trades,'');
+    document.getElementById('bt-source-badge').textContent=d.source==='cache'?'CACHED':'LIVE DATA';
+    document.getElementById('bt-source-badge').style.cssText='padding:3px 10px;border-radius:4px;font-family:Share Tech Mono,monospace;font-size:.65rem;'+(d.source==='cache'?'background:rgba(0,240,255,.1);color:var(--cyan)':'background:rgba(0,255,136,.1);color:var(--green)');
+    document.getElementById('bt-info').textContent=d.symbol+' | '+m.bars_tested+' bars | $'+m.initial_capital+' -> $'+m.final_value;
+    // Equity chart
+    if(typeof Chart!=='undefined'){
+      const ctx=document.getElementById('equity-chart').getContext('2d');
+      if(eqChart)eqChart.destroy();
+      eqChart=new Chart(ctx,{type:'line',data:{labels:d.equity_curve.map(p=>p.date),datasets:[{data:d.equity_curve.map(p=>p.value),borderColor:'#00ff88',borderWidth:2,pointRadius:0,fill:true,backgroundColor:'rgba(0,255,136,0.04)',tension:0.1}]},options:{responsive:true,animation:{duration:1200},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>'$'+c.raw.toLocaleString()}}},scales:{x:{ticks:{color:'#555',maxTicksLimit:8,font:{family:'Share Tech Mono'}},grid:{color:'rgba(255,255,255,0.03)'}},y:{ticks:{color:'#555',callback:v=>'$'+v.toLocaleString(),font:{family:'Share Tech Mono'}},grid:{color:'rgba(255,255,255,0.03)'}}}}});
+    }
+    // Trade table
+    const tb=document.getElementById('bt-trades-tbody');
+    tb.innerHTML=(d.trades||[]).map(t=>{const pc=t.pnl!==null?(t.pnl>=0?'pnl-pos':'pnl-neg'):'';return `<tr><td>${t.date}</td><td>${t.side}</td><td>$${t.price}</td><td>${t.shares}</td><td class="${pc}">${t.pnl!==null?'$'+t.pnl:''}</td></tr>`;}).join('');
+    document.getElementById('bt-results').style.display='block';
+  }catch(e){document.getElementById('bt-loading').style.display='none';document.getElementById('bt-empty').style.display='block';alert('Backtest error: '+e.message);}
+}
+async function runOpt(){
+  document.getElementById('bt-results').style.display='none';
+  document.getElementById('opt-results').style.display='none';
+  document.getElementById('bt-empty').style.display='none';
+  document.getElementById('bt-loading').style.display='block';
+  const s=document.getElementById('bt-strategy').value;
+  const grids={TURTLE:{entry_period:[10,20,30,40,50],exit_period:[5,10,15,20]},EMA_CROSS:{fast_period:[5,10,15,20],slow_period:[20,30,40,50]},RSI:{rsi_period:[7,14,21],oversold:[20,25,30],overbought:[70,75,80]},MACD:{fast:[8,12,16],slow:[20,26,32],signal_period:[7,9,11]}};
+  const pg=grids[s]||{};
+  const combos=Object.values(pg).reduce((a,b)=>a*b.length,1);
+  document.getElementById('bt-loading-msg').textContent='Testing '+combos+' combinations...';
+  try{
+    const r=await fetch(API+'/api/backtest/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('bt-symbol').value.trim(),strategy:s,param_grid:pg,initial_capital:parseFloat(document.getElementById('bt-capital').value)||10000,timeframe:'1day',limit:1260})});
+    const d=await r.json();if(!r.ok)throw new Error(d.detail||'Failed');
+    document.getElementById('bt-loading').style.display='none';
+    if(d.best){document.getElementById('opt-best').innerHTML='BEST: '+JSON.stringify(d.best.params)+' | Return: '+d.best.metrics.total_return_pct+'% | Sharpe: '+d.best.metrics.sharpe_ratio;}
+    const tb=document.getElementById('opt-table-body');
+    tb.innerHTML=(d.results||[]).slice(0,20).map((row,i)=>{const m=row.metrics;const rc=m.total_return_pct>=0?'pnl-pos':'pnl-neg';return `<tr${i===0?' style="background:rgba(255,215,0,.06)"':''}><td style="font-size:.75rem">${JSON.stringify(row.params)}</td><td class="${rc}">${m.total_return_pct}%</td><td>${m.sharpe_ratio}</td><td>${m.win_rate_pct}%</td><td style="color:var(--red)">${m.max_drawdown_pct}%</td></tr>`;}).join('');
+    document.getElementById('opt-results').style.display='block';
+  }catch(e){document.getElementById('bt-loading').style.display='none';alert('Optimize error: '+e.message);}
 }
 
 /* ── Deploy ────────────────────────────────────────────────────────────── */

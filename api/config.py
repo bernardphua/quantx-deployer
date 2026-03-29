@@ -34,6 +34,9 @@ ADMIN_PIN = os.environ.get("ADMIN_PIN", "quantx2025")
 # Hosting mode
 HOSTING = os.environ.get("HOSTING", "vps")  # "vps" or "railway"
 
+# FMP API
+FMP_API_KEY = os.environ.get("FMP_API_KEY", "")
+
 # Version
 VERSION = "1.0.0"
 

@@ -84,6 +84,24 @@ class SettingsReq(BaseModel):
     central_api_url: str = ""
 
 
+class BacktestReq(BaseModel):
+    symbol: str = "TQQQ.US"
+    timeframe: str = "1day"
+    strategy: str = "TURTLE"
+    params: dict = {}
+    initial_capital: float = 10000
+    limit: int = 1260
+
+
+class OptimizeReq(BaseModel):
+    symbol: str = "TQQQ.US"
+    timeframe: str = "1day"
+    strategy: str = "TURTLE"
+    param_grid: dict = {}
+    initial_capital: float = 10000
+    limit: int = 1260
+
+
 class ScreenNowReq(BaseModel):
     email: str
     strategy_id: str
@@ -282,6 +300,39 @@ async def download_script(req: DownloadScriptReq):
     filename = f"quantx_{req.library_id.lower()}_{req.symbol.replace('.','_').lower()}_{date.today()}.py"
     return Response(content=header + content, media_type="text/plain",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.post("/api/backtest/run")
+async def backtest_run(body: BacktestReq):
+    from api.backtest import fetch_ohlcv, run_backtest
+    def _run():
+        bars, source = fetch_ohlcv(body.symbol, body.timeframe, body.limit)
+        result = run_backtest(bars, body.strategy, body.params, body.initial_capital)
+        result["source"] = source
+        result["symbol"] = body.symbol
+        result["strategy"] = body.strategy
+        return result
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(_executor, _run)
+        return result
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/backtest/optimize")
+async def backtest_optimize(body: OptimizeReq):
+    from api.backtest import fetch_ohlcv, run_optimization
+    def _run():
+        bars, source = fetch_ohlcv(body.symbol, body.timeframe, body.limit)
+        result = run_optimization(bars, body.strategy, body.param_grid, body.initial_capital)
+        result["source"] = source
+        result["symbol"] = body.symbol
+        return result
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(_executor, _run)
+        return result
+    except Exception as e:
+        raise HTTPException(400, str(e))
 
 
 @app.post("/api/screen-now")
