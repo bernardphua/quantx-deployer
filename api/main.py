@@ -359,6 +359,20 @@ async def download_script(req: DownloadScriptReq):
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
+def _safe_json(row, key):
+    """Safely parse a JSON column from sqlite3.Row."""
+    try:
+        rk = row.keys()
+        if key not in rk:
+            return None
+        val = row[key]
+        if not val or val == "NULL":
+            return None
+        return json.loads(val) if isinstance(val, str) else val
+    except Exception:
+        return None
+
+
 @app.get("/api/strategies/{strategy_id}/detail")
 async def strategy_detail(strategy_id: str, email: str = Query("")):
     email = email.lower().strip()
@@ -370,18 +384,40 @@ async def strategy_detail(strategy_id: str, email: str = Query("")):
         rk = row.keys()
         return {
             "strategy_id": row["strategy_id"], "strategy_name": row["strategy_name"],
-            "symbol": row["symbol"], "arena": row["arena"], "timeframe": row["timeframe"],
-            "conditions": json.loads(row["conditions_json"]), "risk": json.loads(row["risk_json"]),
-            "is_active": bool(row["is_active"]), "mode": row.get("mode", "library"),
-            "library_id": row.get("library_id", ""),
+            "symbol": row["symbol"], "arena": row["arena"],
+            "timeframe": row["timeframe"] if "timeframe" in rk else "1day",
+            "conditions": _safe_json(row, "conditions_json") or {},
+            "risk": _safe_json(row, "risk_json") or {},
+            "is_active": bool(row["is_active"]),
+            "mode": row["mode"] if "mode" in rk else "library",
+            "library_id": row["library_id"] if "library_id" in rk else "",
             "allocation": float(row["allocation"]) if "allocation" in rk and row["allocation"] else 10000,
-            "backtest_results": json.loads(row["backtest_results_json"]) if "backtest_results_json" in rk and row["backtest_results_json"] else None,
-            "live_results": json.loads(row["live_results_json"]) if "live_results_json" in rk and row["live_results_json"] else None,
-            "trade_log": json.loads(row["trade_log_json"]) if "trade_log_json" in rk and row["trade_log_json"] else [],
-            "created_at": row["created_at"],
+            "backtest_results": _safe_json(row, "backtest_results_json"),
+            "live_results": _safe_json(row, "live_results_json"),
+            "trade_log": _safe_json(row, "trade_log_json") or [],
+            "created_at": row["created_at"] if "created_at" in rk else "",
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        _log.error("strategy_detail error: %s", e)
+        raise HTTPException(500, f"Error loading strategy: {e}")
     finally:
         conn.close()
+
+
+@app.put("/api/strategies/{strategy_id}/backtest-results")
+async def save_backtest_results(strategy_id: str, body: dict):
+    conn = get_db()
+    try:
+        conn.execute("UPDATE strategies SET backtest_results_json = ? WHERE strategy_id = ?",
+                     (json.dumps(body), strategy_id))
+        conn.commit()
+    except Exception as e:
+        _log.error("save_backtest_results: %s", e)
+    finally:
+        conn.close()
+    return {"ok": True}
 
 
 @app.put("/api/strategies/{strategy_id}/allocation")
