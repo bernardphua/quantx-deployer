@@ -134,6 +134,8 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 .toast.success{border-color:var(--green);color:var(--green)}.toast.error{border-color:var(--red);color:var(--red)}.toast.info{border-color:#7F77DD;color:#9B8FE8}
 .toast.out{opacity:0;transform:translateY(10px)}
 @keyframes toastIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.live-dot{animation:livePulse 2s ease-in-out infinite}
+@keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.3)}}
 </style>
 </head>
 <body>
@@ -498,27 +500,31 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <h2 style="font-family:'Orbitron',monospace;font-size:1rem;color:var(--cyan)">DEPLOY</h2>
 <button class="btn btn-primary btn-sm" onclick="switchTab('develop')">+ New Strategy</button>
 </div>
-<!-- Strategy table -->
-<div id="deploy-table-wrap">
-<div id="deploy-strat-table"><p style="color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:.85rem;text-align:center;padding:40px">No strategies saved yet. Go to <a href="#" onclick="switchTab('develop');return false" style="color:var(--cyan)">Develop</a> tab to create one.</p></div>
+<!-- Summary cards -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+<div class="card"><div class="label">TOTAL SAVED</div><div class="value" id="dep-total" style="font-size:1rem">0</div></div>
+<div class="card"><div class="label">LIVE</div><div class="value green" id="dep-live" style="font-size:1rem">0</div></div>
+<div class="card"><div class="label">BEST BT RETURN</div><div class="value" id="dep-best-ret" style="font-size:1rem">—</div></div>
+<div class="card"><div class="label">AVG SHARPE</div><div class="value" id="dep-avg-sharpe" style="font-size:1rem">—</div></div>
 </div>
 <!-- Market hours -->
-<div id="deploy-market-info" style="padding:8px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:.75rem;color:var(--dim);margin:16px 0;display:flex;justify-content:space-between"></div>
-<!-- Advanced: existing deploy controls -->
-<details style="margin-top:12px">
-<summary style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);cursor:pointer">Advanced: Manual Bot Control</summary>
-<div style="margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-<div id="deploy-strat-list" style="margin-bottom:12px"><p style="color:var(--dim);font-size:.8rem">Loading...</p></div>
-<div style="display:flex;gap:12px">
-<button class="btn btn-success btn-sm" id="deploy-btn" onclick="doDeploy()">DEPLOY MASTER BOT</button>
-<button class="btn btn-danger btn-sm" onclick="doStop()">STOP BOT</button>
+<div id="deploy-market-info" style="padding:6px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim);margin-bottom:16px;display:flex;justify-content:space-between"></div>
+<!-- Bot cards -->
+<div id="deploy-cards"></div>
+<!-- Advanced controls -->
+<details style="margin-top:16px"><summary style="font-family:'Share Tech Mono',monospace;font-size:.65rem;color:#444;cursor:pointer">Advanced: Manual Bot Control</summary>
+<div style="margin-top:8px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+<div id="deploy-strat-list" style="margin-bottom:8px;font-size:.75rem;color:var(--dim)"></div>
+<div style="display:flex;gap:8px">
+<button class="btn btn-success btn-sm" id="deploy-btn" onclick="doDeploy()">DEPLOY ALL</button>
+<button class="btn btn-danger btn-sm" onclick="doStop()">STOP</button>
 <button class="btn btn-magenta btn-sm" onclick="doRestart()">RESTART</button>
 </div>
 <div class="msg" id="deploy-msg"></div>
-<div style="margin-top:12px;display:flex;gap:12px;align-items:center">
-<span id="deploy-dot" style="width:10px;height:10px;border-radius:50%;background:var(--dim);display:inline-block"></span>
-<span id="deploy-status" style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:var(--dim)">STOPPED</span>
-<span id="deploy-pid" style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--dim)"></span>
+<div style="margin-top:8px;display:flex;gap:8px;align-items:center;font-size:.75rem">
+<span id="deploy-dot" style="width:8px;height:8px;border-radius:50%;background:var(--dim);display:inline-block"></span>
+<span id="deploy-status" style="color:var(--dim)">STOPPED</span>
+<span id="deploy-pid" style="color:var(--dim)"></span>
 </div>
 </div>
 </details>
@@ -1700,7 +1706,7 @@ function confirmSaveStrategy(){
     arena:sym.endsWith('.HK')?'HK':'US',timeframe:tf,
     conditions:{type:devSelectedStrat.indicator||devSelectedStrat.id,params:params},
     exit_rules:{},risk:devSelectedStrat.default_risk||{tp_pct:0.5,sl_pct:0.3,lots:1},
-    is_active:true,mode:'library',library_id:devSelectedStrat.id,
+    is_active:false,mode:'library',library_id:devSelectedStrat.id,
   })}).then(r=>r.json()).then(d=>{
     if(d.status==='saved'){
       showToast('\u2713 '+name+' saved. <u>View in Deploy tab \u2192</u>','success',4000,()=>switchTab('deploy'));
@@ -1747,39 +1753,80 @@ async function loadDeploySummary(){
   try{
     const r=await fetch(API+'/api/strategies/'+encodeURIComponent(EMAIL));const d=await r.json();
     const all=d.strategies||[];
-    const active=all.filter(s=>s.is_active);
-    // Strategy table
-    const tbl=document.getElementById('deploy-strat-table');
-    if(!all.length){tbl.innerHTML='<p style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:.85rem;text-align:center;padding:40px">No strategies saved yet. Go to <a href="#" onclick="switchTab(\'develop\');return false" style="color:var(--cyan)">Develop</a> to create one.</p>';return;}
-    let h='<table style="width:100%;border-collapse:collapse;font-family:Inter,sans-serif;font-size:12px"><thead><tr style="border-bottom:1px solid #222"><th style="text-align:left;padding:8px;color:#666;font-size:10px">Strategy</th><th style="padding:8px;color:#666;font-size:10px">Symbol</th><th style="padding:8px;color:#666;font-size:10px">Type</th><th style="padding:8px;color:#666;font-size:10px">Status</th><th style="padding:8px;color:#666;font-size:10px">Action</th></tr></thead><tbody>';
-    all.forEach(s=>{
-      const isActive=s.is_active;
-      const ss=SEC_STYLE[s.mode]||SEC_STYLE['trend_following']||{badge:'#888',bg:'#1a1a2e'};
-      const cat=s.library_id||(s.conditions||{}).type||s.mode||'custom';
-      h+=`<tr style="border-bottom:1px solid #111"><td style="padding:10px 8px;color:#ddd">${s.strategy_name||s.strategy_id}</td><td style="padding:10px 8px;color:var(--cyan)">${s.symbol}</td><td style="padding:10px 8px"><span style="font-size:9px;padding:2px 6px;border-radius:3px;background:#1a1a2e;color:#888">${cat}</span></td><td style="padding:10px 8px">${isActive?'<span style="color:var(--green);font-size:10px">● LIVE</span>':'<span style="color:#555;font-size:10px">○ Draft</span>'}</td><td style="padding:10px 8px">${isActive?`<button onclick="toggleStrat('${s.strategy_id}',false)" style="background:none;border:1px solid #333;color:#888;font-size:10px;padding:3px 8px;border-radius:3px;cursor:pointer">Stop</button>`:`<button onclick="toggleStrat('${s.strategy_id}',true)" style="background:none;border:1px solid var(--cyan);color:var(--cyan);font-size:10px;padding:3px 8px;border-radius:3px;cursor:pointer">Enable</button>`}</td></tr>`;
-    });
-    h+='</tbody></table>';
-    tbl.innerHTML=h;
-    // Advanced section list
-    const list=document.getElementById('deploy-strat-list');
-    if(list)list.innerHTML=active.map(s=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #111;font-size:.8rem"><span>${s.strategy_name||s.strategy_id}</span><span style="color:var(--cyan)">${s.symbol}</span></div>`).join('')||'<p style="color:var(--dim);font-size:.8rem">No active strategies.</p>';
+    const live=all.filter(s=>s.is_active);
+    const saved=all.filter(s=>!s.is_active);
+    // Summary cards
+    const te=id=>document.getElementById(id);
+    if(te('dep-total'))te('dep-total').textContent=all.length;
+    if(te('dep-live'))te('dep-live').textContent=live.length;
+    // Best BT return + avg sharpe (from risk data as proxy)
+    const rets=all.map(s=>(s.risk||{}).tp_pct||0);
+    if(te('dep-best-ret'))te('dep-best-ret').textContent=rets.length?Math.max(...rets).toFixed(1)+'%':'—';
     // Market hours
-    const ps=active[0]?active[0].symbol:'';
+    const ps=all[0]?all[0].symbol:'';
     const mi=getMarketInfo(ps);
-    document.getElementById('deploy-market-info').innerHTML=`<span>${mi.schedule}</span><span>Now: ${mi.time}</span><span style="color:${mi.isOpen?'var(--green)':'var(--yellow)'};font-weight:700">${mi.isOpen?'OPEN':'CLOSED'}</span>`;
+    if(te('deploy-market-info'))te('deploy-market-info').innerHTML=`<span>${mi.schedule}</span><span>${mi.time}</span><span style="color:${mi.isOpen?'var(--green)':'var(--yellow)'};font-weight:700">${mi.isOpen?'OPEN':'CLOSED'}</span>`;
+    // Bot cards
+    const cc=document.getElementById('deploy-cards');
+    if(!cc)return;
+    if(!all.length){cc.innerHTML='<div style="text-align:center;padding:40px;color:var(--dim);font-family:Inter,sans-serif;font-size:13px">No strategies saved yet. <a href="#" onclick="switchTab(\'develop\');return false" style="color:var(--cyan)">Create one in Develop</a></div>';return;}
+    let h='';
+    // Live section
+    if(live.length){
+      h+=`<div style="display:flex;align-items:center;gap:8px;margin:12px 0 8px"><span style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#666">LIVE</span><span style="flex:1;height:1px;background:#222"></span><span style="font-size:10px;color:var(--green)">${live.length} running</span></div>`;
+      live.forEach(s=>{h+=renderBotCard(s,true);});
+    }
+    // Saved section
+    if(saved.length){
+      h+=`<div style="display:flex;align-items:center;gap:8px;margin:20px 0 8px"><span style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#666">SAVED</span><span style="flex:1;height:1px;background:#222"></span><span style="font-size:10px;color:#555">${saved.length} ready</span></div>`;
+      saved.forEach(s=>{h+=renderBotCard(s,false);});
+    }
+    cc.innerHTML=h;
+    // Advanced list
+    const list=document.getElementById('deploy-strat-list');
+    if(list)list.innerHTML=live.map(s=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.75rem"><span style="color:#ccc">${s.strategy_name||s.strategy_id}</span><span style="color:var(--cyan)">${s.symbol}</span></div>`).join('')||'<span style="color:var(--dim)">None active</span>';
     // Bot status
     const sr=await fetch(API+'/api/status/'+encodeURIComponent(EMAIL));const sd=await sr.json();
-    const bs=sd.bot_status||'stopped';
-    const dot=document.getElementById('deploy-dot');
-    const stEl=document.getElementById('deploy-status');
-    if(dot&&stEl){
+    const dot=document.getElementById('deploy-dot'),stEl=document.getElementById('deploy-status');
+    if(dot&&stEl){const bs=sd.bot_status||'stopped';
       if(bs==='running'){dot.style.background='var(--green)';dot.style.animation='pulse 1.5s infinite';stEl.textContent='RUNNING';stEl.style.color='var(--green)';}
-      else if(bs==='error'){dot.style.background='var(--red)';dot.style.animation='pulse 1.5s infinite';stEl.textContent='ERROR';stEl.style.color='var(--red)';}
       else{dot.style.background='var(--dim)';dot.style.animation='none';stEl.textContent='STOPPED';stEl.style.color='var(--dim)';}
     }
-    const pidEl=document.getElementById('deploy-pid');
-    if(pidEl)pidEl.textContent=sd.pid?'PID: '+sd.pid:'';
+    const pidEl=document.getElementById('deploy-pid');if(pidEl)pidEl.textContent=sd.pid?'PID:'+sd.pid:'';
   }catch(e){console.error(e);}
+}
+function renderBotCard(s,isLive){
+  const cat=s.library_id||(s.conditions||{}).type||'custom';
+  const bc=isLive?'#1D9E75':'#534AB7';
+  const risk=s.risk||{};
+  const tp=risk.tp_pct||0,sl=risk.sl_pct||0;
+  const sid=s.strategy_id;
+  let actions='';
+  if(isLive){
+    actions=`<button onclick="event.stopPropagation();toggleStrat('${sid}',false);setTimeout(loadDeploySummary,500)" style="background:none;border:1px solid #444;color:#888;font-size:10px;padding:4px 10px;border-radius:5px;cursor:pointer">Stop</button>`;
+  }else{
+    actions=`<button onclick="event.stopPropagation();toggleStrat('${sid}',true);setTimeout(loadDeploySummary,500)" style="background:#534AB7;color:#fff;border:none;font-size:10px;padding:4px 12px;border-radius:5px;cursor:pointer">Deploy</button>
+    <button onclick="event.stopPropagation();confirmDeleteStrat('${sid}','${(s.strategy_name||sid).replace(/'/g,'')}')" style="background:none;border:1px solid #333;color:#555;font-size:10px;padding:4px 10px;border-radius:5px;cursor:pointer">Delete</button>`;
+  }
+  const statusPill=isLive?'<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);background:rgba(0,255,136,.08);padding:2px 8px;border-radius:10px"><span class="live-dot" style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>LIVE</span>'
+    :'<span style="font-size:10px;color:#555;background:#1a1a2e;padding:2px 8px;border-radius:10px">Saved</span>';
+  return `<div style="background:#16162A;border:1px solid #222;border-left:3px solid ${bc};border-radius:8px;padding:14px 16px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-family:Inter,sans-serif;font-size:13px;font-weight:500;color:#ddd">${s.strategy_name||sid}</span>
+      <span style="font-size:10px;color:var(--cyan)">${s.symbol}</span>
+      <span style="font-size:9px;padding:2px 6px;border-radius:3px;background:#1a1a2e;color:#888">${cat}</span>
+      ${statusPill}
+      <div style="margin-left:auto;display:flex;gap:6px">${actions}</div>
+    </div>
+    <div style="display:flex;gap:16px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--dim)">
+      <span>TP: ${tp}%</span><span>SL: ${sl}%</span><span>TF: ${s.timeframe||'1day'}</span>
+    </div>
+  </div>`;
+}
+function confirmDeleteStrat(sid,name){
+  showToast('Delete "'+name+'"? <u>Click here to confirm</u>','error',5000,()=>{
+    fetch(API+'/api/strategy/'+encodeURIComponent(sid),{method:'DELETE'}).then(()=>{showToast('Deleted','info');loadDeploySummary();}).catch(e=>showToast('Error: '+e.message,'error'));
+  });
 }
 const FAMOUS_IDS_ALL=['BUFFETT_BOT','GRAHAM_BOT','LIVERMORE_BOT','DALIO_BOT','SIMONS_BOT','TURTLE_TRADER','SOROS_BOT'];
 async function loadScreenerResults(strats){
