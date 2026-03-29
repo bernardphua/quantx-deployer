@@ -70,7 +70,13 @@ def load_from_r2(symbol, timeframe):
             return None, None
         cached_at = data.get("cached_at", "")
         if cached_at:
-            age = (datetime.utcnow() - datetime.fromisoformat(cached_at)).total_seconds()
+            try:
+                ts = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+                if ts.tzinfo:
+                    ts = ts.replace(tzinfo=None)  # make naive for comparison
+                age = (datetime.utcnow() - ts).total_seconds()
+            except Exception:
+                age = 0  # can't parse timestamp — treat as fresh
             ttl = _ttl_seconds(timeframe)
             # Bulk-preloaded data (1000+ bars) uses extended TTL (30 days)
             if len(bars) >= 1000:
@@ -84,7 +90,8 @@ def load_from_r2(symbol, timeframe):
             print(f"[R2] HIT (no timestamp): {symbol}/{timeframe} ({len(bars)} bars)")
             return bars, "cache"
         return None, None
-    except Exception:
+    except Exception as e:
+        print(f"[R2] load error {symbol}/{timeframe}: {type(e).__name__}: {e}")
         return None, None
 
 
@@ -125,6 +132,23 @@ def r2_list_keys():
 
 # ── Concurrency lock (prevents cache stampede) ───────────────────────────────
 
+def _load_r2_any(symbol, timeframe):
+    """Load from R2, ignoring TTL. Used as last-resort fallback."""
+    r2 = _get_r2()
+    if not r2:
+        return None
+    try:
+        obj = r2.get_object(Bucket=R2_BUCKET, Key=_r2_key(symbol, timeframe))
+        data = json.loads(obj["Body"].read().decode())
+        bars = data.get("bars", [])
+        if bars:
+            print(f"[R2] Fallback HIT (ignoring TTL): {symbol}/{timeframe} ({len(bars)} bars)")
+            return bars
+        return None
+    except Exception:
+        return None
+
+
 def fetch_with_lock(symbol, timeframe, limit=1260):
     """Thread-safe fetch: only one FMP call per symbol/timeframe combo."""
     lock_key = f"{symbol}/{timeframe}"
@@ -136,7 +160,15 @@ def fetch_with_lock(symbol, timeframe, limit=1260):
         if bars:
             return bars, "cache"
         # We're the only thread fetching this symbol now
-        return _fetch_from_fmp(symbol, timeframe, limit)
+        try:
+            return _fetch_from_fmp(symbol, timeframe, limit)
+        except Exception as e:
+            # FMP failed — try R2 stale data as last resort
+            print(f"[BACKTEST] FMP failed: {e}. Trying stale R2 data...")
+            stale = _load_r2_any(symbol, timeframe)
+            if stale:
+                return stale, "cache-stale"
+            raise  # re-raise if no fallback available
 
 
 # ── Prewarm ──────────────────────────────────────────────────────────────────
