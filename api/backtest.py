@@ -828,6 +828,9 @@ def run_backtest_script(bars, script, initial_capital=10000):
         if token in script:
             raise ValueError(f"Forbidden token in script: '{token.strip()}'. Custom scripts cannot use imports or system calls.")
 
+    # Sort bars oldest-first (standard backtest convention)
+    bars = sorted(bars, key=lambda b: b.get("date", ""))
+
     # Build data lists
     closes = [b["close"] for b in bars]
     opens = [b["open"] for b in bars]

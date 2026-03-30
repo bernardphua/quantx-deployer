@@ -1665,9 +1665,15 @@ function parseQuantXScript(text){
       if(line.trim().startsWith(key)){let val=line.split(key)[1].trim().split('#')[0].trim();r[field]=numFields.includes(field)?parseFloat(val)||0:val;}
     }
   }
-  // Parse OPTIMIZE_PARAMS
-  const om=text.match(/OPTIMIZE_PARAMS\s*=\s*\{([\s\S]*?)\n\}/);
-  if(om){try{let ps=om[1].replace(/'/g,'"').replace(/True/g,'true').replace(/False/g,'false');r.optimize_params=JSON.parse('{'+ps+'}');}catch(e){r.warnings.push('Could not parse OPTIMIZE_PARAMS');}}
+  // Parse OPTIMIZE_PARAMS with brace-counting parser
+  const opStart=text.indexOf('OPTIMIZE_PARAMS');
+  if(opStart!==-1){
+    const braceStart=text.indexOf('{',opStart);
+    if(braceStart!==-1){let depth=0,braceEnd=-1;
+      for(let i=braceStart;i<text.length;i++){if(text[i]==='{')depth++;else if(text[i]==='}'){depth--;if(depth===0){braceEnd=i;break;}}}
+      if(braceEnd!==-1){try{let js=text.slice(braceStart,braceEnd+1).replace(/'/g,'"').replace(/True/g,'true').replace(/False/g,'false').replace(/,\s*\}/g,'}').replace(/,\s*\]/g,']');r.optimize_params=JSON.parse(js);}catch(e){r.warnings.push('Could not parse OPTIMIZE_PARAMS');}}
+    }
+  }
   // Extract generate_signals function
   const fm=text.match(/(def generate_signals\s*\([^)]*\):[\s\S]*?)(?=\n(?:OPTIMIZE_PARAMS|STRATEGY_|EDGE_|SYMBOL:|TIMEFRAME:|CAPITAL:|COMMISSION|STOP_LOSS|TAKE_PROFIT)|$)/);
   if(fm){r.signal_function=fm[1].trim();}else{r.errors.push('No generate_signals() function found');}
