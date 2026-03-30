@@ -825,6 +825,145 @@ def _calc_macd(closes, fast=12, slow=26, signal=9):
     return macd_line, sig_line, hist
 
 
+def _calc_stoch(high_list, low_list, close_list, k_period=14, d_period=3):
+    """Stochastic Oscillator. Returns (stoch_k, stoch_d) lists."""
+    n = len(close_list)
+    stoch_k = [None] * n
+    for i in range(k_period - 1, n):
+        wh = [h for h in high_list[i - k_period + 1:i + 1] if h is not None]
+        wl = [l for l in low_list[i - k_period + 1:i + 1] if l is not None]
+        if not wh or not wl or close_list[i] is None:
+            continue
+        hh, ll = max(wh), min(wl)
+        stoch_k[i] = 50.0 if hh == ll else (close_list[i] - ll) / (hh - ll) * 100
+    stoch_d = [None] * n
+    for i in range(n):
+        w = [stoch_k[j] for j in range(max(0, i - d_period + 1), i + 1) if stoch_k[j] is not None]
+        if len(w) >= d_period:
+            stoch_d[i] = sum(w) / len(w)
+    return stoch_k, stoch_d
+
+
+def _calc_adx(highs, lows, closes, period=14):
+    """ADX — trend strength 0-100. Above 25 = strong trend."""
+    n = len(closes)
+    tr_l, pdm_l, ndm_l = [None]*n, [None]*n, [None]*n
+    for i in range(1, n):
+        if any(v is None for v in [highs[i], lows[i], closes[i], closes[i-1]]):
+            continue
+        tr_l[i] = max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1]))
+        up = highs[i] - highs[i-1]
+        dn = lows[i-1] - lows[i]
+        pdm_l[i] = up if up > dn and up > 0 else 0
+        ndm_l[i] = dn if dn > up and dn > 0 else 0
+    def _smooth(lst, p):
+        r = [None]*n
+        vals = [i for i, x in enumerate(lst) if x is not None]
+        if len(vals) < p: return r
+        s = vals[0]
+        first_sum = sum(lst[s:s+p])
+        r[s+p-1] = first_sum / p  # Wilder: initial = average, not sum
+        for i in range(s+p, n):
+            if lst[i] is None or r[i-1] is None: continue
+            r[i] = (r[i-1] * (p-1) + lst[i]) / p  # Wilder smoothing
+        return r
+    atr_s, pdm_s, ndm_s = _smooth(tr_l, period), _smooth(pdm_l, period), _smooth(ndm_l, period)
+    dx = [None]*n
+    for i in range(n):
+        if atr_s[i] is None or atr_s[i] == 0: continue
+        pi = 100*pdm_s[i]/atr_s[i] if pdm_s[i] is not None else None
+        ni = 100*ndm_s[i]/atr_s[i] if ndm_s[i] is not None else None
+        if pi is not None and ni is not None:
+            d = pi + ni
+            dx[i] = 100*abs(pi-ni)/d if d != 0 else 0
+    return _smooth(dx, period)
+
+
+def _calc_vwap(highs, lows, closes, volumes):
+    """VWAP — cumulative volume weighted average price."""
+    n = len(closes)
+    vwap = [None]*n
+    cum_tv, cum_v = 0.0, 0.0
+    for i in range(n):
+        if any(v is None for v in [highs[i], lows[i], closes[i], volumes[i]]): continue
+        if volumes[i] == 0: continue
+        tp = (highs[i] + lows[i] + closes[i]) / 3
+        cum_tv += tp * volumes[i]
+        cum_v += volumes[i]
+        vwap[i] = cum_tv / cum_v
+    return vwap
+
+
+def _calc_cci(highs, lows, closes, period=20):
+    """CCI — Commodity Channel Index. Above +100 overbought, below -100 oversold."""
+    n = len(closes)
+    cci = [None]*n
+    for i in range(period - 1, n):
+        tp_w = []
+        for j in range(i - period + 1, i + 1):
+            if highs[j] is not None and lows[j] is not None and closes[j] is not None:
+                tp_w.append((highs[j] + lows[j] + closes[j]) / 3)
+        if len(tp_w) < period: continue
+        tp_now = (highs[i] + lows[i] + closes[i]) / 3
+        tp_mean = sum(tp_w) / len(tp_w)
+        mean_dev = sum(abs(tp - tp_mean) for tp in tp_w) / len(tp_w)
+        cci[i] = 0 if mean_dev == 0 else (tp_now - tp_mean) / (0.015 * mean_dev)
+    return cci
+
+
+def _calc_williams_r(highs, lows, closes, period=14):
+    """Williams %R — momentum oscillator. Range -100 to 0."""
+    n = len(closes)
+    wr = [None]*n
+    for i in range(period - 1, n):
+        wh = [h for h in highs[i-period+1:i+1] if h is not None]
+        wl = [l for l in lows[i-period+1:i+1] if l is not None]
+        if not wh or not wl or closes[i] is None: continue
+        hh, ll = max(wh), min(wl)
+        wr[i] = -50.0 if hh == ll else (hh - closes[i]) / (hh - ll) * -100
+    return wr
+
+
+def _calc_donchian(highs, lows, period=20):
+    """Donchian Channel — highest high and lowest low over period."""
+    n = len(highs)
+    upper, lower = [None]*n, [None]*n
+    for i in range(period - 1, n):
+        wh = [h for h in highs[i-period+1:i+1] if h is not None]
+        wl = [l for l in lows[i-period+1:i+1] if l is not None]
+        if wh: upper[i] = max(wh)
+        if wl: lower[i] = min(wl)
+    return upper, lower
+
+
+def _calc_supertrend(highs, lows, closes, atr_list, period=10, multiplier=3.0):
+    """Supertrend indicator. Returns (supertrend, direction) lists. direction: 1=bull, -1=bear."""
+    n = len(closes)
+    ub, lb = [None]*n, [None]*n
+    st, dr = [None]*n, [None]*n
+    for i in range(period, n):
+        if atr_list[i] is None or highs[i] is None or lows[i] is None: continue
+        hl2 = (highs[i] + lows[i]) / 2
+        ub[i] = hl2 + multiplier * atr_list[i]
+        lb[i] = hl2 - multiplier * atr_list[i]
+    for i in range(period + 1, n):
+        if any(v is None for v in [ub[i], lb[i], closes[i], closes[i-1]]): continue
+        if ub[i-1] is not None and closes[i-1] is not None:
+            if lb[i] is not None and lb[i-1] is not None:
+                if closes[i-1] >= lb[i-1]: lb[i] = max(lb[i], lb[i-1])
+            if ub[i] is not None and ub[i-1] is not None:
+                if closes[i-1] <= ub[i-1]: ub[i] = min(ub[i], ub[i-1])
+        if st[i-1] is None:
+            st[i] = ub[i]; dr[i] = -1
+        elif st[i-1] == ub[i-1]:
+            if closes[i] <= ub[i]: st[i] = ub[i]; dr[i] = -1
+            else: st[i] = lb[i]; dr[i] = 1
+        else:
+            if closes[i] >= lb[i]: st[i] = lb[i]; dr[i] = 1
+            else: st[i] = ub[i]; dr[i] = -1
+    return st, dr
+
+
 def run_backtest_script(bars, script, initial_capital=10000):
     """Run a custom user script against bar data in a sandboxed exec()."""
     if not script or not script.strip():
@@ -879,9 +1018,16 @@ def run_backtest_script(bars, script, initial_capital=10000):
         "calc_atr": lambda period=14: calc_atr(highs, lows, closes, period),
         "calc_bbands": _calc_bbands,
         "calc_macd": _calc_macd,
+        "calc_stoch": _calc_stoch,
+        "calc_adx": _calc_adx,
+        "calc_vwap": _calc_vwap,
+        "calc_cci": _calc_cci,
+        "calc_williams_r": _calc_williams_r,
+        "calc_donchian": _calc_donchian,
+        "calc_supertrend": _calc_supertrend,
         # Data arrays (for scripts that use raw lists instead of df)
         "opens": opens, "highs": highs, "lows": lows, "closes": closes,
-        "volumes": volumes, "dates": dates, "bars": bars,
+        "volumes": volumes, "dates": dates, "bars": bars, "df": df,
     }
 
     try:

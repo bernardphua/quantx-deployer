@@ -1774,7 +1774,20 @@ def generate_signals(df):
     n = len(close)
     signals = [0] * n
 
-    # Available helpers: calc_ema, calc_sma, calc_rsi, calc_atr, calc_bbands, calc_macd
+    # Available helpers:
+    # calc_ema(close_list, period) -> list
+    # calc_sma(close_list, period) -> list
+    # calc_rsi(close_list, period) -> list
+    # calc_atr(high, low, close, period) -> list
+    # calc_bbands(close_list, period, std) -> (upper, mid, lower)
+    # calc_macd(close_list, fast, slow, signal) -> (macd, signal, hist)
+    # calc_stoch(high, low, close, k_period, d_period) -> (stoch_k, stoch_d)
+    # calc_adx(high, low, close, period) -> list (0-100, >25=strong trend)
+    # calc_vwap(high, low, close, volume) -> list
+    # calc_cci(high, low, close, period) -> list (+100=overbought, -100=oversold)
+    # calc_williams_r(high, low, close, period) -> list (-100 to 0)
+    # calc_donchian(high, low, period) -> (upper, lower)
+    # calc_supertrend(high, low, close, atr, period, multiplier) -> (supertrend, direction)
 
     in_position = False
     for i in range(1, n):
