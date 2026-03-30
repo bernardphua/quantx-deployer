@@ -1666,12 +1666,23 @@ function parseQuantXScript(text){
     }
   }
   // Parse OPTIMIZE_PARAMS with brace-counting parser
-  const opStart=text.indexOf('OPTIMIZE_PARAMS');
+  const opStart=text.replace(/\r\n/g,'\n').indexOf('OPTIMIZE_PARAMS');
   if(opStart!==-1){
-    const braceStart=text.indexOf('{',opStart);
+    const cleanText=text.replace(/\r\n/g,'\n');
+    const braceStart=cleanText.indexOf('{',opStart);
     if(braceStart!==-1){let depth=0,braceEnd=-1;
-      for(let i=braceStart;i<text.length;i++){if(text[i]==='{')depth++;else if(text[i]==='}'){depth--;if(depth===0){braceEnd=i;break;}}}
-      if(braceEnd!==-1){try{let js=text.slice(braceStart,braceEnd+1).replace(/'/g,'"').replace(/True/g,'true').replace(/False/g,'false').replace(/,\s*\}/g,'}').replace(/,\s*\]/g,']');r.optimize_params=JSON.parse(js);}catch(e){r.warnings.push('Could not parse OPTIMIZE_PARAMS');}}
+      for(let i=braceStart;i<cleanText.length;i++){if(cleanText[i]==='{')depth++;else if(cleanText[i]==='}'){depth--;if(depth===0){braceEnd=i;break;}}}
+      if(braceEnd!==-1){
+        let js=cleanText.slice(braceStart,braceEnd+1).replace(/'/g,'"').replace(/True/g,'true').replace(/False/g,'false');
+        // Remove only trailing commas immediately before } (not between params)
+        // Process line by line to avoid removing inter-param commas
+        js=js.replace(/,(\s*\n\s*\})/g,'$1').replace(/,(\s*\})\s*$/g,'$1');
+        console.log('[PARSE] OPTIMIZE_PARAMS:',js.substring(0,200));
+        try{r.optimize_params=JSON.parse(js);}catch(e){
+          console.warn('[PARSE] Failed:',e.message,'Input:',js);
+          r.warnings.push('Could not parse OPTIMIZE_PARAMS: '+e.message);
+        }
+      }
     }
   }
   // Extract generate_signals function

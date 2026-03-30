@@ -6,6 +6,15 @@ import math
 import requests
 from datetime import datetime
 
+try:
+    import numpy as np
+    import pandas as pd
+    HAS_NUMPY = True
+except ImportError:
+    np = None
+    pd = None
+    HAS_NUMPY = False
+
 FMP_BASE = "https://financialmodelingprep.com/stable"
 FMP_V3 = "https://financialmodelingprep.com/api/v3"
 
@@ -1046,11 +1055,7 @@ def run_backtest_script(bars, script, initial_capital=10000):
     })
 
     # Sandbox globals — includes numpy/pandas for advanced scripts
-    try:
-        import numpy as _np
-        import pandas as _pd
-    except ImportError:
-        _np, _pd = None, None
+    print(f"[SANDBOX] numpy={HAS_NUMPY}, np={type(np)}, pd={type(pd)}")
 
     sandbox = {
         "__builtins__": {
@@ -1062,7 +1067,7 @@ def run_backtest_script(bars, script, initial_capital=10000):
             "isinstance": isinstance, "any": any, "all": all,
         },
         # Scientific computing (safe — no file/network access)
-        "np": _np, "numpy": _np, "pd": _pd, "pandas": _pd,
+        "np": np, "numpy": np, "pd": pd, "pandas": pd,
         # Indicator helpers
         "calc_ema": calc_ema, "calc_sma": calc_sma, "calc_rsi": calc_rsi,
         "calc_atr": lambda period=14: calc_atr(highs, lows, closes, period),
