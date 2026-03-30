@@ -91,6 +91,8 @@ class BacktestReq(BaseModel):
     params: dict = {}
     initial_capital: float = 10000
     limit: int = 1260
+    commission_pct: float = 0.0
+    slippage_pct: float = 0.0
 
 
 class OptimizeReq(BaseModel):
@@ -474,10 +476,13 @@ async def backtest_run(body: BacktestReq):
     from api.backtest import fetch_ohlcv, run_backtest
     def _run():
         bars, source = fetch_ohlcv(body.symbol, body.timeframe, body.limit)
-        result = run_backtest(bars, body.strategy, body.params, body.initial_capital)
+        result = run_backtest(bars, body.strategy, body.params, body.initial_capital,
+                              body.commission_pct, body.slippage_pct)
         result["source"] = source
         result["symbol"] = body.symbol
         result["strategy"] = body.strategy
+        result["commission_pct"] = body.commission_pct
+        result["slippage_pct"] = body.slippage_pct
         return result
     try:
         result = await asyncio.get_event_loop().run_in_executor(_executor, _run)

@@ -279,6 +279,11 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <div id="dev-params-container" style="margin-top:8px"></div>
 <div style="display:flex;gap:4px;margin:12px 0"><button style="background:var(--surface2);border:1px solid var(--border);color:var(--dim);padding:3px 8px;border-radius:3px;cursor:pointer;font-size:.65rem" onclick="setDevLimit(252,this)">1Y</button><button style="background:var(--surface2);border:1px solid var(--border);color:var(--dim);padding:3px 8px;border-radius:3px;cursor:pointer;font-size:.65rem" onclick="setDevLimit(504,this)">2Y</button><button style="background:var(--surface2);border:1px solid var(--border);color:var(--dim);padding:3px 8px;border-radius:3px;cursor:pointer;font-size:.65rem" onclick="setDevLimit(756,this)">3Y</button><button style="background:rgba(0,240,255,.1);border:1px solid var(--cyan);color:var(--cyan);padding:3px 8px;border-radius:3px;cursor:pointer;font-size:.65rem" onclick="setDevLimit(1260,this)">5Y</button><button style="background:var(--surface2);border:1px solid var(--border);color:var(--dim);padding:3px 8px;border-radius:3px;cursor:pointer;font-size:.65rem" onclick="setDevLimit(2520,this)">10Y</button></div>
 <div class="form-group"><label>Capital ($)</label><input type="number" id="dev-capital" value="10000" style="width:120px"></div>
+<details style="margin-top:8px"><summary style="font-size:.65rem;color:var(--dim);cursor:pointer;user-select:none">Advanced Settings</summary>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+<div class="form-group"><label style="font-size:.6rem">Commission %</label><input type="number" id="dev-commission" value="0" min="0" max="1" step="0.01" style="width:100%"><div style="font-size:.5rem;color:var(--dim)">0=free, 0.1=HK/SGX</div></div>
+<div class="form-group"><label style="font-size:.6rem">Slippage %</label><input type="number" id="dev-slippage" value="0.05" min="0" max="1" step="0.01" style="width:100%"><div style="font-size:.5rem;color:var(--dim)">0.05=realistic</div></div>
+</div></details>
 <button onclick="runDevBacktest()" class="btn btn-primary" style="width:100%;margin-top:8px">Run Backtest</button>
 </div>
 <!-- Section 2: Unified results area (always in DOM, one panel visible at a time) -->
@@ -1713,7 +1718,9 @@ async function runDevBacktest(){
   showDevState('loading');
   document.getElementById('dev-opt-panel').style.display='none';
   try{
-    const r=await fetch(API+'/api/backtest/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,strategy:devSelectedStrat.id,params:params,initial_capital:cap,timeframe:tf,limit:devLimit})});
+    const commPct=parseFloat(document.getElementById('dev-commission')?.value)||0;
+    const slipPct=parseFloat(document.getElementById('dev-slippage')?.value)||0;
+    const r=await fetch(API+'/api/backtest/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,strategy:devSelectedStrat.id,params:params,initial_capital:cap,timeframe:tf,limit:devLimit,commission_pct:commPct,slippage_pct:slipPct})});
     const d=await r.json();if(!r.ok)throw new Error(d.detail||'Failed');
     if(d.no_trades){
       showDevError('\u2139','No trades generated',d.no_trades_message||'Try adjusting parameters or a longer period.');
@@ -1728,7 +1735,10 @@ async function runDevBacktest(){
     if(badge){badge.textContent=d.source==='cache'?'CACHED':'LIVE';badge.style.cssText='padding:3px 10px;border-radius:4px;font-family:Share Tech Mono,monospace;font-size:.65rem;'+(d.source==='cache'?'background:rgba(0,240,255,.1);color:var(--cyan)':'background:rgba(0,255,136,.1);color:var(--green)');}
     const pl={252:'1Y',504:'2Y',756:'3Y',1260:'5Y',2520:'10Y'}[devLimit]||devLimit;
     const info=document.getElementById('dev-bt-info');
-    if(info)info.textContent=d.symbol+' | '+m.bars_tested+' bars | '+pl+' | $'+m.initial_capital+' -> $'+m.final_value;
+    const cLabel=(d.commission_pct||0)>0?'Comm:'+d.commission_pct+'%':'';
+    const sLabel=(d.slippage_pct||0)>0?'Slip:'+d.slippage_pct+'%':'';
+    const csLabel=[cLabel,sLabel].filter(Boolean).join(' ');
+    if(info)info.textContent=d.symbol+' | '+m.bars_tested+' bars | '+pl+' | $'+m.initial_capital+' -> $'+m.final_value+(csLabel?' | '+csLabel:'');
     if(typeof Chart!=='undefined'){
       const cvs=document.getElementById('dev-equity-chart');
       if(cvs){const ctx=cvs.getContext('2d');if(devEqChart)devEqChart.destroy();

@@ -605,7 +605,8 @@ STRATEGY_MAP = {
 
 # ── Backtest engine ──────────────────────────────────────────────────────────
 
-def run_backtest(bars, strategy, params, initial_capital=10000):
+def run_backtest(bars, strategy, params, initial_capital=10000,
+                 commission_pct=0.0, slippage_pct=0.0):
     if len(bars) < 50:
         raise ValueError(f"Need 50+ bars, got {len(bars)}")
 
@@ -614,35 +615,43 @@ def run_backtest(bars, strategy, params, initial_capital=10000):
         raise ValueError(f"Unknown strategy: {strategy}. Available: {list(STRATEGY_MAP.keys())}")
     # Convert float ints and filter non-signal params
     clean = {}
-    skip = {"initial_capital", "capital_budget", "max_positions", "arena", "custom_tickers", "direction"}
+    skip = {"initial_capital", "capital_budget", "max_positions", "arena",
+            "custom_tickers", "direction", "commission_pct", "slippage_pct"}
     for k, v in params.items():
         if k in skip: continue
         if isinstance(v, float) and v == int(v): v = int(v)
         clean[k] = v
     signals = fn(bars, **clean)
 
+    comm = float(commission_pct) / 100.0
+    slip = float(slippage_pct) / 100.0
     capital, position, entry_px = initial_capital, 0, 0.0
     trades, equity = [], []
 
     for i, (bar, sig) in enumerate(zip(bars, signals)):
-        price = bar["close"]
-        if sig == "buy" and position == 0:
-            shares = int(capital / price)
+        # Signal on bar i, execute at bar i+1 open (no look-ahead bias)
+        if sig == "buy" and position == 0 and i + 1 < len(bars):
+            fill_px = bars[i + 1]["open"] * (1 + slip)  # slippage on buy
+            shares = int(capital / (fill_px * (1 + comm)))
             if shares > 0:
-                position, entry_px = shares, price
-                capital -= shares * price
-                trades.append({"date": bar["date"], "side": "buy", "price": round(price, 4), "shares": shares, "pnl": None})
-        elif sig == "sell" and position > 0:
-            pnl = (price - entry_px) * position
-            capital += position * price
-            trades.append({"date": bar["date"], "side": "sell", "price": round(price, 4), "shares": position, "pnl": round(pnl, 2)})
+                cost = shares * fill_px * (1 + comm)
+                position, entry_px = shares, fill_px
+                capital -= cost
+                trades.append({"date": bars[i + 1]["date"], "side": "buy", "price": round(fill_px, 4), "shares": shares, "pnl": None})
+        elif sig == "sell" and position > 0 and i + 1 < len(bars):
+            fill_px = bars[i + 1]["open"] * (1 - slip)  # slippage on sell
+            proceeds = position * fill_px * (1 - comm)
+            pnl = proceeds - (entry_px * position * (1 + comm))
+            capital += proceeds
+            trades.append({"date": bars[i + 1]["date"], "side": "sell", "price": round(fill_px, 4), "shares": position, "pnl": round(pnl, 2)})
             position, entry_px = 0, 0.0
-        equity.append({"date": bar["date"], "value": round(capital + position * price, 2)})
+        equity.append({"date": bar["date"], "value": round(capital + position * bar["close"], 2)})
 
     if position > 0:
-        lp = bars[-1]["close"]
-        pnl = (lp - entry_px) * position
-        capital += position * lp
+        lp = bars[-1]["close"] * (1 - slip)
+        proceeds = position * lp * (1 - comm)
+        pnl = proceeds - (entry_px * position * (1 + comm))
+        capital += proceeds
         trades.append({"date": bars[-1]["date"], "side": "sell (close)", "price": round(lp, 4), "shares": position, "pnl": round(pnl, 2)})
 
     final = capital
