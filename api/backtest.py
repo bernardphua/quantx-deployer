@@ -1028,10 +1028,14 @@ def _calc_supertrend(highs, lows, closes, atr_list, period=10, multiplier=3.0):
     return st, dr
 
 
-def run_backtest_script(bars, script, initial_capital=10000):
+def run_backtest_script(bars, script, initial_capital=10000, params_override=None):
     """Run a custom user script against bar data in a sandboxed exec()."""
     if not script or not script.strip():
         raise ValueError("Script is empty")
+    # Prepend param overrides as module-level variables (read by generate_signals closure)
+    if params_override:
+        override_lines = "\n".join(f"{k} = {v}" for k, v in params_override.items())
+        script = override_lines + "\n\n" + script
     # Security check
     for token in _FORBIDDEN_TOKENS:
         if token in script:

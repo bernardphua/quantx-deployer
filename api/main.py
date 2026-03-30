@@ -110,6 +110,18 @@ class ScriptBacktestReq(BaseModel):
     script: str = ""
     initial_capital: float = 10000
     limit: int = 1260
+    params: dict = {}
+
+
+class SweepScriptReq(BaseModel):
+    symbol: str = "TQQQ.US"
+    timeframe: str = "1day"
+    script: str = ""
+    initial_capital: float = 10000
+    limit: int = 1260
+    combos: list = []
+    stop_loss_pct: float = 0.0
+    take_profit_pct: float = 0.0
 
 
 class ScreenNowReq(BaseModel):
@@ -512,11 +524,38 @@ async def backtest_run_script(body: ScriptBacktestReq):
     from api.backtest import fetch_ohlcv, run_backtest_script
     def _run():
         bars, source = fetch_ohlcv(body.symbol, body.timeframe, body.limit)
-        result = run_backtest_script(bars, body.script, body.initial_capital)
+        result = run_backtest_script(bars, body.script, body.initial_capital,
+                                     params_override=body.params if body.params else None)
         result["source"] = source
         result["symbol"] = body.symbol
         result["strategy"] = "CUSTOM_SCRIPT"
         return result
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(_executor, _run)
+        return result
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/backtest/sweep-script")
+async def backtest_sweep_script(body: SweepScriptReq):
+    from api.backtest import fetch_ohlcv, run_backtest_script
+    def _run():
+        # Fetch data ONCE for all combos
+        bars, source = fetch_ohlcv(body.symbol, body.timeframe, body.limit)
+        results = []
+        for combo in body.combos:
+            try:
+                r = run_backtest_script(bars, body.script, body.initial_capital,
+                                        params_override=combo)
+                r["params"] = combo
+                r["source"] = source
+                results.append(r)
+            except Exception as e:
+                results.append({"params": combo, "error": str(e)[:200]})
+        # Sort by sharpe (non-error results first)
+        results.sort(key=lambda x: x.get("metrics", {}).get("sharpe_ratio", -999), reverse=True)
+        return {"results": results, "total": len(body.combos), "symbol": body.symbol}
     try:
         result = await asyncio.get_event_loop().run_in_executor(_executor, _run)
         return result

@@ -345,6 +345,12 @@ td{padding:10px 14px;border-bottom:1px solid #ffffff08;font-family:'Share Tech M
 <div id="dev-opt-panel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px">
 <h3 style="font-family:'Orbitron',monospace;font-size:.75rem;color:var(--magenta);margin-bottom:12px">OPTIMIZE</h3>
 <div id="dev-opt-ranges"></div>
+<div id="dev-opt-risk" style="display:none;border-top:.5px solid var(--border);margin-top:10px;padding-top:10px">
+<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6B6B8A;margin-bottom:6px">Risk Parameters (fixed for sweep)</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+<div class="form-group"><label style="font-size:.6rem;color:#E24B4A">Stop Loss %</label><input type="number" id="dev-opt-sl" value="5" min="0" max="50" step="0.5" style="width:100%"></div>
+<div class="form-group"><label style="font-size:.6rem;color:#4ECBA0">Take Profit %</label><input type="number" id="dev-opt-tp" value="10" min="0" max="100" step="0.5" style="width:100%"></div>
+</div></div>
 <div id="dev-opt-combos" style="font-family:'Share Tech Mono',monospace;font-size:.7rem;color:var(--green);margin:8px 0"></div>
 <button id="dev-opt-btn" onclick="runDevOptimize()" class="btn btn-magenta" style="width:100%">Run Sweep</button>
 <div id="dev-opt-results" style="margin-top:12px"></div>
@@ -2050,6 +2056,12 @@ function showDevOptimize(){
     c.innerHTML=Object.entries(imp.optimize_params).map(([k,v])=>`<div style="margin-bottom:8px"><div style="font-family:'Share Tech Mono',monospace;font-size:.65rem;color:var(--cyan);margin-bottom:4px">${k}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px"><div><label style="font-size:.5rem;color:var(--dim)">From</label><input type="number" id="dopt-${k}-f" value="${v.min}" oninput="updateDevOptCombos()" class="opt-range-input" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:.8rem;padding:3px;border-radius:3px"></div><div><label style="font-size:.5rem;color:var(--dim)">To</label><input type="number" id="dopt-${k}-t" value="${v.max}" oninput="updateDevOptCombos()" class="opt-range-input" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:.8rem;padding:3px;border-radius:3px"></div><div><label style="font-size:.5rem;color:var(--dim)">Step</label><input type="number" id="dopt-${k}-s" value="${v.step}" oninput="updateDevOptCombos()" class="opt-range-input" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:.8rem;padding:3px;border-radius:3px"></div></div></div>`).join('');
     updateDevOptCombos();
     document.getElementById('dev-opt-results').innerHTML='';
+    // Show risk panel with script's SL/TP values
+    const riskPanel=document.getElementById('dev-opt-risk');
+    if(riskPanel){riskPanel.style.display='block';
+      document.getElementById('dev-opt-sl').value=imp.stop_loss_pct||5;
+      document.getElementById('dev-opt-tp').value=imp.take_profit_pct||10;
+    }
     document.getElementById('dev-opt-panel').style.display='block';
     showToast('Optimize params loaded from script','success',2000);
     return;
@@ -2136,7 +2148,7 @@ async function runDevScriptOptimize(){
   const tf=document.getElementById('dev-timeframe').value;
   const cap=parseFloat(document.getElementById('dev-capital').value)||10000;
   const ranges=_getOptRangeKeys();
-  // Build param grid from UI inputs
+  // Build combinations from UI inputs
   const paramArrays={};
   ranges.forEach(r=>{
     const f=parseFloat(document.getElementById('dopt-'+r.k+'-f')?.value||r.f);
@@ -2145,50 +2157,34 @@ async function runDevScriptOptimize(){
     const vals=[];for(let v=f;v<=t+0.001;v+=s)vals.push(parseFloat(v.toFixed(4)));
     paramArrays[r.k]=vals;
   });
-  // Generate all combinations
   let combos=[{}];
   for(const[name,vals]of Object.entries(paramArrays)){
     const nc=[];
     for(const existing of combos)for(const val of vals)nc.push({...existing,[name]:val});
     combos=nc;
   }
-  console.log('[SWEEP] Script mode:',combos.length,'combinations');
+  console.log('[SWEEP] Script mode: '+combos.length+' combos via batch endpoint');
   const btn=document.getElementById('dev-opt-btn');
-  btn.textContent=`Running 0/${combos.length}...`;btn.disabled=true;
-  const results=[];
-  for(let ci=0;ci<combos.length;ci++){
-    const combo=combos[ci];
-    btn.textContent=`Running ${ci+1}/${combos.length}...`;
-    // Inject param values into script
-    let modScript=imp.signal_function;
-    for(const[pn,pv]of Object.entries(combo)){
-      const re=new RegExp('('+pn.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*[=,]\\s*)[\\d.]+');
-      modScript=modScript.replace(re,'$1'+pv);
-    }
-    try{
-      const r=await fetch(API+'/api/backtest/run-script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,script:modScript,initial_capital:cap,timeframe:tf,limit:devLimit})});
-      if(r.ok){
-        const d=await r.json();
-        results.push({params:combo,metrics:d.metrics||{}});
-      }
-    }catch(e){console.warn('[SWEEP] combo failed:',combo,e);}
-  }
-  // Sort by sharpe
-  results.sort((a,b)=>(b.metrics.sharpe_ratio||0)-(a.metrics.sharpe_ratio||0));
-  // Render results using same format as library optimize
-  const re=document.getElementById('dev-opt-results');
-  const best=results[0];
-  let h='';
-  if(best){const bps=Object.entries(best.params).map(([k,v])=>k+'='+v).join(', ');
-    h+=`<div style="background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.25);border-radius:6px;padding:10px;margin-bottom:10px"><div style="color:var(--yellow);font-size:.75rem">BEST: ${bps}</div><div style="font-size:.7rem;color:var(--dim)">Return: ${best.metrics.total_return_pct}% | CAGR: ${best.metrics.cagr_pct}% | Sharpe: ${best.metrics.sharpe_ratio} | Trades: ${best.metrics.total_trades}</div></div>`;}
-  h+=`<div class="table-wrap"><table><thead><tr><th>Params</th><th>Return</th><th>CAGR</th><th>Sharpe</th><th>Win%</th><th>DD</th><th>Trades</th></tr></thead><tbody>`;
-  results.slice(0,10).forEach((row,i)=>{const m=row.metrics;const ps=Object.entries(row.params).map(([k,v])=>k+'='+v).join(' ');
-    h+=`<tr${i===0?' style="background:rgba(255,215,0,.04);border-left:2px solid gold"':''}><td style="font-size:.65rem;color:var(--dim)">${ps}</td><td class="${(m.total_return_pct||0)>=0?'pnl-pos':'pnl-neg'}">${m.total_return_pct||0}%</td><td style="color:${(m.cagr_pct||0)>=0?'#4ECBA0':'#E24B4A'}">${m.cagr_pct||0}%</td><td>${m.sharpe_ratio||0}</td><td>${m.win_rate_pct||0}%</td><td style="color:var(--red)">${m.max_drawdown_pct||0}%</td><td style="color:#E0E0F0">${m.total_trades||0}</td></tr>`;});
-  h+=`</tbody></table></div>`;
-  re.innerHTML=h;
+  btn.textContent='Sweeping '+combos.length+' combos...';btn.disabled=true;
+  try{
+    const r=await fetch(API+'/api/backtest/sweep-script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,script:imp.signal_function,initial_capital:cap,timeframe:tf,limit:devLimit,combos:combos,stop_loss_pct:imp.stop_loss_pct||0,take_profit_pct:imp.take_profit_pct||0})});
+    const d=await r.json();if(!r.ok)throw new Error(d.detail||'Sweep failed');
+    const results=(d.results||[]).filter(x=>x.metrics);
+    // Render results
+    const re=document.getElementById('dev-opt-results');
+    const best=results[0];
+    let h='';
+    if(best){const bps=Object.entries(best.params).map(([k,v])=>k+'='+v).join(', ');
+      h+=`<div style="background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.25);border-radius:6px;padding:10px;margin-bottom:10px"><div style="color:var(--yellow);font-size:.75rem">BEST: ${bps}</div><div style="font-size:.7rem;color:var(--dim)">Return: ${best.metrics.total_return_pct}% | CAGR: ${best.metrics.cagr_pct}% | Sharpe: ${best.metrics.sharpe_ratio} | Trades: ${best.metrics.total_trades}</div></div>`;}
+    h+=`<div class="table-wrap"><table><thead><tr><th>Params</th><th>Return</th><th>CAGR</th><th>Sharpe</th><th>Win%</th><th>DD</th><th>Trades</th></tr></thead><tbody>`;
+    results.slice(0,15).forEach((row,i)=>{const m=row.metrics;const ps=Object.entries(row.params).map(([k,v])=>k+'='+v).join(' ');
+      h+=`<tr${i===0?' style="background:rgba(255,215,0,.04);border-left:2px solid gold"':''}><td style="font-size:.65rem;color:var(--dim)">${ps}</td><td class="${(m.total_return_pct||0)>=0?'pnl-pos':'pnl-neg'}">${m.total_return_pct||0}%</td><td style="color:${(m.cagr_pct||0)>=0?'#4ECBA0':'#E24B4A'}">${m.cagr_pct||0}%</td><td>${m.sharpe_ratio||0}</td><td>${m.win_rate_pct||0}%</td><td style="color:var(--red)">${m.max_drawdown_pct||0}%</td><td style="color:#E0E0F0">${m.total_trades||0}</td></tr>`;});
+    h+=`</tbody></table></div>`;
+    re.innerHTML=h;
+    showToast('Sweep complete: '+results.length+' combinations tested','success',3000);
+    setTimeout(()=>{document.getElementById('dev-opt-panel').scrollIntoView({behavior:'smooth',block:'start'});},300);
+  }catch(e){showToast('Sweep error: '+(e.message||''),'error');}
   btn.textContent='Run Sweep';btn.disabled=false;
-  showToast('Sweep complete: '+results.length+' combinations tested','success',3000);
-  setTimeout(()=>{document.getElementById('dev-opt-panel').scrollIntoView({behavior:'smooth',block:'start'});},300);
 }
 
 // ── Toast system ──────────────────────────────────────────────────────────
