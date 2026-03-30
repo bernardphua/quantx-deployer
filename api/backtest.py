@@ -34,9 +34,25 @@ _fetch_locks: dict = {}  # symbol/timeframe -> threading.Lock
 
 INTRADAY_TFS = {"1min", "5min", "15min", "30min", "1hour", "4hour"}
 
-# TTL: daily=23h, intraday=1h
-def _ttl_seconds(timeframe):
-    return 3600 if timeframe in INTRADAY_TFS else 82800  # 1h or 23h
+def _cache_ttl_seconds(symbol, timeframe, bar_count=0):
+    """Determine R2 cache TTL in seconds based on symbol, timeframe, and data size."""
+    # SGX and HK: FMP cannot serve intraday — always use long TTL
+    if symbol.endswith('.SI') or symbol.endswith('.HK'):
+        return 30 * 86400  # 30 days
+    # Bulk historical data (1000+ bars) — long TTL
+    try:
+        bc = int(bar_count or 0)
+    except (TypeError, ValueError):
+        bc = 0
+    if bc >= 1000:
+        return 30 * 86400  # 30 days
+    # Intraday live-fetched — short TTL
+    if timeframe in ("1min", "5min", "15min", "30min"):
+        return 3600  # 1 hour
+    if timeframe in ("1hour", "4hour"):
+        return 14400  # 4 hours
+    # Daily/weekly
+    return 82800  # 23 hours
 
 
 def _r2_key(symbol, timeframe):
@@ -69,24 +85,21 @@ def load_from_r2(symbol, timeframe):
         if not bars:
             return None, None
         cached_at = data.get("cached_at", "")
+        ttl = _cache_ttl_seconds(symbol, timeframe, len(bars))
         if cached_at:
             try:
                 ts = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
                 if ts.tzinfo:
-                    ts = ts.replace(tzinfo=None)  # make naive for comparison
+                    ts = ts.replace(tzinfo=None)
                 age = (datetime.utcnow() - ts).total_seconds()
             except Exception:
-                age = 0  # can't parse timestamp — treat as fresh
-            ttl = _ttl_seconds(timeframe)
-            # Bulk-preloaded data (1000+ bars) uses extended TTL (30 days)
-            if len(bars) >= 1000:
-                ttl = 30 * 86400  # 30 days
+                age = 0  # can't parse — treat as fresh
             if age < ttl:
-                print(f"[R2] HIT: {symbol}/{timeframe} ({len(bars)} bars, age={int(age)}s)")
+                print(f"[R2] HIT: {symbol}/{timeframe} ({len(bars)} bars, age={int(age)}s, ttl={int(ttl)}s)")
                 return bars, "cache"
             print(f"[R2] Stale: {symbol}/{timeframe} (age={int(age)}s, ttl={int(ttl)}s, bars={len(bars)})")
         else:
-            # No cached_at timestamp — bulk upload without timestamp, always accept
+            # No timestamp — bulk upload, always accept
             print(f"[R2] HIT (no timestamp): {symbol}/{timeframe} ({len(bars)} bars)")
             return bars, "cache"
         return None, None
