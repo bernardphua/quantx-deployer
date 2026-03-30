@@ -1192,6 +1192,8 @@ def run_backtest_script(bars, script, initial_capital=10000, params_override=Non
     script_globals = _extract_script_globals(script)
     if params_override:
         script_globals.update(params_override)
+    if script_globals:
+        print(f"[SANDBOX] Injecting globals: {script_globals}")
 
     # Sandbox globals — includes numpy/pandas + all indicators
     sandbox = {

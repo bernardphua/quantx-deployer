@@ -1692,9 +1692,21 @@ function parseQuantXScript(text){
       }
     }
   }
+  // Extract module-level variable assignments (before def)
+  const varLines=[];
+  const metaKeys=['STRATEGY_','OPTIMIZE_','EDGE_','SYMBOL:','TIMEFRAME:','CAPITAL:','COMMISSION','STOP_','TAKE_'];
+  for(const line of text.replace(/\r\n/g,'\n').split('\n')){
+    const s=line.trim();
+    if(!s||s.startsWith('#'))continue;
+    if(s.startsWith('def ')||s.startsWith('class '))break;
+    if(metaKeys.some(k=>s.startsWith(k)))continue;
+    if(/^[a-zA-Z_]\w*\s*=/.test(s))varLines.push(line);
+  }
   // Extract generate_signals function
   const fm=text.match(/(def generate_signals\s*\([^)]*\):[\s\S]*?)(?=\n(?:OPTIMIZE_PARAMS|STRATEGY_|EDGE_|SYMBOL:|TIMEFRAME:|CAPITAL:|COMMISSION|STOP_LOSS|TAKE_PROFIT)|$)/);
   if(fm){r.signal_function=fm[1].trim();}else{r.errors.push('No generate_signals() function found');}
+  // Build full_script: module-level vars + function (what backend needs)
+  r.full_script=(varLines.length>0?varLines.join('\n')+'\n\n':'')+r.signal_function;
   // Defaults
   if(!r.name){r.name='Custom Script';r.warnings.push('STRATEGY_NAME missing');}
   if(!r.symbol){r.symbol='SPY.US';r.warnings.push('SYMBOL missing, defaulting to SPY.US');}
@@ -2014,7 +2026,7 @@ async function runDevBacktest(){
 async function runDevScriptBacktest(){
   // Use imported script if available, otherwise use code editor
   const imported=window._importedScript;
-  const script=imported?imported.signal_function:(document.getElementById('dev-script-code')?.value||'').trim();
+  const script=imported?imported.full_script||imported.signal_function:(document.getElementById('dev-script-code')?.value||'').trim();
   if(!script){showDevError('\u26A0','Empty script','Import or write a strategy script with a generate_signals(df) function.');return;}
   const sym=document.getElementById('dev-symbol').value.trim();
   const tf=document.getElementById('dev-timeframe').value;
@@ -2175,7 +2187,7 @@ async function runDevScriptOptimize(){
   const btn=document.getElementById('dev-opt-btn');
   btn.textContent='Sweeping '+combos.length+' combos...';btn.disabled=true;
   try{
-    const r=await fetch(API+'/api/backtest/sweep-script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,script:imp.signal_function,initial_capital:cap,timeframe:tf,limit:devLimit,combos:combos,stop_loss_pct:imp.stop_loss_pct||0,take_profit_pct:imp.take_profit_pct||0})});
+    const r=await fetch(API+'/api/backtest/sweep-script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,script:imp.full_script||imp.signal_function,initial_capital:cap,timeframe:tf,limit:devLimit,combos:combos,stop_loss_pct:imp.stop_loss_pct||0,take_profit_pct:imp.take_profit_pct||0})});
     const d=await r.json();if(!r.ok)throw new Error(d.detail||'Sweep failed');
     const results=(d.results||[]).filter(x=>x.metrics);
     // Render results
