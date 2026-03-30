@@ -1694,6 +1694,13 @@ function parseQuantXScript(text){
   // Normalize timeframe
   const tfn={'1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1hour','4h':'4hour','1d':'1day','1w':'1week'};
   r.timeframe=tfn[r.timeframe]||r.timeframe||'1day';
+  // Detect indicators used
+  const indList=['calc_rsi','calc_ema','calc_sma','calc_atr','calc_bbands','calc_macd','calc_stoch','calc_adx','calc_vwap','calc_cci','calc_williams_r','calc_donchian','calc_supertrend'];
+  r.indicators_detected=indList.filter(ind=>r.signal_function.includes(ind+'('));
+  if(r.signal_function.includes('np.'))r.indicators_detected.push('numpy');
+  if(r.signal_function.includes('pd.'))r.indicators_detected.push('pandas');
+  // Detect trade direction
+  r.has_shorts=r.signal_function.includes('= 2') || r.signal_function.includes('=-2') || r.signal_function.includes('= -2');
   return r;
 }
 
@@ -1726,24 +1733,46 @@ function loadImportedScript(){
   document.getElementById('dev-strat-badge').style.cssText='font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(127,119,221,.15);color:#9B8FE8';
   // Warnings
   parsed.warnings.forEach(w=>showToast(w,'info',4000));
-  showToast('Script loaded: '+parsed.name,'success',4000);
+  if(Object.keys(parsed.optimize_params||{}).length===0)showToast('No OPTIMIZE_PARAMS found — optimizer disabled','info',4000);
+  const tradeType=parsed.has_shorts?'Long + Short':'Long only';
+  const nParams=Object.keys(parsed.optimize_params||{}).length;
+  const nInd=(parsed.indicators_detected||[]).length;
+  showToast(parsed.name+' loaded — '+tradeType+' | '+nParams+' params | '+nInd+' indicators','success',5000);
 }
 
 function showScriptPreview(parsed){
   const el=document.getElementById('scriptPreviewCard');if(!el)return;
   el.style.display='block';
-  const optHtml=Object.keys(parsed.optimize_params).length>0?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${Object.entries(parsed.optimize_params).map(([k,v])=>`<span style="font-size:9px;background:#1A1A35;border:.5px solid #2A2A45;border-radius:3px;padding:2px 6px;color:#C9B8FF">${k}:${v.default||''}</span>`).join('')}</div>`:'';
-  el.innerHTML=`<div style="background:#13132A;border:.5px solid #7F77DD;border-radius:8px;padding:12px;margin-bottom:12px">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9B8FE8">Imported Script</span><span style="font-size:9px;background:#2D2645;color:#9B8FE8;padding:1px 5px;border-radius:3px">${parsed.type||'CUSTOM'}</span></div>
-    <div style="font-size:13px;font-weight:600;color:#E0E0F0;margin-bottom:2px">${parsed.name}</div>
-    <div style="font-size:10px;color:#6B6B8A;margin-bottom:8px;line-height:1.4">${parsed.hypothesis||''}</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
-      <div style="background:#0D0D1A;border-radius:4px;padding:6px"><div style="font-size:8px;color:#6B6B8A">SYMBOL</div><div style="font-size:12px;font-weight:600;color:#4ECBA0">${parsed.symbol}</div></div>
-      <div style="background:#0D0D1A;border-radius:4px;padding:6px"><div style="font-size:8px;color:#6B6B8A">TIMEFRAME</div><div style="font-size:12px;font-weight:600;color:#E0E0F0">${parsed.timeframe}</div></div>
-      <div style="background:#0D0D1A;border-radius:4px;padding:6px"><div style="font-size:8px;color:#6B6B8A">CAPITAL</div><div style="font-size:12px;font-weight:600;color:#E0E0F0">$${parsed.capital.toLocaleString()}</div></div>
-    </div>${optHtml}
-    <button onclick="clearImportedScript()" style="margin-top:8px;font-size:9px;padding:3px 10px;border-radius:3px;border:.5px solid #2A2A45;background:transparent;color:#6B6B8A;cursor:pointer">Clear script</button>
-  </div>`;
+  // Optimize params table
+  const paramRows=Object.entries(parsed.optimize_params||{}).map(([k,v])=>`<div style="display:grid;grid-template-columns:130px 80px 90px 60px;gap:4px;padding:3px 0;border-bottom:.5px solid #1E1E35;font-size:10px"><span style="color:#C9B8FF;font-family:monospace">${k}</span><span style="color:#6B6B8A">def: <span style="color:#E0E0F0">${v.default}</span></span><span style="color:#6B6B8A"><span style="color:#E0E0F0">${v.min}</span> &rarr; <span style="color:#E0E0F0">${v.max}</span></span><span style="color:#6B6B8A">step <span style="color:#E0E0F0">${v.step}</span></span></div>`).join('');
+  // Indicator pills
+  const indPills=(parsed.indicators_detected||[]).map(ind=>`<span style="font-size:9px;background:#12253A;color:#5BA8E5;padding:2px 7px;border-radius:3px;border:.5px solid #185FA5;font-family:monospace">${ind}</span>`).join(' ');
+  // Signal function preview
+  const fnLines=(parsed.signal_function||'').split('\n');
+  const preview8=fnLines.slice(0,8).map(l=>l.replace(/</g,'&lt;').replace(/>/g,'&gt;')).join('\n');
+  const hasMore=fnLines.length>8;
+  const tradeDir=parsed.has_shorts?'Long + Short':'Long only';
+  // Settings cells
+  const cells=[['Symbol',parsed.symbol,'#4ECBA0'],['Timeframe',parsed.timeframe,'#E0E0F0'],['Capital','$'+(parsed.capital||10000).toLocaleString(),'#E0E0F0'],['Commission',(parsed.commission_pct||0)+'%','#E0E0F0'],['Direction',tradeDir,'#C9B8FF']];
+  const settingsHtml=cells.map(([l,v,c])=>`<div style="background:#0D0D1A;border-radius:5px;padding:6px 8px"><div style="font-size:8px;color:#6B6B8A;margin-bottom:1px">${l}</div><div style="font-size:11px;font-weight:600;color:${c}">${v}</div></div>`).join('');
+
+  el.innerHTML=`<div style="background:#13132A;border:.5px solid #7F77DD;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9B8FE8">Imported Script</span><span style="font-size:8px;background:#2D2645;color:#9B8FE8;padding:1px 6px;border-radius:3px">${parsed.type||'CUSTOM'}</span></div>
+<div style="font-size:14px;font-weight:600;color:#E0E0F0;margin-bottom:2px">${parsed.name||'Custom Script'}</div>
+<div style="font-size:10px;color:#6B6B8A;margin-bottom:12px;line-height:1.4">${parsed.hypothesis||''}</div>
+<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6B6B8A;margin-bottom:5px">Settings</div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:12px">${settingsHtml}</div>
+<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6B6B8A;margin-bottom:5px">Risk Management</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:12px">
+<div style="background:#2E1010;border-radius:5px;padding:6px 8px"><div style="font-size:8px;color:#6B3A3A;margin-bottom:1px">Stop Loss</div><div style="font-size:12px;font-weight:600;color:#E24B4A">${parsed.stop_loss_pct||5}%</div></div>
+<div style="background:#0F3028;border-radius:5px;padding:6px 8px"><div style="font-size:8px;color:#0F6E56;margin-bottom:1px">Take Profit</div><div style="font-size:12px;font-weight:600;color:#4ECBA0">${parsed.take_profit_pct||10}%</div></div>
+</div>
+${Object.keys(parsed.optimize_params||{}).length>0?`<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6B6B8A;margin-bottom:5px">Optimize Parameters <span style="color:#534AB7;font-size:8px;margin-left:4px">${Object.keys(parsed.optimize_params).length} params</span></div><div style="background:#0D0D1A;border-radius:5px;padding:6px 10px;margin-bottom:12px">${paramRows}</div>`:`<div style="font-size:10px;color:#6B3A3A;margin-bottom:12px">No OPTIMIZE_PARAMS found</div>`}
+${(parsed.indicators_detected||[]).length>0?`<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6B6B8A;margin-bottom:5px">Indicators Detected</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">${indPills}</div>`:''}
+<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6B6B8A;margin-bottom:5px">Signal Function <span style="color:#534AB7;font-size:8px;margin-left:4px">${fnLines.length} lines</span></div>
+<div style="background:#0A0A18;border-radius:5px;padding:8px 10px;font-family:'Share Tech Mono',monospace;font-size:10px;color:#4ECBA0;border:.5px solid #1E1E35;max-height:130px;overflow-y:auto;margin-bottom:10px;white-space:pre;line-height:1.4">${preview8}${hasMore?'\n  ...('+(fnLines.length-8)+' more lines)':''}</div>
+<button onclick="clearImportedScript()" style="font-size:9px;padding:3px 10px;border-radius:3px;border:.5px solid #2A2A45;background:transparent;color:#6B6B8A;cursor:pointer">Clear script</button>
+</div>`;
 }
 
 function clearImportedScript(){
