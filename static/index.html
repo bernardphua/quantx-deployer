@@ -1939,9 +1939,11 @@ async function loadDeploySummary(){
     const te=id=>document.getElementById(id);
     if(te('dep-total'))te('dep-total').textContent=all.length;
     if(te('dep-live'))te('dep-live').textContent=live.length;
-    // Best BT return + avg sharpe (from risk data as proxy)
-    const rets=all.map(s=>(s.risk||{}).tp_pct||0);
-    if(te('dep-best-ret'))te('dep-best-ret').textContent=rets.length?Math.max(...rets).toFixed(1)+'%':'—';
+    // Best BT return + avg sharpe from actual backtest results
+    const btRets=all.map(s=>{const b=s.backtest_results||{};return typeof b.total_return_pct==='number'?b.total_return_pct:null;}).filter(v=>v!==null);
+    if(te('dep-best-ret'))te('dep-best-ret').textContent=btRets.length?Math.max(...btRets).toFixed(1)+'%':'\u2014';
+    const sharpes=all.map(s=>{const b=s.backtest_results||{};return typeof b.sharpe_ratio==='number'?b.sharpe_ratio:null;}).filter(v=>v!==null&&!isNaN(v));
+    if(te('dep-avg-sharpe'))te('dep-avg-sharpe').textContent=sharpes.length?(sharpes.reduce((a,b)=>a+b,0)/sharpes.length).toFixed(2):'\u2014';
     // Market hours
     const ps=all[0]?all[0].symbol:'';
     const mi=getMarketInfo(ps);
@@ -2019,6 +2021,7 @@ function renderBotCard(s,isLive){
     metricsHtml+=`<div style="text-align:center"><div style="font-size:8px;color:#3A3A5A;text-transform:uppercase">Max DD</div><div style="font-size:13px;font-weight:500;color:#6B3A3A">${mf(bt.max_drawdown_pct)}</div></div>`;
     metricsHtml+=`</div></div>`;
   }
+  if(!metricsHtml){metricsHtml=`<div style="font-size:10px;color:#3A3A5A;padding:8px 0;text-align:center">Run backtest in Develop tab to see metrics</div>`;}
   return `<div onclick="showBotDetail('${sid}')" style="background:#16162A;border:1px solid #222;border-left:3px solid ${bc};border-radius:8px;padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor='#444'" onmouseout="this.style.borderColor='#222'">
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-family:Inter,sans-serif;font-size:13px;font-weight:500;color:#ddd">${s.strategy_name||sid}</span>
