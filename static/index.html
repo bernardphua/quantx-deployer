@@ -639,7 +639,7 @@ function switchTab(n){
   document.querySelectorAll('.tab-content').forEach(tc=>tc.classList.remove('active'));
   document.getElementById('tab-'+n).classList.add('active');
   if(n==='develop')loadLibrary();
-  if(n==='deploy')loadDeploySummary();
+  if(n==='deploy'&&deployView==='list')loadDeploySummary();
   if(n==='dashboard')refreshDashboard();
   if(n!=='register')localStorage.setItem('qx_last_tab',n);
 }
@@ -2283,7 +2283,7 @@ async function saveSettings(){
 setInterval(()=>{
   if(document.getElementById('tab-dashboard').classList.contains('active'))refreshDashboard();
   if(document.getElementById('tab-deploy').classList.contains('active')&&deployView==='list')loadDeploySummary();
-},10000);
+},15000);
 
 // Pre-fill settings
 document.getElementById('set-central').value=CENTRAL;
