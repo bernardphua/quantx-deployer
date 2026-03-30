@@ -836,6 +836,25 @@ def run_backtest_script(bars, script, initial_capital=10000):
     volumes = [b["volume"] for b in bars]
     dates = [b["date"] for b in bars]
 
+    # Build a lightweight DataFrame-like dict for generate_signals(df)
+    class _DFProxy:
+        """Minimal DataFrame proxy — supports df['col'] and df.col access."""
+        def __init__(self, data):
+            self._data = data
+            for k, v in data.items():
+                setattr(self, k, v)
+        def __getitem__(self, key):
+            return self._data[key]
+        def __len__(self):
+            return len(next(iter(self._data.values())))
+        def __contains__(self, key):
+            return key in self._data
+
+    df = _DFProxy({
+        "date": dates, "open": opens, "high": highs, "low": lows,
+        "close": closes, "volume": volumes,
+    })
+
     # Sandbox globals
     sandbox = {
         "__builtins__": {
@@ -851,7 +870,7 @@ def run_backtest_script(bars, script, initial_capital=10000):
         "calc_atr": lambda period=14: calc_atr(highs, lows, closes, period),
         "calc_bbands": _calc_bbands,
         "calc_macd": _calc_macd,
-        # Data arrays
+        # Data arrays (for scripts that use raw lists instead of df)
         "opens": opens, "highs": highs, "lows": lows, "closes": closes,
         "volumes": volumes, "dates": dates, "bars": bars,
     }
@@ -862,16 +881,33 @@ def run_backtest_script(bars, script, initial_capital=10000):
         raise ValueError(f"Script error: {type(e).__name__}: {e}")
 
     gen_fn = sandbox.get("generate_signals")
-    if not gen_fn:
-        raise ValueError("Script must define a 'generate_signals()' function")
+    if not gen_fn or not callable(gen_fn):
+        raise ValueError("Script must define a 'generate_signals(df)' function")
 
+    # Call with df — also try without args for backward compat
     try:
-        signals = gen_fn()
+        import inspect
+        sig = inspect.signature(gen_fn)
+        if len(sig.parameters) >= 1:
+            signals = gen_fn(df)
+        else:
+            signals = gen_fn()
+    except TypeError:
+        # Fallback: try both ways
+        try:
+            signals = gen_fn(df)
+        except TypeError:
+            signals = gen_fn()
     except Exception as e:
         raise ValueError(f"generate_signals() error: {type(e).__name__}: {e}")
 
-    if not isinstance(signals, list) or len(signals) != len(bars):
-        raise ValueError(f"generate_signals() must return a list of {len(bars)} values, got {type(signals).__name__} length {len(signals) if isinstance(signals, list) else '?'}")
+    if not isinstance(signals, (list, tuple)):
+        try:
+            signals = list(signals)
+        except Exception:
+            raise ValueError("generate_signals must return a list")
+    if len(signals) != len(bars):
+        raise ValueError(f"signals length ({len(signals)}) must match data length ({len(bars)})")
 
     # Convert signals to buy/sell/None format
     bt_signals = []
