@@ -688,6 +688,64 @@ def run_backtest(bars, strategy, params, initial_capital=10000):
     return result
 
 
+def _walk_forward_test(bars, strategy, params, initial_capital, in_sample_pct=0.7):
+    """Split data 70/30. Test if OOS Sharpe >= 50% of IS Sharpe."""
+    split = int(len(bars) * in_sample_pct)
+    if split < 50 or len(bars) - split < 30:
+        return {"pass": None, "reason": "insufficient data for split"}
+    bars_is = bars[:split]
+    bars_oos = bars[split:]
+    try:
+        r_is = run_backtest(bars_is, strategy, params, initial_capital)
+        r_oos = run_backtest(bars_oos, strategy, params, initial_capital)
+    except Exception:
+        return {"pass": None, "reason": "backtest failed on split"}
+    is_sharpe = r_is["metrics"].get("sharpe_ratio", 0) or 0
+    oos_sharpe = r_oos["metrics"].get("sharpe_ratio", 0) or 0
+    degradation = (is_sharpe - oos_sharpe) / max(abs(is_sharpe), 0.01)
+    passes = oos_sharpe > 0 and degradation <= 0.5
+    return {
+        "pass": passes,
+        "is_sharpe": round(is_sharpe, 2),
+        "oos_sharpe": round(oos_sharpe, 2),
+        "degradation_pct": round(degradation * 100, 1),
+    }
+
+
+def _monte_carlo_test(trades, capital, n_simulations=500, acceptable_dd=-0.30):
+    """Shuffle trade sequence N times, check if P10 max DD is acceptable."""
+    import random
+    pnls = [t["pnl"] for t in trades if t.get("pnl") is not None]
+    if len(pnls) < 5:
+        return {"pass": None, "reason": "insufficient trades"}
+    results = []
+    for _ in range(n_simulations):
+        shuffled = pnls.copy()
+        random.shuffle(shuffled)
+        equity = capital
+        peak = capital
+        max_dd = 0.0
+        for pnl in shuffled:
+            equity += pnl
+            peak = max(peak, equity)
+            dd = (equity - peak) / peak if peak > 0 else 0
+            max_dd = min(max_dd, dd)
+        results.append({"total_return": (equity - capital) / capital * 100, "max_dd": max_dd})
+    returns = sorted(r["total_return"] for r in results)
+    dds = sorted(r["max_dd"] for r in results)
+    p10_ret = returns[int(n_simulations * 0.10)]
+    p50_ret = returns[int(n_simulations * 0.50)]
+    p90_ret = returns[int(n_simulations * 0.90)]
+    p10_dd = dds[int(n_simulations * 0.10)]
+    passes = p10_dd >= acceptable_dd and p10_ret > 0
+    return {
+        "pass": passes,
+        "p10_return": round(p10_ret, 1), "p50_return": round(p50_ret, 1),
+        "p90_return": round(p90_ret, 1), "p10_max_dd": round(p10_dd * 100, 1),
+        "n_simulations": n_simulations,
+    }
+
+
 def run_optimization(bars, strategy, param_grid, initial_capital=10000):
     import itertools
     keys = list(param_grid.keys())
@@ -697,10 +755,21 @@ def run_optimization(bars, strategy, param_grid, initial_capital=10000):
         params = dict(zip(keys, combo))
         try:
             r = run_backtest(bars, strategy, params, initial_capital)
-            results.append({"params": params, "metrics": r["metrics"]})
+            entry = {"params": params, "metrics": r["metrics"]}
+            # Walk-forward validation
+            wf = _walk_forward_test(bars, strategy, params, initial_capital)
+            entry["walk_forward"] = wf
+            # Monte Carlo simulation
+            mc = _monte_carlo_test(r.get("trades", []), initial_capital)
+            entry["monte_carlo"] = mc
+            results.append(entry)
         except Exception:
             pass
-    results.sort(key=lambda x: x["metrics"]["sharpe_ratio"], reverse=True)
+    # Sort: walk-forward PASS first, then by Sharpe
+    results.sort(key=lambda x: (
+        0 if x.get("walk_forward", {}).get("pass") else 1,
+        -(x["metrics"].get("sharpe_ratio", 0) or 0)
+    ))
     return {"total_combinations": len(combos), "results": results, "best": results[0] if results else None}
 
 
