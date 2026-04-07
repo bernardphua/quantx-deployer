@@ -407,14 +407,21 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
   </div>
   <!-- New Backtest Panel -->
   <div id="bt-panel" class="card" style="margin-bottom:24px">
-    <h3 style="margin-bottom:16px;font-size:15px">Run Backtest</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h3 style="font-size:15px;margin:0">Run Backtest</h3>
+      <div style="display:flex;gap:4px">
+        <span class="filter-pill active" id="bt-mode-lib" onclick="setBtMode('library')">📚 Library</span>
+        <span class="filter-pill" id="bt-mode-builder" onclick="setBtMode('builder')">🔧 Builder</span>
+      </div>
+    </div>
     <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr">
       <div class="form-group">
         <label>Symbol</label>
         <input type="text" id="bt-symbol" value="TQQQ.US" placeholder="e.g. TQQQ.US, D05.SI">
         <div class="quicktags"><span class="qtag" onclick="document.getElementById('bt-symbol').value='TQQQ.US'">TQQQ</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='SPY.US'">SPY</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='D05.SI'">DBS</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='0700.HK'">Tencent</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='AAPL.US'">AAPL</span></div>
       </div>
-      <div class="form-group">
+      <!-- Library mode: strategy dropdown -->
+      <div class="form-group" id="bt-lib-strat">
         <label>Strategy</label>
         <select id="bt-strategy"></select>
       </div>
@@ -435,6 +442,32 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <span class="filter-pill" onclick="setBtPeriod(2520,this)">10Y</span>
     </div>
     <div id="bt-params-container"></div>
+    <!-- Strategy Builder (hidden by default) -->
+    <div id="bt-builder" style="display:none;margin-bottom:12px">
+      <div class="form-row" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
+        <div class="form-group"><label>Strategy Name</label><input type="text" id="bldr-name" placeholder="My Strategy" value="Custom Strategy"></div>
+        <div class="form-group"><label>Template</label><select id="bldr-tpl" onchange="loadBuilderTemplate(this.value)"><option value="">— Select template —</option><option value="ema_cross">EMA Crossover</option><option value="rsi_revert">RSI Oversold/Overbought</option><option value="macd_cross">MACD Signal Cross</option><option value="bb_bounce">Bollinger Band Bounce</option><option value="momentum">Momentum Breakout</option></select></div>
+      </div>
+      <!-- Entry Long -->
+      <div style="border-left:3px solid #16A34A;padding:10px 14px;background:#F0FDF4;border-radius:0 6px 6px 0;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:#16A34A;margin-bottom:8px">📈 ENTRY LONG (Buy)</div>
+        <div id="bldr-entry-long"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn btn-outline btn-sm" onclick="bldrAddCondition('entry_long')" style="font-size:11px">+ Add</button><span style="font-size:11px;color:var(--text-muted)">Logic:</span><label style="font-size:11px;cursor:pointer"><input type="radio" name="bldr-entry-logic" value="AND" checked onchange="BLDR.entry_long.logic=this.value;bldrPreview()"> AND</label><label style="font-size:11px;cursor:pointer"><input type="radio" name="bldr-entry-logic" value="OR" onchange="BLDR.entry_long.logic=this.value;bldrPreview()"> OR</label></div>
+      </div>
+      <!-- Exit Long -->
+      <div style="border-left:3px solid #DC2626;padding:10px 14px;background:#FEF2F2;border-radius:0 6px 6px 0;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:#DC2626;margin-bottom:8px">📉 EXIT LONG (Sell)</div>
+        <div id="bldr-exit-long"></div>
+        <div style="margin-top:6px"><button class="btn btn-outline btn-sm" onclick="bldrAddCondition('exit_long')" style="font-size:11px">+ Add</button></div>
+      </div>
+      <!-- Risk -->
+      <div style="border:1px solid var(--border);padding:10px 14px;border-radius:6px;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">⚙️ Risk Management</div>
+        <div style="display:flex;gap:16px"><div class="form-group" style="margin:0"><label style="font-size:11px">Stop Loss %</label><input type="number" id="bldr-sl" value="5" step="0.5" style="width:80px" onchange="BLDR.risk.stop_loss_pct=parseFloat(this.value)"></div><div class="form-group" style="margin:0"><label style="font-size:11px">Take Profit %</label><input type="number" id="bldr-tp" value="10" step="0.5" style="width:80px" onchange="BLDR.risk.take_profit_pct=parseFloat(this.value)"></div></div>
+      </div>
+      <!-- Code preview -->
+      <details style="margin-bottom:8px"><summary style="font-size:12px;color:var(--text-muted);cursor:pointer">Generated Strategy Code</summary><pre id="bldr-preview" style="background:#1e1e2e;color:#cdd6f4;font-family:monospace;font-size:11px;padding:12px;border-radius:6px;max-height:250px;overflow-y:auto;margin-top:6px;white-space:pre-wrap"></pre></details>
+    </div>
     <button class="btn btn-primary" id="bt-run-btn" onclick="runBacktest()" style="width:100%;margin-top:8px">Run Backtest</button>
     <div id="bt-progress" style="display:none;margin-top:8px;padding:10px 14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;font-size:13px;color:#1D4ED8;align-items:center;gap:8px"><span class="spinner" style="width:16px;height:16px;border-width:2px"></span><span id="bt-progress-msg">Checking local cache...</span></div>
   </div>
@@ -1233,6 +1266,8 @@ function openNewBacktest() {
 }
 
 async function runBacktest() {
+  // If builder mode, use run-script endpoint
+  if (_btMode === 'builder') return runBuilderBacktest();
   const btn = document.getElementById('bt-run-btn');
   const prog = document.getElementById('bt-progress');
   const progMsg = document.getElementById('bt-progress-msg');
@@ -1381,6 +1416,247 @@ function createBotFromBacktest() {
     document.getElementById('nb-name').value = strat + ' ' + sym;
     nbSelectSymbol(sym, '');
   }, 50);
+}
+
+/* ═══════════════════ STRATEGY BUILDER ═══════════════════ */
+let _btMode = 'library';
+const BLDR_INDICATORS = [
+  {group:'Price',items:[{id:'close',name:'Close'},{id:'open',name:'Open'},{id:'high',name:'High'},{id:'low',name:'Low'},{id:'volume',name:'Volume'}]},
+  {group:'Trend',items:[{id:'ema',name:'EMA',p:[{k:'period',d:20}]},{id:'sma',name:'SMA',p:[{k:'period',d:20}]},{id:'wma',name:'WMA',p:[{k:'period',d:20}]},{id:'hma',name:'HMA',p:[{k:'period',d:20}]}]},
+  {group:'Momentum',items:[{id:'rsi',name:'RSI',p:[{k:'period',d:14}]},{id:'macd_line',name:'MACD Line',p:[{k:'fast',d:12},{k:'slow',d:26},{k:'signal',d:9}]},{id:'macd_signal',name:'MACD Signal',p:[{k:'fast',d:12},{k:'slow',d:26},{k:'signal',d:9}]},{id:'stoch_k',name:'Stoch %K',p:[{k:'k',d:14},{k:'d',d:3}]},{id:'stoch_d',name:'Stoch %D',p:[{k:'k',d:14},{k:'d',d:3}]},{id:'roc',name:'ROC',p:[{k:'period',d:10}]},{id:'williams_r',name:'Williams %R',p:[{k:'period',d:14}]}]},
+  {group:'Volatility',items:[{id:'bb_upper',name:'BB Upper',p:[{k:'period',d:20},{k:'std',d:2}]},{id:'bb_lower',name:'BB Lower',p:[{k:'period',d:20},{k:'std',d:2}]},{id:'bb_mid',name:'BB Middle',p:[{k:'period',d:20},{k:'std',d:2}]},{id:'atr',name:'ATR',p:[{k:'period',d:14}]}]},
+  {group:'Volume',items:[{id:'obv',name:'OBV'},{id:'vwap',name:'VWAP'}]},
+  {group:'Other',items:[{id:'zscore',name:'Z-Score',p:[{k:'period',d:20}]},{id:'donch_upper',name:'Donchian Upper',p:[{k:'period',d:20}]},{id:'donch_lower',name:'Donchian Lower',p:[{k:'period',d:20}]}]},
+];
+const BLDR_CONDITIONS = ['crosses_above','crosses_below','is_above','is_below','is_greater_than','is_less_than'];
+const BLDR_COND_LABELS = {crosses_above:'crosses above',crosses_below:'crosses below',is_above:'is above',is_below:'is below',is_greater_than:'>',is_less_than:'<'};
+
+let BLDR = {
+  entry_long:{conditions:[],logic:'AND'},
+  exit_long:{conditions:[],logic:'OR'},
+  risk:{stop_loss_pct:5,take_profit_pct:10}
+};
+
+function setBtMode(mode) {
+  _btMode = mode;
+  document.getElementById('bt-mode-lib').classList.toggle('active', mode === 'library');
+  document.getElementById('bt-mode-builder').classList.toggle('active', mode === 'builder');
+  document.getElementById('bt-lib-strat').style.display = mode === 'library' ? '' : 'none';
+  document.getElementById('bt-builder').style.display = mode === 'builder' ? '' : 'none';
+  if (mode === 'builder' && BLDR.entry_long.conditions.length === 0) loadBuilderTemplate('ema_cross');
+}
+
+function loadBuilderTemplate(tpl) {
+  if (tpl === 'ema_cross') {
+    BLDR.entry_long.conditions = [{left:{id:'ema',p:{period:20}},cond:'crosses_above',right:{type:'indicator',id:'ema',p:{period:50}}}];
+    BLDR.exit_long.conditions = [{left:{id:'ema',p:{period:20}},cond:'crosses_below',right:{type:'indicator',id:'ema',p:{period:50}}}];
+  } else if (tpl === 'rsi_revert') {
+    BLDR.entry_long.conditions = [{left:{id:'rsi',p:{period:14}},cond:'is_less_than',right:{type:'value',value:30}}];
+    BLDR.exit_long.conditions = [{left:{id:'rsi',p:{period:14}},cond:'is_greater_than',right:{type:'value',value:70}}];
+  } else if (tpl === 'macd_cross') {
+    BLDR.entry_long.conditions = [{left:{id:'macd_line',p:{fast:12,slow:26,signal:9}},cond:'crosses_above',right:{type:'indicator',id:'macd_signal',p:{fast:12,slow:26,signal:9}}}];
+    BLDR.exit_long.conditions = [{left:{id:'macd_line',p:{fast:12,slow:26,signal:9}},cond:'crosses_below',right:{type:'indicator',id:'macd_signal',p:{fast:12,slow:26,signal:9}}}];
+  } else if (tpl === 'bb_bounce') {
+    BLDR.entry_long.conditions = [{left:{id:'close'},cond:'is_below',right:{type:'indicator',id:'bb_lower',p:{period:20,std:2}}}];
+    BLDR.exit_long.conditions = [{left:{id:'close'},cond:'is_above',right:{type:'indicator',id:'bb_upper',p:{period:20,std:2}}}];
+  } else if (tpl === 'momentum') {
+    BLDR.entry_long.conditions = [{left:{id:'roc',p:{period:10}},cond:'is_greater_than',right:{type:'value',value:5}}];
+    BLDR.exit_long.conditions = [{left:{id:'roc',p:{period:10}},cond:'is_less_than',right:{type:'value',value:-5}}];
+  }
+  bldrRender();
+}
+
+function bldrAddCondition(section) {
+  BLDR[section].conditions.push({left:{id:'close'},cond:'is_above',right:{type:'value',value:0}});
+  bldrRender();
+}
+
+function bldrRemoveCondition(section, idx) {
+  BLDR[section].conditions.splice(idx, 1);
+  bldrRender();
+}
+
+function _bldrIndOpts() {
+  let h = '';
+  BLDR_INDICATORS.forEach(g => { h += `<optgroup label="${g.group}">`; g.items.forEach(it => { h += `<option value="${it.id}">${it.name}</option>`; }); h += '</optgroup>'; });
+  return h;
+}
+
+function _bldrFindInd(id) {
+  for (const g of BLDR_INDICATORS) for (const it of g.items) if (it.id === id) return it;
+  return null;
+}
+
+function _bldrParamInputs(prefix, ind, currentParams) {
+  if (!ind || !ind.p) return '';
+  return ind.p.map(p => `<input type="number" value="${(currentParams||{})[p.k]||p.d}" style="width:50px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:3px" onchange="bldrUpdateParam('${prefix}','${p.k}',parseFloat(this.value))" title="${p.k}">`).join('');
+}
+
+function bldrUpdateParam(prefix, key, value) {
+  const parts = prefix.split('.');
+  const section = parts[0], idx = parseInt(parts[1]), side = parts[2];
+  const cond = BLDR[section].conditions[idx];
+  if (side === 'left') { if (!cond.left.p) cond.left.p = {}; cond.left.p[key] = value; }
+  else { if (!cond.right.p) cond.right.p = {}; cond.right.p[key] = value; }
+  bldrPreview();
+}
+
+function bldrUpdateField(section, idx, field, value) {
+  const c = BLDR[section].conditions[idx];
+  if (field === 'left_id') { c.left.id = value; c.left.p = {}; const ind = _bldrFindInd(value); if (ind && ind.p) ind.p.forEach(p => c.left.p[p.k] = p.d); }
+  else if (field === 'cond') c.cond = value;
+  else if (field === 'right_type') { c.right.type = value; if (value === 'value') c.right.value = 0; else { c.right.id = 'sma'; c.right.p = {period: 50}; } }
+  else if (field === 'right_id') { c.right.id = value; c.right.p = {}; const ind = _bldrFindInd(value); if (ind && ind.p) ind.p.forEach(p => c.right.p[p.k] = p.d); }
+  else if (field === 'right_value') c.right.value = parseFloat(value);
+  bldrRender();
+}
+
+function bldrRender() {
+  ['entry_long','exit_long'].forEach(section => {
+    const el = document.getElementById('bldr-' + section.replace('_','-'));
+    if (!el) return;
+    el.innerHTML = BLDR[section].conditions.map((c, i) => {
+      const leftInd = _bldrFindInd(c.left.id);
+      const isVal = c.right.type === 'value';
+      const rightInd = isVal ? null : _bldrFindInd(c.right.id);
+      return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+        <select onchange="bldrUpdateField('${section}',${i},'left_id',this.value)" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;min-width:90px">${_bldrIndOpts().replace('value="'+c.left.id+'"','value="'+c.left.id+'" selected')}</select>
+        ${_bldrParamInputs(section+'.'+i+'.left', leftInd, c.left.p)}
+        <select onchange="bldrUpdateField('${section}',${i},'cond',this.value)" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px">${BLDR_CONDITIONS.map(cd => `<option value="${cd}"${cd===c.cond?' selected':''}>${BLDR_COND_LABELS[cd]}</option>`).join('')}</select>
+        <select onchange="bldrUpdateField('${section}',${i},'right_type',this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;width:70px"><option value="value"${isVal?' selected':''}>Value</option><option value="indicator"${!isVal?' selected':''}>Indicator</option></select>
+        ${isVal ? `<input type="number" value="${c.right.value||0}" onchange="bldrUpdateField('${section}',${i},'right_value',this.value)" style="width:70px;padding:4px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px">` :
+        `<select onchange="bldrUpdateField('${section}',${i},'right_id',this.value)" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;min-width:90px">${_bldrIndOpts().replace('value="'+(c.right.id||'')+'"','value="'+(c.right.id||'')+'" selected')}</select>${_bldrParamInputs(section+'.'+i+'.right', rightInd, c.right.p)}`}
+        <span onclick="bldrRemoveCondition('${section}',${i})" style="cursor:pointer;color:var(--red);font-size:14px" title="Remove">&times;</span>
+      </div>`;
+    }).join('');
+  });
+  bldrPreview();
+}
+
+function _bldrGenVar(id, params) {
+  const p = params || {};
+  if (['close','open','high','low','volume'].includes(id)) return id === 'volume' ? 'vol' : id;
+  const suffix = Object.values(p).join('_');
+  return id + (suffix ? '_' + suffix : '');
+}
+
+function _bldrGenCalc(id, params) {
+  const p = params || {};
+  const m = {
+    ema:`calc_ema(close, ${p.period||20})`, sma:`calc_sma(close, ${p.period||20})`,
+    wma:`calc_wma(close, ${p.period||20})`, hma:`calc_hma(close, ${p.period||20})`,
+    rsi:`calc_rsi(close, ${p.period||14})`, roc:`calc_roc(close, ${p.period||10})`,
+    williams_r:`calc_williams_r(high, low, close, ${p.period||14})`,
+    atr:`calc_atr(${p.period||14})`, zscore:`calc_zscore(close, ${p.period||20})`,
+    obv:`calc_obv(close, vol)`, vwap:`calc_vwap(high, low, close, vol)`,
+    macd_line:`calc_macd(close, ${p.fast||12}, ${p.slow||26}, ${p.signal||9})[0]`,
+    macd_signal:`calc_macd(close, ${p.fast||12}, ${p.slow||26}, ${p.signal||9})[1]`,
+    stoch_k:`calc_stoch(high, low, close, ${p.k||14}, ${p.d||3})[0]`,
+    stoch_d:`calc_stoch(high, low, close, ${p.k||14}, ${p.d||3})[1]`,
+    bb_upper:`calc_bbands(close, ${p.period||20}, ${p.std||2})[0]`,
+    bb_mid:`calc_bbands(close, ${p.period||20}, ${p.std||2})[1]`,
+    bb_lower:`calc_bbands(close, ${p.period||20}, ${p.std||2})[2]`,
+    donch_upper:`calc_donchian(high, low, ${p.period||20})[0]`,
+    donch_lower:`calc_donchian(high, low, ${p.period||20})[1]`,
+  };
+  return m[id] || id;
+}
+
+function _bldrGenCond(c, varMap) {
+  const lv = varMap[_bldrGenVar(c.left.id, c.left.p)] || _bldrGenVar(c.left.id, c.left.p);
+  let rv;
+  if (c.right.type === 'value') rv = String(c.right.value || 0);
+  else rv = varMap[_bldrGenVar(c.right.id, c.right.p)] || _bldrGenVar(c.right.id, c.right.p);
+  const L = lv + '[i]', Lp = lv + '[i-1]', R = rv.includes('[') ? rv : (isNaN(rv) ? rv + '[i]' : rv), Rp = rv.includes('[') ? rv.replace('[i]','[i-1]') : (isNaN(rv) ? rv + '[i-1]' : rv);
+  if (c.cond === 'crosses_above') return `(${L} > ${R}) and (${Lp} <= ${Rp})`;
+  if (c.cond === 'crosses_below') return `(${L} < ${R}) and (${Lp} >= ${Rp})`;
+  if (c.cond === 'is_above') return `${L} > ${R}`;
+  if (c.cond === 'is_below') return `${L} < ${R}`;
+  if (c.cond === 'is_greater_than') return `${L} > ${rv}`;
+  if (c.cond === 'is_less_than') return `${L} < ${rv}`;
+  return 'True';
+}
+
+function bldrGenerateScript() {
+  const vars = new Map();
+  const allConds = [...BLDR.entry_long.conditions, ...BLDR.exit_long.conditions];
+  // Collect unique indicators
+  allConds.forEach(c => {
+    [c.left, c.right].forEach(side => {
+      if (!side || !side.id || ['close','open','high','low','volume'].includes(side.id)) return;
+      if (side.type === 'value') return;
+      const vn = _bldrGenVar(side.id, side.p);
+      if (!vars.has(vn)) vars.set(vn, _bldrGenCalc(side.id, side.p));
+    });
+  });
+  let code = 'def generate_signals(df):\n';
+  code += '    close = list(df["close"])\n    high = list(df["high"])\n    low = list(df["low"])\n    vol = list(df["volume"])\n    open_ = list(df["open"])\n';
+  code += '    n = len(close)\n    signals = [0] * n\n\n';
+  vars.forEach((calc, vn) => { code += `    ${vn} = ${calc}\n`; });
+  code += '\n    in_position = False\n    for i in range(1, n):\n';
+  // Null checks
+  const allVars = [...vars.keys()];
+  if (allVars.length) code += `        if any(v is None for v in [${allVars.map(v=>v+'[i]').join(', ')}]): continue\n        if any(v is None for v in [${allVars.map(v=>v+'[i-1]').join(', ')}]): continue\n\n`;
+  // Entry conditions
+  const varMap = {};
+  vars.forEach((_, vn) => { varMap[vn] = vn; });
+  if (BLDR.entry_long.conditions.length) {
+    const joiner = BLDR.entry_long.logic === 'OR' ? ' or ' : ' and ';
+    const entryConds = BLDR.entry_long.conditions.map(c => _bldrGenCond(c, varMap)).join(joiner);
+    code += `        entry = ${entryConds}\n`;
+  } else code += '        entry = False\n';
+  if (BLDR.exit_long.conditions.length) {
+    const joiner = BLDR.exit_long.logic === 'OR' ? ' or ' : ' and ';
+    const exitConds = BLDR.exit_long.conditions.map(c => _bldrGenCond(c, varMap)).join(joiner);
+    code += `        exit_l = ${exitConds}\n`;
+  } else code += '        exit_l = False\n';
+  code += '\n        if not in_position and entry:\n            signals[i] = 1\n            in_position = True\n';
+  code += '        elif in_position and exit_l:\n            signals[i] = -1\n            in_position = False\n';
+  code += '\n    return signals\n';
+  return code;
+}
+
+function bldrPreview() {
+  const el = document.getElementById('bldr-preview');
+  if (el) el.textContent = bldrGenerateScript();
+}
+
+async function runBuilderBacktest() {
+  const btn = document.getElementById('bt-run-btn');
+  const prog = document.getElementById('bt-progress');
+  const progMsg = document.getElementById('bt-progress-msg');
+  const sym = document.getElementById('bt-symbol').value.trim();
+  const tf = document.getElementById('bt-timeframe').value;
+  const cap = parseFloat(document.getElementById('bt-capital').value) || 10000;
+  if (!sym) { showToast('Enter a symbol', 'error'); return; }
+  if (!BLDR.entry_long.conditions.length) { showToast('Add at least one entry condition', 'error'); return; }
+  btn.disabled = true; btn.textContent = 'Running...';
+  const msgs = ['Generating strategy code...','Checking data sources...','Downloading price data...','Running backtest...','Calculating metrics...'];
+  let mi = 0;
+  if (prog) prog.style.display = 'flex';
+  if (progMsg) progMsg.textContent = msgs[0];
+  const msgInt = setInterval(() => { mi = (mi + 1) % msgs.length; if (progMsg) progMsg.textContent = msgs[mi]; }, 2000);
+  const script = bldrGenerateScript();
+  console.log('[BUILDER] Generated script:\n', script);
+  try {
+    const btBase = getBacktestBaseUrl();
+    const r = await fetch(btBase + '/api/backtest/run-script', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol: sym, script: script, initial_capital: cap, timeframe: tf, limit: _btLimit })
+    });
+    const d = await r.json();
+    if (d.status === 'error') throw new Error(d.message || d.detail || 'Failed');
+    if (!r.ok) throw new Error(d.detail || 'Failed');
+    const stratName = document.getElementById('bldr-name').value || 'Custom Strategy';
+    showBacktestResults(d, sym, stratName, tf);
+    _savedBacktests.unshift({ date: new Date().toISOString(), symbol: sym, strategy: stratName, timeframe: tf, period: _btLimit, metrics: d.metrics, builder: true });
+    if (_savedBacktests.length > 50) _savedBacktests = _savedBacktests.slice(0, 50);
+    localStorage.setItem('qx_backtests', JSON.stringify(_savedBacktests));
+    renderSavedBacktests();
+  } catch (e) { showToast('Builder backtest error: ' + e.message, 'error'); }
+  clearInterval(msgInt);
+  if (prog) prog.style.display = 'none';
+  btn.disabled = false; btn.textContent = 'Run Backtest';
 }
 
 /* ═══════════════════ BROKERS ═══════════════════ */
