@@ -448,17 +448,28 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <div class="stat-card"><div class="stat-label">Trades</div><div class="stat-value" id="btr-trades">—</div></div>
     </div>
     <div class="chart-container"><canvas id="bt-chart"></canvas></div>
-    <div style="display:flex;gap:8px;margin-bottom:20px">
-      <button class="btn btn-primary btn-sm" onclick="createBotFromBacktest()">Create Bot from Backtest</button>
-      <button class="btn btn-outline btn-sm" onclick="document.getElementById('bt-results').style.display='none'">Close Results</button>
+    <!-- Settings summary + Deploy -->
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+      <div id="btr-summary" style="display:flex;gap:20px;font-size:12px;color:var(--text-secondary)"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="createBotFromBacktest()">Deploy This Strategy</button>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('bt-results').style.display='none'">Close</button>
+      </div>
     </div>
+    <!-- Monthly P/L -->
+    <div class="card" style="margin-bottom:16px;padding:0;overflow:hidden">
+      <div onclick="document.getElementById('btr-monthly').style.display=document.getElementById('btr-monthly').style.display==='none'?'':'none'" style="padding:12px 18px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-secondary);display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>Monthly P/L</span><span id="btr-monthly-arrow">▼</span></div>
+      <div id="btr-monthly" style="display:none"><table><thead><tr><th>Month</th><th>P/L</th><th>Trades</th><th>Win Rate</th><th>Best</th><th>Worst</th></tr></thead><tbody id="btr-monthly-tbody"></tbody></table></div>
+    </div>
+    <!-- Trades -->
     <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:12px 18px;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border)">Recent Trades</div>
       <table><thead><tr><th>Date</th><th>Side</th><th>Price</th><th>Shares</th><th>P/L</th></tr></thead><tbody id="btr-trades-tbody"></tbody></table>
     </div>
   </div>
   <!-- Saved Backtests -->
   <div class="card" style="padding:0;overflow:hidden;margin-top:20px">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text-secondary)">Saved Backtests <span id="bt-saved-count" style="color:var(--text-muted)">(0)</span></div>
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:600;color:var(--text-secondary)">Saved Backtests <span id="bt-saved-count" style="color:var(--text-muted)">(0)</span></span><button class="btn btn-outline btn-sm" onclick="clearSavedBacktests()" style="font-size:11px">Clear all</button></div>
     <table><thead><tr><th>Strategy</th><th>Symbol</th><th>Period</th><th>Return</th><th>Sharpe</th><th>Win Rate</th><th>Trades</th></tr></thead><tbody id="bt-saved-tbody"></tbody></table>
     <div id="bt-saved-empty" class="empty-state" style="padding:30px"><div class="empty-state-text">No saved backtests yet. Run one above.</div></div>
   </div>
@@ -1277,8 +1288,50 @@ function showBacktestResults(d, sym, strat, tf) {
     const pnlClass = t.pnl > 0 ? 'green' : t.pnl < 0 ? 'red' : '';
     return `<tr><td>${t.date || ''}</td><td>${t.side || ''}</td><td>$${(t.price || 0).toFixed(2)}</td><td>${t.shares || ''}</td><td class="stat-value ${pnlClass}" style="font-size:13px">${t.pnl !== null ? '$' + t.pnl.toFixed(2) : '—'}</td></tr>`;
   }).join('');
+  // Settings summary
+  const pm = {252:'1Y',504:'2Y',756:'3Y',1260:'5Y',2520:'10Y'};
+  const sumEl = document.getElementById('btr-summary');
+  if (sumEl) sumEl.innerHTML = [
+    `<span><strong>${sym}</strong></span>`,
+    `<span>${strat}</span>`,
+    `<span>${tf}</span>`,
+    `<span>${pm[_btLimit]||_btLimit} (${m.bars_tested||'?'} bars)</span>`,
+    `<span>$${(m.initial_capital||10000).toLocaleString()}</span>`,
+  ].join('');
+  // Monthly P/L table
+  buildMonthlyPL(trades);
   document.getElementById('bt-results').style.display = '';
   document.getElementById('bt-results').scrollIntoView({ behavior: 'smooth' });
+}
+
+function buildMonthlyPL(trades) {
+  const tbody = document.getElementById('btr-monthly-tbody');
+  if (!tbody || !trades.length) { if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:16px">No trades to analyze</td></tr>'; return; }
+  const months = {};
+  trades.forEach(t => {
+    if (!t.date || t.pnl === null || t.pnl === undefined) return;
+    const ym = t.date.substring(0, 7); // "2024-03"
+    if (!months[ym]) months[ym] = { pnl: 0, count: 0, wins: 0, best: -Infinity, worst: Infinity };
+    const m = months[ym];
+    m.pnl += t.pnl; m.count++;
+    if (t.pnl > 0) m.wins++;
+    m.best = Math.max(m.best, t.pnl);
+    m.worst = Math.min(m.worst, t.pnl);
+  });
+  const sorted = Object.entries(months).sort((a,b) => a[0].localeCompare(b[0]));
+  let lastYear = '';
+  let html = '';
+  sorted.forEach(([ym, m]) => {
+    const yr = ym.substring(0, 4);
+    if (yr !== lastYear) {
+      html += `<tr><td colspan="6" style="background:var(--blue-pale);color:var(--blue-primary);font-weight:600;padding:8px 14px;font-size:12px">${yr}</td></tr>`;
+      lastYear = yr;
+    }
+    const wr = m.count > 0 ? (m.wins / m.count * 100).toFixed(0) : '0';
+    const pnlClass = m.pnl >= 0 ? 'green' : 'red';
+    html += `<tr><td>${ym.substring(5)}</td><td class="stat-value ${pnlClass}" style="font-size:13px">$${m.pnl.toFixed(2)}</td><td>${m.count}</td><td>${wr}%</td><td style="color:var(--green)">$${m.best === -Infinity ? '—' : m.best.toFixed(2)}</td><td style="color:var(--red)">$${m.worst === Infinity ? '—' : m.worst.toFixed(2)}</td></tr>`;
+  });
+  tbody.innerHTML = html;
 }
 
 function renderSavedBacktests() {
@@ -1293,6 +1346,13 @@ function renderSavedBacktests() {
     const retClass = (m.total_return_pct || 0) >= 0 ? 'green' : 'red';
     return `<tr><td>${b.strategy || ''}</td><td style="font-weight:600">${b.symbol || ''}</td><td>${pm[b.period] || b.period || ''}</td><td class="stat-value ${retClass}" style="font-size:13px">${(m.total_return_pct || 0).toFixed(1)}%</td><td>${(m.sharpe_ratio || 0).toFixed(2)}</td><td>${(m.win_rate_pct || 0).toFixed(0)}%</td><td>${m.total_trades || 0}</td></tr>`;
   }).join('');
+}
+
+function clearSavedBacktests() {
+  _savedBacktests = [];
+  localStorage.setItem('qx_backtests', '[]');
+  renderSavedBacktests();
+  showToast('Saved backtests cleared', 'info');
 }
 
 function createBotFromBacktest() {
