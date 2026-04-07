@@ -540,7 +540,8 @@ let EMAIL = localStorage.getItem('qx_email') || '';
 let UNAME = localStorage.getItem('qx_name') || '';
 let LICENSE = localStorage.getItem('qx_license') || '';
 let LIB_CACHE = null;
-let ALL_STRATEGIES = [];
+let ALL_STRATEGIES = [];   // library strategies (from /api/strategies-library)
+let USER_STRATEGIES = [];  // user's saved bots (from /api/strategies/{email})
 let _currentBot = null;
 let _btChart = null;
 let _bdChart = null;
@@ -635,7 +636,9 @@ async function loadLibrary() {
   try {
     const r = await fetch(API + '/api/strategies-library');
     const d = await r.json();
-    LIB_CACHE = d.strategies || [];
+    LIB_CACHE = d.strategies || d || [];
+    ALL_STRATEGIES = Array.isArray(LIB_CACHE) ? LIB_CACHE : [];
+    console.log('[LIB] Loaded', ALL_STRATEGIES.length, 'library strategies');
     populateStrategySelects();
   } catch (e) { console.warn('Library load failed:', e); }
 }
@@ -692,11 +695,11 @@ async function loadHome() {
   try {
     const r = await fetch(API + '/api/strategies/' + encodeURIComponent(EMAIL));
     const d = await r.json();
-    ALL_STRATEGIES = d || [];
-    const active = ALL_STRATEGIES.filter(s => s.is_active).length;
+    USER_STRATEGIES = Array.isArray(d) ? d : (d.strategies || []);
+    const active = USER_STRATEGIES.filter(s => s.is_active).length;
     document.getElementById('home-active').textContent = active;
-    document.getElementById('home-strategies').textContent = ALL_STRATEGIES.length;
-    document.getElementById('home-getstarted').style.display = ALL_STRATEGIES.length === 0 ? 'block' : 'none';
+    document.getElementById('home-strategies').textContent = USER_STRATEGIES.length;
+    document.getElementById('home-getstarted').style.display = USER_STRATEGIES.length === 0 ? 'block' : 'none';
   } catch (e) {}
 }
 
@@ -711,7 +714,9 @@ async function loadBots() {
   }
   try {
     const r = await fetch(API + '/api/strategies/' + encodeURIComponent(EMAIL));
-    ALL_STRATEGIES = (await r.json()) || [];
+    const d = await r.json();
+    USER_STRATEGIES = Array.isArray(d) ? d : (d.strategies || []);
+    console.log('[BOTS] Loaded', USER_STRATEGIES.length, 'user strategies');
     renderBots();
   } catch (e) { showToast('Failed to load bots: ' + e.message, 'error'); }
 }
@@ -719,21 +724,22 @@ async function loadBots() {
 function renderBots() {
   const tbody = document.getElementById('bots-tbody');
   const empty = document.getElementById('bots-empty');
-  let list = ALL_STRATEGIES;
+  let list = USER_STRATEGIES;
   if (_botFilter === 'live') list = list.filter(s => s.is_active);
   if (_botFilter === 'off') list = list.filter(s => !s.is_active);
-  if (_botSearch) list = list.filter(s => (s.strategy_name + s.symbol + s.library_id).toLowerCase().includes(_botSearch.toLowerCase()));
+  if (_botSearch) list = list.filter(s => ((s.strategy_name||'') + (s.symbol||'') + (s.library_id||'')).toLowerCase().includes(_botSearch.toLowerCase()));
 
-  if (list.length === 0) { tbody.innerHTML = ''; empty.style.display = ''; return; }
+  if (list.length === 0 && USER_STRATEGIES.length === 0) { tbody.innerHTML = ''; empty.style.display = ''; return; }
+  if (list.length === 0) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:20px">No bots match filter</td></tr>'; empty.style.display = 'none'; return; }
   empty.style.display = 'none';
 
   // Stats
-  const active = ALL_STRATEGIES.filter(s => s.is_active).length;
-  document.getElementById('bs-total').textContent = ALL_STRATEGIES.length;
+  const active = USER_STRATEGIES.filter(s => s.is_active).length;
+  document.getElementById('bs-total').textContent = USER_STRATEGIES.length;
   document.getElementById('bs-active').textContent = active;
-  const rets = ALL_STRATEGIES.map(s => (s.backtest_results || {}).total_return_pct).filter(v => typeof v === 'number');
+  const rets = USER_STRATEGIES.map(s => (s.backtest_results || {}).total_return_pct).filter(v => typeof v === 'number');
   document.getElementById('bs-best').textContent = rets.length ? Math.max(...rets).toFixed(1) + '%' : '—';
-  const sharpes = ALL_STRATEGIES.map(s => (s.backtest_results || {}).sharpe_ratio).filter(v => typeof v === 'number');
+  const sharpes = USER_STRATEGIES.map(s => (s.backtest_results || {}).sharpe_ratio).filter(v => typeof v === 'number');
   document.getElementById('bs-sharpe').textContent = sharpes.length ? (sharpes.reduce((a, b) => a + b, 0) / sharpes.length).toFixed(2) : '—';
 
   tbody.innerHTML = list.map(s => {
@@ -772,21 +778,29 @@ async function toggleBot(sid, active) {
   } catch (e) { showToast('Toggle failed: ' + e.message, 'error'); }
 }
 
-function openNewBot() { populateStrategySelects(); openModal('newbot-modal'); }
+function openNewBot() {
+  populateStrategySelects();
+  document.getElementById('nb-error').textContent = '';
+  document.getElementById('nb-name').value = '';
+  openModal('newbot-modal');
+}
 
 async function createBot(andDeploy = false) {
+  const errEl = document.getElementById('nb-error');
+  errEl.textContent = '';
   const sym = document.getElementById('nb-symbol').value.trim();
   const strat = document.getElementById('nb-strategy').value;
   const tf = document.getElementById('nb-timeframe').value;
   const alloc = document.getElementById('nb-alloc').value;
   const name = document.getElementById('nb-name').value.trim() || (strat === '__TEST__' ? 'Quick Test ' + sym : strat + ' ' + sym);
-  if (!sym) { document.getElementById('nb-error').textContent = 'Symbol required'; return; }
-  if (!EMAIL) { document.getElementById('nb-error').textContent = 'Set up account on Home page first'; return; }
+  if (!sym) { errEl.textContent = 'Symbol required'; return; }
+  if (!EMAIL) { errEl.textContent = 'Set up account on Home page first'; return; }
   const isTest = strat === '__TEST__';
   const stratId = isTest ? 'TEST' : strat;
   const lib = (LIB_CACHE || []).find(l => l.id === strat);
   const ts4 = Date.now().toString(36).slice(-4).toUpperCase();
   const sid = stratId + '_' + ts4;
+  console.log('[BOT] Creating:', sid, sym, strat, 'deploy=' + andDeploy);
   try {
     const payload = {
       email: EMAIL, strategy_id: sid, strategy_name: name, symbol: sym,
@@ -798,24 +812,31 @@ async function createBot(andDeploy = false) {
     const r = await fetch(API + '/api/strategy', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
-    if (!r.ok) throw new Error((await r.json()).detail || 'Failed');
+    const rData = await r.json();
+    if (!r.ok) throw new Error(rData.detail || 'Failed to create strategy');
+    console.log('[BOT] Strategy created:', sid);
     if (andDeploy) {
-      await fetch(API + '/api/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
-      showToast('Bot created and deployed: ' + name, 'success');
+      console.log('[BOT] Deploying...');
+      try {
+        const dr = await fetch(API + '/api/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
+        const dd = await dr.json();
+        if (!dr.ok) { errEl.textContent = 'Created but deploy failed: ' + (dd.detail || 'Unknown error'); console.error('[BOT] Deploy error:', dd); }
+        else { console.log('[BOT] Deployed:', dd); showToast('Bot deployed: ' + name, 'success'); }
+      } catch (de) { errEl.textContent = 'Created but deploy failed: ' + de.message; console.error('[BOT] Deploy error:', de); }
     } else {
       showToast('Bot created: ' + name, 'success');
     }
     closeModal('newbot-modal');
-    setTimeout(loadBots, 300);
     navigate('bots');
-  } catch (e) { document.getElementById('nb-error').textContent = e.message; }
+    await loadBots();
+  } catch (e) { errEl.textContent = e.message; console.error('[BOT] Error:', e); }
 }
 
 async function createAndDeployBot() { return createBot(true); }
 
 /* ═══════════════════ BOT DETAIL ═══════════════════ */
 function openBotDetail(sid) {
-  _currentBot = ALL_STRATEGIES.find(s => s.strategy_id === sid);
+  _currentBot = USER_STRATEGIES.find(s => s.strategy_id === sid);
   if (!_currentBot) return;
   document.getElementById('bd-name').textContent = _currentBot.strategy_name || sid;
   document.getElementById('bd-symbol').textContent = _currentBot.symbol;
@@ -1044,13 +1065,11 @@ async function testConnection() {
 }
 
 function disconnectBroker() {
-  if (!confirm('Disconnect LongPort? This will clear your credentials.')) return;
-  EMAIL = ''; UNAME = '';
-  localStorage.removeItem('qx_email');
-  localStorage.removeItem('qx_name');
-  document.getElementById('sidebar-email').textContent = 'Not logged in';
+  if (!confirm('Disconnect LongPort? Your account will remain but broker credentials will need to be re-entered.')) return;
+  // Note: we keep EMAIL/UNAME — just visually reset broker status
+  // The actual credentials are server-side; re-register to reconnect
   checkBrokerStatus();
-  showToast('Disconnected', 'info');
+  showToast('To reconnect, re-enter your LongPort credentials', 'info');
 }
 
 /* ═══════════════════ STATUS POLLING ═══════════════════ */
