@@ -239,15 +239,29 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 
 <!-- ══════════════════════════════════════ HOME ══════════════════════════════════════ -->
 <div class="page active" id="page-home">
-  <div class="page-header"><h1 class="page-title">Welcome back</h1></div>
-  <div id="home-welcome" style="margin-bottom:24px">
-    <div style="font-size:15px;color:var(--text-secondary);margin-bottom:24px">Here's your trading overview.</div>
+  <div class="page-header"><h1 class="page-title" id="home-title">Welcome back</h1></div>
+  <!-- Inline login form (only if not logged in) -->
+  <div id="home-login-form" class="card" style="display:none;margin-bottom:24px;max-width:500px">
+    <h3 style="margin-bottom:12px;font-size:15px">Set up your account</h3>
+    <div class="form-row" style="grid-template-columns:1fr 1fr">
+      <div class="form-group"><label>Email</label><input type="email" id="home-email" placeholder="you@example.com"></div>
+      <div class="form-group"><label>Name</label><input type="text" id="home-name" placeholder="Your name"></div>
+    </div>
+    <button class="btn btn-primary" onclick="quickLogin()">Save & Continue</button>
+    <div id="home-login-error" style="color:var(--red);font-size:12px;margin-top:6px;min-height:16px"></div>
   </div>
-  <div class="stat-row" style="grid-template-columns:repeat(4,1fr)">
+  <div class="stat-row" style="grid-template-columns:repeat(3,1fr)">
     <div class="stat-card"><div class="stat-label">Active Bots</div><div class="stat-value" id="home-active">0</div></div>
+    <div class="stat-card"><div class="stat-label">Connected Brokers</div><div class="stat-value" id="home-brokers">0</div></div>
     <div class="stat-card"><div class="stat-label">Total Strategies</div><div class="stat-value" id="home-strategies">0</div></div>
-    <div class="stat-card"><div class="stat-label">Backtests Run</div><div class="stat-value" id="home-backtests">0</div></div>
-    <div class="stat-card"><div class="stat-label">Trades Logged</div><div class="stat-value" id="home-trades">0</div></div>
+  </div>
+  <div class="card" style="margin-bottom:20px">
+    <h3 style="margin-bottom:12px;font-size:15px">Quick Actions</h3>
+    <div style="display:flex;gap:12px">
+      <button class="btn btn-outline" onclick="navigate('brokers')">🔗 Connect Broker</button>
+      <button class="btn btn-outline" onclick="navigate('backtester')">📊 Run Backtest</button>
+      <button class="btn btn-primary" onclick="navigate('bots');setTimeout(openNewBot,200)">🤖 Deploy Bot</button>
+    </div>
   </div>
   <div class="card" id="home-getstarted" style="display:none">
     <h3 style="margin-bottom:12px;font-size:16px">Get Started</h3>
@@ -335,7 +349,11 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
   </div>
   <!-- Log -->
   <div id="bd-log" style="display:none">
-    <div class="log-viewer" id="bd-log-content">Waiting for logs...</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span id="bd-log-status" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--green)"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> Live</span>
+      <span style="font-size:11px;color:var(--text-muted)">Polling every 3s</span>
+    </div>
+    <div class="log-viewer" id="bd-log-content" style="color:#4ADE80">Waiting for logs...</div>
   </div>
   <!-- Settings -->
   <div id="bd-settings" style="display:none">
@@ -447,9 +465,16 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <div class="broker-icon" style="background:var(--orange)">IB</div>
       <div class="broker-title">Interactive Brokers</div>
       <div class="broker-desc">Connect your IBKR account to trade global markets</div>
-      <div style="padding:16px;background:var(--surface-2);border-radius:8px;text-align:center">
-        <div style="font-size:13px;color:var(--text-muted)">Coming soon</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">IBKR integration is under development</div>
+      <div id="ibkr-connected" style="display:none;margin-bottom:12px">
+        <span class="badge badge-green">Saved</span>
+        <span style="font-size:12px;color:var(--text-muted);margin-left:8px" id="ibkr-info"></span>
+      </div>
+      <div id="ibkr-form">
+        <div class="form-group"><label>TWS/Gateway Host</label><input type="text" id="ibkr-host" value="127.0.0.1"></div>
+        <div class="form-group"><label>Port</label><input type="number" id="ibkr-port" value="7497"></div>
+        <div class="form-group"><label>Client ID</label><input type="number" id="ibkr-clientid" value="1"></div>
+        <div class="form-hint" style="margin-bottom:12px">Make sure TWS or IB Gateway is running before connecting</div>
+        <button class="btn btn-primary" onclick="saveIbkrConfig()" style="width:100%">Save IBKR Config</button>
       </div>
     </div>
   </div>
@@ -478,15 +503,30 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
   <div class="modal">
     <div class="modal-header"><div class="modal-title">New Bot</div><button class="modal-close" onclick="closeModal('newbot-modal')">×</button></div>
     <div id="nb-step1">
-      <div class="form-group"><label>Symbol</label><input type="text" id="nb-symbol" placeholder="e.g. TQQQ.US, D05.SI, 0700.HK">
-        <div class="quicktags"><span class="qtag" onclick="document.getElementById('nb-symbol').value='TQQQ.US'">TQQQ</span><span class="qtag" onclick="document.getElementById('nb-symbol').value='D05.SI'">DBS</span><span class="qtag" onclick="document.getElementById('nb-symbol').value='0700.HK'">Tencent</span><span class="qtag" onclick="document.getElementById('nb-symbol').value='SPY.US'">SPY</span></div>
+      <div class="form-group"><label>Broker</label>
+        <div style="display:flex;gap:8px">
+          <span class="filter-pill active" id="nb-broker-lp" onclick="setNbBroker('longport')">LongPort</span>
+          <span class="filter-pill" id="nb-broker-ib" onclick="setNbBroker('ibkr')">IBKR</span>
+        </div>
+        <input type="hidden" id="nb-broker" value="longport">
       </div>
-      <div class="form-group"><label>Strategy</label><select id="nb-strategy" style="width:100%"></select></div>
+      <div class="form-group"><label>Symbol</label><input type="text" id="nb-symbol" value="700.HK" placeholder="e.g. 700.HK, D05.SI, TQQQ.US">
+        <div class="quicktags"><span class="qtag" onclick="document.getElementById('nb-symbol').value='700.HK'">700.HK</span><span class="qtag" onclick="document.getElementById('nb-symbol').value='D05.SI'">D05.SI</span><span class="qtag" onclick="document.getElementById('nb-symbol').value='TQQQ.US'">TQQQ.US</span><span class="qtag" onclick="document.getElementById('nb-symbol').value='SPY.US'">SPY.US</span></div>
+      </div>
+      <div class="form-group"><label>Strategy</label>
+        <select id="nb-strategy" style="width:100%">
+          <option value="__TEST__">Quick Test (Buy→Sell)</option>
+        </select>
+        <div class="form-hint" id="nb-strat-hint">Test strategy: buys immediately, sells on next bar</div>
+      </div>
       <div class="form-group"><label>Timeframe</label><select id="nb-timeframe"><option value="1min">1m</option><option value="5min">5m</option><option value="15min">15m</option><option value="1hour">1h</option><option value="4hour">4h</option><option value="1day" selected>1d</option></select></div>
-      <div class="form-group"><label>Allocation ($)</label><input type="number" id="nb-alloc" value="10000"></div>
-      <div class="form-group"><label>Strategy Name</label><input type="text" id="nb-name" placeholder="My Strategy"></div>
+      <div class="form-group"><label>Allocation ($)</label><input type="number" id="nb-alloc" value="1000"></div>
+      <div class="form-group"><label>Bot Name</label><input type="text" id="nb-name" placeholder="My Bot"></div>
       <div id="nb-error" style="color:var(--red);font-size:12px;min-height:18px;margin-bottom:8px"></div>
-      <button class="btn btn-primary" onclick="createBot()" style="width:100%">Create Bot</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="createBot()" style="flex:1">Create Bot</button>
+        <button class="btn btn-primary" onclick="createAndDeployBot()" style="flex:1;background:var(--green)">Create & Deploy</button>
+      </div>
     </div>
   </div>
 </div>
@@ -510,24 +550,36 @@ let _btLimit = 1260;
 let _savedBacktests = JSON.parse(localStorage.getItem('qx_backtests') || '[]');
 
 /* ── Init ──────────────────────────────────────────────────────────── */
-(function init() {
-  if (!LICENSE) {
-    document.getElementById('activation').classList.add('show');
-    return;
-  }
+(async function init() {
+  // Auto-set license for local dev
+  if (!LICENSE) { LICENSE = 'QUANTX-DEV'; localStorage.setItem('qx_license', LICENSE); }
   document.getElementById('activation').classList.remove('show');
+  document.getElementById('set-license').value = LICENSE;
+
+  // Auto-login: try GET /api/me first
+  if (!EMAIL) {
+    try {
+      const r = await fetch(API + '/api/me');
+      if (r.ok) {
+        const d = await r.json();
+        if (d.email) { EMAIL = d.email; UNAME = d.name || ''; localStorage.setItem('qx_email', EMAIL); localStorage.setItem('qx_name', UNAME); }
+      }
+    } catch (e) { console.log('[INIT] /api/me not available:', e.message); }
+  }
   if (EMAIL) {
     document.getElementById('sidebar-email').textContent = EMAIL;
     document.getElementById('set-email').value = EMAIL;
     document.getElementById('set-name').value = UNAME;
+    document.getElementById('home-login-form').style.display = 'none';
+  } else {
+    document.getElementById('home-login-form').style.display = '';
   }
-  document.getElementById('set-license').value = LICENSE;
+
   loadConfig();
   loadLibrary();
   const lastTab = localStorage.getItem('qx_tab') || 'home';
   navigate(lastTab);
   renderSavedBacktests();
-  // Status polling
   _statusInterval = setInterval(() => { if (EMAIL) refreshStatus(); }, 10000);
 })();
 
@@ -590,11 +642,12 @@ async function loadLibrary() {
 
 function populateStrategySelects() {
   if (!LIB_CACHE) return;
-  ['bt-strategy', 'nb-strategy'].forEach(id => {
-    const sel = document.getElementById(id);
-    if (!sel) return;
-    sel.innerHTML = LIB_CACHE.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-  });
+  const btSel = document.getElementById('bt-strategy');
+  if (btSel) btSel.innerHTML = LIB_CACHE.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  const nbSel = document.getElementById('nb-strategy');
+  if (nbSel) {
+    nbSel.innerHTML = '<option value="__TEST__">Quick Test (Buy→Sell)</option>' + LIB_CACHE.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  }
 }
 
 /* ── Toast ─────────────────────────────────────────────────────────── */
@@ -612,11 +665,30 @@ function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 /* ═══════════════════ HOME ═══════════════════ */
+function quickLogin() {
+  const email = document.getElementById('home-email').value.trim();
+  const name = document.getElementById('home-name').value.trim();
+  if (!email) { document.getElementById('home-login-error').textContent = 'Email required'; return; }
+  EMAIL = email; UNAME = name;
+  localStorage.setItem('qx_email', EMAIL);
+  localStorage.setItem('qx_name', UNAME);
+  document.getElementById('sidebar-email').textContent = EMAIL;
+  document.getElementById('set-email').value = EMAIL;
+  document.getElementById('set-name').value = UNAME;
+  document.getElementById('home-login-form').style.display = 'none';
+  showToast('Welcome, ' + (name || email) + '!', 'success');
+  loadHome();
+}
+
 async function loadHome() {
+  document.getElementById('home-title').textContent = UNAME ? 'Welcome back, ' + UNAME : (EMAIL ? 'Welcome back' : 'Welcome to QuantX');
   if (!EMAIL) {
+    document.getElementById('home-login-form').style.display = '';
     document.getElementById('home-getstarted').style.display = 'block';
     return;
   }
+  document.getElementById('home-login-form').style.display = 'none';
+  document.getElementById('home-brokers').textContent = EMAIL ? '1' : '0';
   try {
     const r = await fetch(API + '/api/strategies/' + encodeURIComponent(EMAIL));
     const d = await r.json();
@@ -624,13 +696,7 @@ async function loadHome() {
     const active = ALL_STRATEGIES.filter(s => s.is_active).length;
     document.getElementById('home-active').textContent = active;
     document.getElementById('home-strategies').textContent = ALL_STRATEGIES.length;
-    document.getElementById('home-backtests').textContent = _savedBacktests.length;
     document.getElementById('home-getstarted').style.display = ALL_STRATEGIES.length === 0 ? 'block' : 'none';
-  } catch (e) {}
-  try {
-    const tr = await fetch(API + '/api/trades/' + encodeURIComponent(EMAIL));
-    const td = await tr.json();
-    document.getElementById('home-trades').textContent = (td || []).length;
   } catch (e) {}
 }
 
@@ -708,32 +774,44 @@ async function toggleBot(sid, active) {
 
 function openNewBot() { populateStrategySelects(); openModal('newbot-modal'); }
 
-async function createBot() {
+async function createBot(andDeploy = false) {
   const sym = document.getElementById('nb-symbol').value.trim();
   const strat = document.getElementById('nb-strategy').value;
   const tf = document.getElementById('nb-timeframe').value;
   const alloc = document.getElementById('nb-alloc').value;
-  const name = document.getElementById('nb-name').value.trim() || (strat + ' ' + sym);
+  const name = document.getElementById('nb-name').value.trim() || (strat === '__TEST__' ? 'Quick Test ' + sym : strat + ' ' + sym);
   if (!sym) { document.getElementById('nb-error').textContent = 'Symbol required'; return; }
-  if (!EMAIL) { document.getElementById('nb-error').textContent = 'Please connect a broker first'; return; }
+  if (!EMAIL) { document.getElementById('nb-error').textContent = 'Set up account on Home page first'; return; }
+  const isTest = strat === '__TEST__';
+  const stratId = isTest ? 'TEST' : strat;
   const lib = (LIB_CACHE || []).find(l => l.id === strat);
   const ts4 = Date.now().toString(36).slice(-4).toUpperCase();
+  const sid = stratId + '_' + ts4;
   try {
+    const payload = {
+      email: EMAIL, strategy_id: sid, strategy_name: name, symbol: sym,
+      arena: sym.endsWith('.HK') ? 'HK' : sym.endsWith('.SI') ? 'SG' : 'US',
+      timeframe: tf, conditions: {}, exit_rules: {}, risk: lib ? lib.default_risk || {} : {},
+      is_active: andDeploy, mode: isTest ? 'custom' : 'library', library_id: isTest ? '' : strat,
+      custom_script: isTest ? 'def generate_signals(df):\n    n = len(df["close"])\n    signals = [0] * n\n    if n > 1: signals[1] = 1\n    if n > 2: signals[2] = -1\n    return signals' : ''
+    };
     const r = await fetch(API + '/api/strategy', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: EMAIL, strategy_id: strat + '_' + ts4, strategy_name: name, symbol: sym,
-        arena: sym.endsWith('.HK') ? 'HK' : sym.endsWith('.SI') ? 'SG' : 'US',
-        timeframe: tf, conditions: {}, exit_rules: {}, risk: lib ? lib.default_risk || {} : {},
-        is_active: false, mode: 'library', library_id: strat
-      })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     if (!r.ok) throw new Error((await r.json()).detail || 'Failed');
+    if (andDeploy) {
+      await fetch(API + '/api/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
+      showToast('Bot created and deployed: ' + name, 'success');
+    } else {
+      showToast('Bot created: ' + name, 'success');
+    }
     closeModal('newbot-modal');
-    showToast('Bot created: ' + name, 'success');
-    loadBots();
+    setTimeout(loadBots, 300);
+    navigate('bots');
   } catch (e) { document.getElementById('nb-error').textContent = e.message; }
 }
+
+async function createAndDeployBot() { return createBot(true); }
 
 /* ═══════════════════ BOT DETAIL ═══════════════════ */
 function openBotDetail(sid) {
@@ -773,13 +851,17 @@ function showBdTab(tab) {
 
 async function loadBotLog() {
   if (!_currentBot) return;
+  const status = document.getElementById('bd-log-status');
   try {
-    const r = await fetch(API + '/api/logs/' + encodeURIComponent(EMAIL) + '/' + encodeURIComponent(_currentBot.strategy_id) + '?lines=200');
+    const r = await fetch(API + '/api/logs/' + encodeURIComponent(EMAIL) + '/' + encodeURIComponent(_currentBot.strategy_id) + '?lines=100');
     const d = await r.json();
     const el = document.getElementById('bd-log-content');
     el.textContent = (d.logs || d.log || 'No logs available');
     el.scrollTop = el.scrollHeight;
-  } catch (e) {}
+    if (status) { status.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> Live'; status.style.color = 'var(--green)'; }
+  } catch (e) {
+    if (status) { status.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block"></span> Disconnected'; status.style.color = 'var(--red)'; }
+  }
 }
 
 async function toggleBotDetail(active) {
@@ -903,6 +985,7 @@ function checkBrokerStatus() {
     document.getElementById('lp-connected').style.display = 'none';
     document.getElementById('lp-form').style.display = '';
   }
+  checkIbkrStatus();
 }
 
 async function connectLongPort() {
@@ -910,25 +993,43 @@ async function connectLongPort() {
   const appsecret = document.getElementById('lp-appsecret').value.trim();
   const token = document.getElementById('lp-token').value.trim();
   if (!appkey || !appsecret || !token) { showToast('All fields required', 'error'); return; }
-  const email = prompt('Enter your email address:');
-  if (!email) return;
-  const name = prompt('Enter your name:') || '';
+  if (!EMAIL) { showToast('Set up your account on the Home page first', 'error'); navigate('home'); return; }
   try {
     const r = await fetch(API + '/api/register', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, name, app_key: appkey, app_secret: appsecret, access_token: token, central_api_url: '' })
+      body: JSON.stringify({ email: EMAIL, name: UNAME, app_key: appkey, app_secret: appsecret, access_token: token, central_api_url: '' })
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'Failed');
-    EMAIL = email; UNAME = name;
-    localStorage.setItem('qx_email', EMAIL);
-    localStorage.setItem('qx_name', UNAME);
-    document.getElementById('sidebar-email').textContent = EMAIL;
-    document.getElementById('set-email').value = EMAIL;
-    document.getElementById('set-name').value = UNAME;
     checkBrokerStatus();
     showToast('LongPort connected!', 'success');
   } catch (e) { showToast('Connection failed: ' + e.message, 'error'); }
+}
+
+function saveIbkrConfig() {
+  const host = document.getElementById('ibkr-host').value.trim() || '127.0.0.1';
+  const port = document.getElementById('ibkr-port').value || '7497';
+  const clientId = document.getElementById('ibkr-clientid').value || '1';
+  localStorage.setItem('ibkr_config', JSON.stringify({ host, port, client_id: clientId }));
+  document.getElementById('ibkr-connected').style.display = '';
+  document.getElementById('ibkr-info').textContent = host + ':' + port;
+  document.getElementById('ibkr-form').style.display = 'none';
+  showToast('IBKR config saved', 'success');
+}
+
+function checkIbkrStatus() {
+  const cfg = JSON.parse(localStorage.getItem('ibkr_config') || 'null');
+  if (cfg) {
+    document.getElementById('ibkr-connected').style.display = '';
+    document.getElementById('ibkr-info').textContent = cfg.host + ':' + cfg.port;
+    document.getElementById('ibkr-form').style.display = 'none';
+  }
+}
+
+function setNbBroker(broker) {
+  document.getElementById('nb-broker').value = broker;
+  document.getElementById('nb-broker-lp').classList.toggle('active', broker === 'longport');
+  document.getElementById('nb-broker-ib').classList.toggle('active', broker === 'ibkr');
 }
 
 async function testConnection() {
