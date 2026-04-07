@@ -573,7 +573,9 @@ let LICENSE = localStorage.getItem('qx_license') || '';
 let LIB_CACHE = null;
 let ALL_STRATEGIES = [];   // library strategies (from /api/strategies-library)
 let USER_STRATEGIES = [];  // user's saved bots (from /api/strategies/{email})
-let BOT_RUNNING = false;   // true if master subprocess is running
+let BOT_RUNNING = false;   // true if any subprocess is running
+let LP_BOT_RUNNING = false;
+let IBKR_BOT_RUNNING = false;
 let _currentBot = null;
 let _btChart = null;
 let _bdChart = null;
@@ -762,9 +764,11 @@ async function loadBots() {
     try {
       const sr = await fetch(API + '/api/status/' + encodeURIComponent(EMAIL));
       const sd = await sr.json();
-      BOT_RUNNING = sd.status === 'running';
-      console.log('[STATUS] Bot running:', BOT_RUNNING, 'pid:', sd.pid);
-    } catch (_) { BOT_RUNNING = false; }
+      LP_BOT_RUNNING = sd.lp_running || false;
+      IBKR_BOT_RUNNING = sd.ibkr_running || false;
+      BOT_RUNNING = LP_BOT_RUNNING || IBKR_BOT_RUNNING;
+      console.log('[STATUS] LP:', LP_BOT_RUNNING, 'IBKR:', IBKR_BOT_RUNNING);
+    } catch (_) { BOT_RUNNING = LP_BOT_RUNNING = IBKR_BOT_RUNNING = false; }
     checkDuplicateBots();
     renderBots();
   } catch (e) { showToast('Failed to load bots: ' + e.message, 'error'); }
@@ -804,7 +808,7 @@ function renderBots() {
       <td class="stat-value ${retClass}" style="font-size:13px">${mf(bt.total_return_pct)}%</td>
       <td>${mf(bt.sharpe_ratio)}</td>
       <td>${mf(bt.total_trades)}</td>
-      <td onclick="event.stopPropagation()"><label class="toggle${s._toggling ? ' loading' : ''}"><input type="checkbox" ${(BOT_RUNNING && s.is_active) ? 'checked' : ''} onchange="toggleBot('${s.strategy_id}',this.checked)"><div class="toggle-track"></div><div class="toggle-thumb"></div></label></td>
+      <td onclick="event.stopPropagation()"><label class="toggle${s._toggling ? ' loading' : ''}"><input type="checkbox" ${((s.broker==='ibkr'?IBKR_BOT_RUNNING:LP_BOT_RUNNING) && s.is_active) ? 'checked' : ''} onchange="toggleBot('${s.strategy_id}',this.checked)"><div class="toggle-track"></div><div class="toggle-thumb"></div></label></td>
     </tr>`;
   }).join('');
 }
@@ -845,31 +849,35 @@ async function cleanupDuplicates() {
 
 async function toggleBot(sid, active) {
   const s = USER_STRATEGIES.find(x => x.strategy_id === sid);
+  const broker = s ? (s.broker || 'longport') : 'longport';
+  const brokerRunning = broker === 'ibkr' ? IBKR_BOT_RUNNING : LP_BOT_RUNNING;
   if (s) { s._toggling = true; renderBots(); }
   try {
     if (active) {
-      if (BOT_RUNNING) { showToast('Bot already running. Stop it first.', 'info'); if (s) s._toggling = false; renderBots(); return; }
+      if (brokerRunning) { showToast(broker + ' bot already running. Stop it first.', 'info'); if (s) s._toggling = false; renderBots(); return; }
       await fetch(API + '/api/strategy/' + encodeURIComponent(sid) + '/toggle?active=true', { method: 'PUT' });
       const dr = await fetch(API + '/api/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
       if (!dr.ok) { const dd = await dr.json(); throw new Error(dd.detail || 'Deploy failed'); }
-      BOT_RUNNING = true;
+      if (broker === 'ibkr') IBKR_BOT_RUNNING = true; else LP_BOT_RUNNING = true;
+      BOT_RUNNING = LP_BOT_RUNNING || IBKR_BOT_RUNNING;
       if (s) s.is_active = true;
-      showToast('Bot deployed', 'success');
+      showToast('Bot deployed (' + broker + ')', 'success');
     } else {
-      if (!BOT_RUNNING) { showToast('Bot is not running', 'info'); if (s) s._toggling = false; renderBots(); return; }
-      const sr = await fetch(API + '/api/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
+      if (!brokerRunning) { showToast(broker + ' bot is not running', 'info'); if (s) s._toggling = false; renderBots(); return; }
+      const sr = await fetch(API + '/api/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL, broker: broker }) });
       if (!sr.ok) { const sd = await sr.json(); throw new Error(sd.detail || 'Stop failed'); }
       await fetch(API + '/api/strategy/' + encodeURIComponent(sid) + '/toggle?active=false', { method: 'PUT' });
-      BOT_RUNNING = false;
+      if (broker === 'ibkr') IBKR_BOT_RUNNING = false; else LP_BOT_RUNNING = false;
+      BOT_RUNNING = LP_BOT_RUNNING || IBKR_BOT_RUNNING;
       if (s) s.is_active = false;
-      showToast('Bot stopped', 'info');
+      showToast('Bot stopped (' + broker + ')', 'info');
     }
   } catch (e) {
     showToast(e.message, 'error');
   }
   if (s) s._toggling = false;
-  renderBots(); // instant visual update
-  setTimeout(loadBots, 2000); // delayed full refresh
+  renderBots();
+  setTimeout(loadBots, 2000);
 }
 
 function openNewBot() {

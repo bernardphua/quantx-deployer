@@ -86,6 +86,7 @@ class DeployReq(BaseModel):
 
 class StopReq(BaseModel):
     email: str
+    broker: str = "all"
 
 
 class SettingsReq(BaseModel):
@@ -902,6 +903,7 @@ async def deploy(req: DeployReq):
         ibkr_log = str(LOGS_DIR / f"{email_safe}_ibkr_master.log")
         try:
             ibkr_proc = _launch_bot(ibkr_script, ibkr_log)
+            save_process(email, ibkr_proc.pid, "running", str(ibkr_script), ibkr_log)
             _log.info("[DEPLOY] IBKR bot PID: %s for %d strategies", ibkr_proc.pid, len(ibkr_strats))
         except Exception as e:
             _log.error("[DEPLOY] IBKR bot launch failed: %s", e)
@@ -971,10 +973,51 @@ async def deploy(req: DeployReq):
 @app.post("/api/stop")
 async def stop(req: StopReq):
     email = req.email.lower().strip()
-    if email not in _running_processes:
-        raise HTTPException(404, "No running bot found for this email")
-    _stop_process(email)
-    return {"status": "stopped"}
+    broker = req.broker or "all"
+    stopped = []
+    # Stop by broker type using psutil
+    if broker in ("all", "longport"):
+        if email in _running_processes:
+            _stop_process(email)
+            stopped.append("longport")
+        else:
+            # Try killing from DB PID
+            _kill_process_by_db(email, ibkr=False)
+            stopped.append("longport")
+    if broker in ("all", "ibkr"):
+        _kill_process_by_db(email, ibkr=True)
+        stopped.append("ibkr")
+    if not stopped and email not in _running_processes:
+        return {"status": "stopped", "message": "No running bot found"}
+    return {"status": "stopped", "brokers_stopped": stopped}
+
+
+def _kill_process_by_db(email: str, ibkr: bool = False):
+    """Kill a process found in the DB by its PID."""
+    conn = get_db()
+    try:
+        pattern = '%ibkr%' if ibkr else '%master%'
+        not_pattern = '%ibkr%'
+        if ibkr:
+            row = conn.execute("SELECT pid FROM processes WHERE email=? AND master_script_path LIKE '%ibkr%' AND status='running' ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+        else:
+            row = conn.execute("SELECT pid FROM processes WHERE email=? AND master_script_path NOT LIKE '%ibkr%' AND status='running' ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return
+    try:
+        import psutil
+        p = psutil.Process(row["pid"])
+        p.terminate()
+        p.wait(timeout=10)
+    except Exception:
+        try:
+            import psutil
+            psutil.Process(row["pid"]).kill()
+        except Exception:
+            pass
+    update_process_status(email, "stopped")
 
 
 @app.post("/api/restart")
@@ -1032,55 +1075,63 @@ async def test_ibkr_connection(req: IBKRConfigReq):
 @app.get("/api/status/{email}")
 async def status(email: str):
     email = email.lower().strip()
-    proc_info = get_latest_process(email)
-    is_running = False
-    pid = None
-    bot_status = "stopped"
 
-    if email in _running_processes:
+    # Check DB for LP and IBKR processes
+    conn = get_db()
+    try:
+        lp_proc = conn.execute(
+            "SELECT pid, status FROM processes WHERE email=? AND master_script_path NOT LIKE '%ibkr%' ORDER BY id DESC LIMIT 1",
+            (email,)
+        ).fetchone()
+        ibkr_proc = conn.execute(
+            "SELECT pid, status FROM processes WHERE email=? AND master_script_path LIKE '%ibkr%' ORDER BY id DESC LIMIT 1",
+            (email,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    def _is_alive(proc_row):
+        if not proc_row or proc_row["status"] != "running":
+            return False
+        try:
+            import psutil
+            p = psutil.Process(proc_row["pid"])
+            return p.is_running() and p.status() != "zombie"
+        except Exception:
+            return False
+
+    # Also check in-memory processes
+    lp_running = _is_alive(lp_proc)
+    ibkr_running = _is_alive(ibkr_proc)
+
+    # Fallback: check _running_processes dict
+    if not lp_running and email in _running_processes:
         proc = _running_processes[email]
         if proc.poll() is None:
-            is_running = True
-            pid = proc.pid
-            bot_status = "running"
-        else:
-            # Process ended unexpectedly
-            exit_code = proc.returncode
-            del _running_processes[email]
-            bot_status = "error" if exit_code != 0 else "stopped"
-            update_process_status(email, bot_status, f"Exit code: {exit_code}")
+            lp_running = True
 
     strategies = get_strategies(email)
     trades = get_trades(email)
-
-    # Calculate per-strategy PnL
     strat_pnl = defaultdict(float)
     for t in trades:
         strat_pnl[t["strategy_id"]] += t["pnl"]
 
-    # Read recent log lines
-    email_safe = email.replace("@", "_at_").replace(".", "_")
-    log_path = Path(__file__).parent.parent / "logs" / f"{email_safe}_master.log"
-    recent_logs = []
-    if log_path.exists():
-        try:
-            recent_logs = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-5:]
-        except Exception:
-            pass
-
     return {
         "email": email,
-        "is_running": is_running,
-        "pid": pid,
-        "bot_status": bot_status,
-        "process": proc_info,
+        "status": "running" if (lp_running or ibkr_running) else "stopped",
+        "lp_running": lp_running,
+        "lp_pid": lp_proc["pid"] if lp_proc and lp_running else None,
+        "ibkr_running": ibkr_running,
+        "ibkr_pid": ibkr_proc["pid"] if ibkr_proc and ibkr_running else None,
+        "pid": (lp_proc["pid"] if lp_running else None) or (ibkr_proc["pid"] if ibkr_running else None),
+        "is_running": lp_running or ibkr_running,
+        "bot_status": "running" if (lp_running or ibkr_running) else "stopped",
         "strategies": [
             {**s, "total_pnl": round(strat_pnl.get(s["strategy_id"], 0), 4)}
             for s in strategies
         ],
         "total_pnl": round(sum(strat_pnl.values()), 4),
         "total_trades": len(trades),
-        "recent_logs": recent_logs,
     }
 
 
