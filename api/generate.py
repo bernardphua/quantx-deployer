@@ -99,7 +99,12 @@ def generate_simple_ibkr_bot(email: str, symbol: str, ibkr_config: dict,
     BOTS_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     email_safe = email.replace("@", "_at_").replace(".", "_")
-    cid = ibkr_config.get("client_id", 1)
+    # Auto-assign unique client ID from symbol hash to avoid conflicts
+    import hashlib
+    cid_hash = int(hashlib.md5((email + symbol).encode()).hexdigest(), 16) % 800 + 100
+    cid = ibkr_config.get("client_id", cid_hash) if ibkr_config.get("client_id", 1) == 1 else ibkr_config["client_id"]
+    if cid <= 10:
+        cid = cid_hash  # override low default IDs
     script_path = BOTS_DIR / f"{email_safe}_simple_ibkr_{cid}.py"
     log_name = f"{email_safe}_simple_ibkr_{cid}.log"
     content = SIMPLE_IBKR_TEMPLATE

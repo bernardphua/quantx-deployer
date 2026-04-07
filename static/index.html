@@ -101,12 +101,14 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 /* ── Toggle Switch ───────────────────── */
 .toggle { position:relative; width:44px; height:24px; cursor:pointer; }
 .toggle input { display:none; }
-.toggle-track { position:absolute; inset:0; background:#CBD5E1; border-radius:12px; transition:background .2s; }
-.toggle input:checked + .toggle-track { background:var(--green); }
+.toggle-track { position:absolute; inset:0; background:#D1D5DB; border-radius:12px; transition:background .2s; }
+.toggle input:checked + .toggle-track { background:#22C55E; }
 .toggle-thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; background:#fff; border-radius:50%; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:transform .2s; }
 .toggle input:checked ~ .toggle-thumb { transform:translateX(20px); }
-.toggle.loading .toggle-thumb { animation:pulse-toggle .8s infinite; }
-@keyframes pulse-toggle { 0%,100%{opacity:1} 50%{opacity:.5} }
+.toggle.processing .toggle-track { background:#F59E0B; animation:toggle-pulse .8s ease-in-out infinite; }
+.toggle.processing { cursor:wait; }
+.toggle.error .toggle-track { background:#EF4444; }
+@keyframes toggle-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 
 /* ── Badges ──────────────────────────── */
 .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; letter-spacing:.3px; }
@@ -366,7 +368,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <span id="bd-log-status" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--green)"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> Live</span>
       <span style="font-size:11px;color:var(--text-muted)">Polling every 3s</span>
-      <span id="bd-log-filename" style="font-size:10px;color:var(--text-muted);margin-left:auto;font-family:monospace"></span>
+      <span id="bd-log-filename" onclick="copyLogFilename()" style="font-size:10px;color:var(--blue-primary);margin-left:auto;font-family:monospace;cursor:pointer;background:var(--blue-pale);padding:2px 8px;border-radius:4px;display:none" title="Click to copy log path"></span>
     </div>
     <div class="log-viewer" id="bd-log-content" style="color:#4ADE80;min-height:400px">Waiting for logs...</div>
   </div>
@@ -813,7 +815,7 @@ function renderBots() {
       <td class="stat-value ${retClass}" style="font-size:13px">${mf(bt.total_return_pct)}%</td>
       <td>${mf(bt.sharpe_ratio)}</td>
       <td>${mf(bt.total_trades)}</td>
-      <td onclick="event.stopPropagation()"><label class="toggle${s._toggling ? ' loading' : ''}"><input type="checkbox" ${((s.broker==='ibkr'?IBKR_BOT_RUNNING:LP_BOT_RUNNING) && s.is_active) ? 'checked' : ''} onchange="toggleBot('${s.strategy_id}',this.checked)"><div class="toggle-track"></div><div class="toggle-thumb"></div></label></td>
+      <td onclick="event.stopPropagation()"><label class="toggle${s._toggling ? ' processing' : ''}" data-sid="${s.strategy_id}"><input type="checkbox" ${((s.broker==='ibkr'?IBKR_BOT_RUNNING:LP_BOT_RUNNING) && s.is_active) ? 'checked' : ''} onchange="toggleBot('${s.strategy_id}',this.checked)"><div class="toggle-track"></div><div class="toggle-thumb"></div></label></td>
       <td onclick="event.stopPropagation()" id="del-${s.strategy_id}"><span style="cursor:pointer;opacity:.4;font-size:14px" onclick="confirmDeleteRow('${s.strategy_id}')" title="Delete bot">🗑</span></td>
     </tr>`;
   }).join('');
@@ -902,12 +904,15 @@ async function toggleBot(sid, active) {
     }
   } catch (e) {
     showToast(e.message, 'error');
+    // Show error state briefly
+    const errLabel = document.querySelector(`label.toggle[data-sid="${sid}"]`);
+    if (errLabel) { errLabel.classList.remove('processing'); errLabel.classList.add('error'); setTimeout(() => errLabel.classList.remove('error'), 2000); }
   } finally {
     _TOGGLING.delete(sid);
     if (s) s._toggling = false;
   }
-  renderBots(); // instant visual update
-  setTimeout(loadBots, 3000); // delayed refresh to let subprocess register
+  renderBots();
+  setTimeout(loadBots, 3000);
 }
 
 function openNewBot() {
@@ -1058,7 +1063,7 @@ async function loadBotLog() {
     const el = document.getElementById('bd-log-content');
     const raw = (d.lines ? d.lines.join('\n') : d.logs || d.log || 'No logs available');
     const fnEl = document.getElementById('bd-log-filename');
-    if (fnEl && d.filename) fnEl.textContent = 'Reading: ' + d.filename;
+    if (fnEl && d.filename) { fnEl.textContent = '\uD83D\uDCC4 ' + d.filename; fnEl.style.display = ''; fnEl._path = d.filename; }
     // Color-code log levels
     el.innerHTML = raw.split('\n').map(line => {
       if (line.includes('[ERROR]') || line.includes('ERROR')) return `<span style="color:#F87171">${esc(line)}</span>`;
@@ -1072,6 +1077,12 @@ async function loadBotLog() {
   }
 }
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function copyLogFilename() {
+  const el = document.getElementById('bd-log-filename');
+  const path = el?._path || '';
+  if (path) { navigator.clipboard.writeText(path); showToast('Copied: ' + path, 'info', 2000); }
+}
 
 async function toggleBotDetail(active) {
   if (!_currentBot) return;
