@@ -1002,22 +1002,27 @@ async def get_ibkr_config_endpoint(email: str):
 
 @app.post("/api/test-ibkr-connection")
 async def test_ibkr_connection(req: IBKRConfigReq):
-    try:
-        from ib_insync import IB
-    except ImportError:
-        return {"ok": False, "message": "ib_insync not installed. Run: pip install ib_insync"}
-    ib = IB()
-    try:
-        ib.connect(req.host, req.port, clientId=req.client_id, timeout=10)
-        accounts = ib.managedAccounts()
-        ib.disconnect()
-        return {"ok": True, "message": f"Connected to IBKR", "account": accounts[0] if accounts else "unknown"}
-    except Exception as e:
+    def _test_sync():
         try:
+            from ib_insync import IB
+            import nest_asyncio
+            nest_asyncio.apply()
+        except ImportError:
+            return {"ok": False, "message": "ib_insync or nest_asyncio not installed"}
+        ib = IB()
+        try:
+            ib.connect(req.host, req.port, clientId=req.client_id + 50, timeout=10)
+            accounts = ib.managedAccounts()
             ib.disconnect()
-        except Exception:
-            pass
-        return {"ok": False, "message": str(e)}
+            return {"ok": True, "message": "Connected to IBKR", "account": accounts[0] if accounts else ""}
+        except Exception as e:
+            try:
+                ib.disconnect()
+            except Exception:
+                pass
+            return {"ok": False, "message": str(e)}
+    result = await asyncio.get_event_loop().run_in_executor(_executor, _test_sync)
+    return result
 
 
 @app.get("/api/status/{email}")
@@ -1199,25 +1204,25 @@ async def test_connection(req: DeployReq):
     student = get_student(email)
     if not student:
         raise HTTPException(404, "Student not registered")
-    try:
-        from longport.openapi import Config, QuoteContext
-        lp_config = Config(
-            app_key=student["app_key"],
-            app_secret=student["app_secret"],
-            access_token=student["access_token"],
-        )
-        quote_ctx = QuoteContext(lp_config)
-        quotes = quote_ctx.quote(["700.HK"])
-        if quotes:
-            q = quotes[0]
-            return {
-                "ok": True,
-                "message": "Connected to LongPort successfully",
-                "test_quote": {"symbol": "700.HK", "price": float(q.last_done)},
-            }
-        return {"ok": True, "message": "Connected but no quote data returned", "test_quote": None}
-    except Exception as e:
-        return {"ok": False, "message": f"Connection failed: {e}"}
+    def _test_lp():
+        try:
+            from longport.openapi import Config, QuoteContext
+            cfg = Config(
+                app_key=student["app_key"],
+                app_secret=student["app_secret"],
+                access_token=student["access_token"],
+            )
+            ctx = QuoteContext(cfg)
+            quotes = ctx.quote(["700.HK"])
+            if quotes:
+                q = quotes[0]
+                return {"ok": True, "message": "Connected to LongPort",
+                        "test_quote": {"symbol": "700.HK", "price": float(q.last_done)}}
+            return {"ok": True, "message": "Connected but no quote returned", "test_quote": None}
+        except Exception as e:
+            return {"ok": False, "message": f"Connection failed: {e}"}
+    result = await asyncio.get_event_loop().run_in_executor(_executor, _test_lp)
+    return result
 
 
 @app.post("/api/settings")

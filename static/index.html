@@ -1243,9 +1243,13 @@ async function testIbkrConnection() {
       body: JSON.stringify({ email: EMAIL, host: cfg.host || '127.0.0.1', port: cfg.port || 7497, client_id: cfg.client_id || 1 })
     });
     const d = await r.json();
-    if (d.ok) { el.textContent = '✓ ' + (d.message || 'Connected'); el.style.color = 'var(--green)'; }
-    else { el.textContent = '✗ ' + (d.message || 'Failed'); el.style.color = 'var(--red)'; }
-  } catch (e) { el.textContent = '✗ ' + e.message; el.style.color = 'var(--red)'; }
+    if (d.ok) {
+      const acct = d.account ? ' (Account: ' + d.account + ')' : '';
+      el.innerHTML = '<span style="color:var(--green)">✓ ' + esc(d.message || 'Connected') + acct + '</span>';
+    } else {
+      el.innerHTML = '<span style="color:var(--red)">✗ ' + esc(d.message || 'Connection failed') + '</span>';
+    }
+  } catch (e) { el.innerHTML = '<span style="color:var(--red)">✗ ' + esc(e.message) + '</span>'; }
 }
 
 async function checkIbkrStatus() {
@@ -1284,9 +1288,13 @@ async function testConnection() {
   try {
     const r = await fetch(API + '/api/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
     const d = await r.json();
-    if (d.ok || d.connected) { el.textContent = '✓ Connected'; el.style.color = 'var(--green)'; }
-    else { el.textContent = '✗ ' + (d.error || 'Failed'); el.style.color = 'var(--red)'; }
-  } catch (e) { el.textContent = '✗ ' + e.message; el.style.color = 'var(--red)'; }
+    if (d.ok) {
+      const quote = d.test_quote ? ' — ' + d.test_quote.symbol + ': $' + d.test_quote.price : '';
+      el.innerHTML = '<span style="color:var(--green)">✓ ' + esc(d.message || 'Connected') + quote + '</span>';
+    } else {
+      el.innerHTML = '<span style="color:var(--red)">✗ ' + esc(d.message || 'Connection failed') + '</span>';
+    }
+  } catch (e) { el.innerHTML = '<span style="color:var(--red)">✗ ' + esc(e.message) + '</span>'; }
 }
 
 function disconnectBroker() {
