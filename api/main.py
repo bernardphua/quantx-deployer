@@ -28,7 +28,7 @@ from typing import Optional, List
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from api.config import (
-    CENTRAL_API_URL, HOSTING, VERSION, BOTS_DIR, LOGS_DIR, PYTHON_EXE,
+    CENTRAL_API_URL, HOSTING, VERSION, BOTS_DIR, LOGS_DIR, PYTHON_EXE, DB_PATH,
 )
 from api.database import (
     init_db, get_db, save_student, get_student, save_strategy, get_strategies,
@@ -508,7 +508,7 @@ async def backtest_run(body: BacktestReq):
         # Waterfall fetch
         data = fetch_bars_waterfall_sync(
             symbol=body.symbol, timeframe=body.timeframe, limit=body.limit,
-            db_path=DB_PATH, ibkr_config=ibkr_cfg, skip_cache=body.skip_cache)
+            db_path=str(DB_PATH), ibkr_config=ibkr_cfg, skip_cache=body.skip_cache)
         if data["error"]:
             return {"status": "error", "message": data["error"],
                     "source": data["source"], "source_message": data["source_message"]}
@@ -1124,7 +1124,7 @@ async def test_ibkr_connection(req: IBKRConfigReq):
 @app.get("/api/data-cache")
 async def data_cache_list(email: str = Query("")):
     from api.data_manager import get_cached_symbols
-    cached = get_cached_symbols(DB_PATH)
+    cached = get_cached_symbols(str(DB_PATH))
     return {"cached": cached, "count": len(cached)}
 
 
@@ -1132,7 +1132,7 @@ async def data_cache_list(email: str = Query("")):
 async def data_cache_clear(symbol: str = Query(""), timeframe: str = Query("")):
     from api.data_manager import clear_cached_symbol
     if symbol:
-        clear_cached_symbol(DB_PATH, symbol.upper(), timeframe or None)
+        clear_cached_symbol(str(DB_PATH), symbol.upper(), timeframe or None)
         return {"ok": True, "cleared": symbol}
     return {"ok": False, "message": "symbol required"}
 
@@ -1152,7 +1152,7 @@ async def data_prefetch(request: Request):
         if email:
             ibkr_cfg = get_ibkr_config(email.lower().strip())
         result = fetch_bars_waterfall_sync(symbol=symbol, timeframe=timeframe, limit=limit,
-                                           db_path=DB_PATH, ibkr_config=ibkr_cfg)
+                                           db_path=str(DB_PATH), ibkr_config=ibkr_cfg)
         _log.info("Prefetch %s/%s: %s (%d bars)", symbol, timeframe, result["source"], result["bar_count"])
     asyncio.get_event_loop().run_in_executor(_executor, _fetch)
     return {"ok": True, "message": f"Fetching {symbol}/{timeframe} in background..."}
