@@ -248,6 +248,84 @@ def calc_roc(vals, period=10):
             r[i] = (vals[i]-vals[i-period])/vals[i-period]*100
     return r
 
+def calc_zscore(vals, period=20):
+    r = [None]*len(vals)
+    for i in range(period, len(vals)):
+        w = vals[i-period+1:i+1]; m = sum(w)/period
+        s = (sum((x-m)**2 for x in w)/period)**0.5
+        r[i] = (vals[i]-m)/s if s > 0 else 0
+    return r
+
+def calc_obv(closes, volumes):
+    r = [0.0]
+    for i in range(1, len(closes)):
+        if closes[i] > closes[i-1]: r.append(r[-1]+volumes[i])
+        elif closes[i] < closes[i-1]: r.append(r[-1]-volumes[i])
+        else: r.append(r[-1])
+    return r
+
+def calc_vwap(highs, lows, closes, volumes):
+    r = [None]*len(closes); ctv = cv = 0.0
+    for i in range(len(closes)):
+        tp = (highs[i]+lows[i]+closes[i])/3; ctv += tp*volumes[i]; cv += volumes[i]
+        r[i] = ctv/cv if cv > 0 else closes[i]
+    return r
+
+def calc_stoch(highs, lows, closes, k_period=14, d_period=3):
+    kl = [None]*len(closes)
+    for i in range(k_period-1, len(closes)):
+        h = max(highs[i-k_period+1:i+1]); l = min(lows[i-k_period+1:i+1])
+        kl[i] = (closes[i]-l)/(h-l)*100 if h != l else 50
+    dl = [None]*len(closes)
+    for i in range(k_period+d_period-2, len(closes)):
+        vs = [kl[j] for j in range(i-d_period+1,i+1) if kl[j] is not None]
+        if len(vs) == d_period: dl[i] = sum(vs)/d_period
+    return kl, dl
+
+def calc_williams_r(highs, lows, closes, period=14):
+    r = [None]*len(closes)
+    for i in range(period-1, len(closes)):
+        h = max(highs[i-period+1:i+1]); l = min(lows[i-period+1:i+1])
+        r[i] = (h-closes[i])/(h-l)*-100 if h != l else -50
+    return r
+
+def calc_donchian(highs, lows, period=20):
+    u = [None]*len(highs); l = [None]*len(lows)
+    for i in range(period-1, len(highs)):
+        u[i] = max(highs[i-period+1:i+1]); l[i] = min(lows[i-period+1:i+1])
+    return u, l
+
+def calc_wma(vals, period):
+    r = [None]*len(vals); wts = list(range(1,period+1)); ws = sum(wts)
+    for i in range(period-1, len(vals)):
+        r[i] = sum(vals[i-period+1+j]*wts[j] for j in range(period))/ws
+    return r
+
+def calc_hma(vals, period):
+    h = period//2; sq = max(int(period**0.5),1)
+    wh = calc_wma(vals, h); wf = calc_wma(vals, period)
+    d = [2*wh[i]-wf[i] if wh[i] is not None and wf[i] is not None else 0 for i in range(len(vals))]
+    return calc_wma(d, sq)
+
+def calc_supertrend(highs, lows, closes, period=10, mult=3.0):
+    atr_v = calc_atr(highs, lows, closes, period)
+    di = [1]*len(closes); st = [None]*len(closes)
+    ub = [None]*len(closes); lb = [None]*len(closes)
+    for i in range(period, len(closes)):
+        if atr_v[i] is None: continue
+        mid = (highs[i]+lows[i])/2
+        ub[i] = mid+mult*atr_v[i]; lb[i] = mid-mult*atr_v[i]
+        if i == period: di[i]=1; st[i]=lb[i]; continue
+        if di[i-1] == 1:
+            if lb[i-1]: lb[i] = max(lb[i], lb[i-1])
+            if closes[i] < lb[i]: di[i]=-1; st[i]=ub[i]
+            else: di[i]=1; st[i]=lb[i]
+        else:
+            if ub[i-1]: ub[i] = min(ub[i], ub[i-1])
+            if closes[i] > ub[i]: di[i]=1; st[i]=lb[i]
+            else: di[i]=-1; st[i]=ub[i]
+    return st, di
+
 # ── Signal computation (GENERATED) ─────────────────────────────────────────
 __SIGNAL_CODE__
 

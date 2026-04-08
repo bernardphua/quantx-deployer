@@ -132,30 +132,48 @@ def generate_simple_ibkr_bot(email: str, symbol: str, ibkr_config: dict,
 _IND_CALC = {
     'ema': lambda p: f'calc_ema(close, {p.get("period",20)})',
     'sma': lambda p: f'calc_sma(close, {p.get("period",20)})',
+    'wma': lambda p: f'calc_wma(close, {p.get("period",20)})',
+    'hma': lambda p: f'calc_hma(close, {p.get("period",20)})',
     'rsi': lambda p: f'calc_rsi(close, {p.get("period",14)})',
     'roc': lambda p: f'calc_roc(close, {p.get("period",10)})',
     'macd_line': lambda p: f'calc_macd(close, {p.get("fast",12)}, {p.get("slow",26)}, {p.get("signal",9)})[0]',
     'macd_signal': lambda p: f'calc_macd(close, {p.get("fast",12)}, {p.get("slow",26)}, {p.get("signal",9)})[1]',
-    'stoch_k': lambda p: f'calc_stoch_k(high, low, close, {p.get("k",14)}, {p.get("d",3)})',
+    'macd_hist': lambda p: f'calc_macd(close, {p.get("fast",12)}, {p.get("slow",26)}, {p.get("signal",9)})[2]',
+    'stoch_k': lambda p: f'calc_stoch(high, low, close, {p.get("k",14)}, {p.get("d",3)})[0]',
+    'stoch_d': lambda p: f'calc_stoch(high, low, close, {p.get("k",14)}, {p.get("d",3)})[1]',
     'bb_upper': lambda p: f'calc_bbands(close, {p.get("period",20)}, {p.get("std",2)})[0]',
+    'bb_middle': lambda p: f'calc_bbands(close, {p.get("period",20)}, {p.get("std",2)})[1]',
     'bb_mid': lambda p: f'calc_bbands(close, {p.get("period",20)}, {p.get("std",2)})[1]',
     'bb_lower': lambda p: f'calc_bbands(close, {p.get("period",20)}, {p.get("std",2)})[2]',
     'atr': lambda p: f'calc_atr(high, low, close, {p.get("period",14)})',
     'williams_r': lambda p: f'calc_williams_r(high, low, close, {p.get("period",14)})',
     'zscore': lambda p: f'calc_zscore(close, {p.get("period",20)})',
+    'obv': lambda p: f'calc_obv(close, volume)',
+    'vwap': lambda p: f'calc_vwap(high, low, close, volume)',
     'donch_upper': lambda p: f'calc_donchian(high, low, {p.get("period",20)})[0]',
+    'donchian_upper': lambda p: f'calc_donchian(high, low, {p.get("period",20)})[0]',
     'donch_lower': lambda p: f'calc_donchian(high, low, {p.get("period",20)})[1]',
+    'donchian_lower': lambda p: f'calc_donchian(high, low, {p.get("period",20)})[1]',
+    'supertrend': lambda p: f'calc_supertrend(high, low, close, {p.get("period",10)}, {p.get("multiplier",3.0)})[0]',
 }
 
 def _ind_var(ind_id, params):
-    if ind_id in ('close','open','high','low','volume'):
-        return 'volume' if ind_id == 'volume' else ind_id
-    suffix = '_'.join(str(v) for v in (params or {}).values())
-    return f'{ind_id}_{suffix}' if suffix else ind_id
+    """Generate lowercase variable name: ema_20, rsi_14, bb_upper_20_2"""
+    lid = ind_id.lower()
+    if lid in ('close', 'open', 'high', 'low', 'volume'):
+        return lid
+    suffix = '_'.join(str(int(v) if isinstance(v, float) and v == int(v) else v)
+                      for v in (params or {}).values())
+    return f'{lid}_{suffix}' if suffix else lid
 
 def _ind_calc(ind_id, params):
-    fn = _IND_CALC.get(ind_id)
-    return fn(params or {}) if fn else ind_id
+    """Look up calc_* function call string. Case-insensitive."""
+    lid = ind_id.lower()
+    fn = _IND_CALC.get(lid)
+    if fn:
+        return fn(params or {})
+    # Not found — return as-is (will cause a NameError in the script, which is intentional)
+    return lid
 
 def _cond_code(cond, lv, rv, is_value=False):
     L, Lp = f'{lv}[i]', f'{lv}[i-1]'
@@ -182,7 +200,7 @@ def generate_signal_code(entry_long, exit_long, entry_short=None, exit_short=Non
     for c in all_conds:
         for side in [c.get('left', {}), c.get('right', {})]:
             ind_id = side.get('id') or side.get('ind', '')
-            if not ind_id or ind_id in ('close','open','high','low','volume'):
+            if not ind_id or ind_id.lower() in ('close','open','high','low','volume'):
                 continue
             if side.get('type') == 'value':
                 continue
