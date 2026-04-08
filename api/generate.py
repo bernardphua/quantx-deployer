@@ -127,6 +127,37 @@ def generate_simple_ibkr_bot(email: str, symbol: str, ibkr_config: dict,
     return str(script_path.resolve()), str(LOGS_DIR / log_name)
 
 
+# ── Library → Builder conditions mapping ─────────────────────────────────────
+
+_LIBRARY_CONDITIONS = {
+    "EMA_CROSS": {"entry_long":[{"left":{"ind":"EMA","params":{"period":20}},"cond":"crosses_above","right":{"type":"indicator","ind":"EMA","params":{"period":50}}}],"exit_long":[{"left":{"ind":"EMA","params":{"period":20}},"cond":"crosses_below","right":{"type":"indicator","ind":"EMA","params":{"period":50}}}]},
+    "RSI": {"entry_long":[{"left":{"ind":"RSI","params":{"period":14}},"cond":"is_less_than","right":{"type":"value","value":30}}],"exit_long":[{"left":{"ind":"RSI","params":{"period":14}},"cond":"is_greater_than","right":{"type":"value","value":70}}]},
+    "RSI_MEAN_REVERSION": {"entry_long":[{"left":{"ind":"RSI","params":{"period":14}},"cond":"is_less_than","right":{"type":"value","value":30}}],"exit_long":[{"left":{"ind":"RSI","params":{"period":14}},"cond":"is_greater_than","right":{"type":"value","value":70}}]},
+    "MACD": {"entry_long":[{"left":{"ind":"MACD_LINE","params":{"fast":12,"slow":26,"signal":9}},"cond":"crosses_above","right":{"type":"indicator","ind":"MACD_SIGNAL","params":{"fast":12,"slow":26,"signal":9}}}],"exit_long":[{"left":{"ind":"MACD_LINE","params":{"fast":12,"slow":26,"signal":9}},"cond":"crosses_below","right":{"type":"indicator","ind":"MACD_SIGNAL","params":{"fast":12,"slow":26,"signal":9}}}]},
+    "MACD_MOMENTUM": {"entry_long":[{"left":{"ind":"MACD_LINE","params":{"fast":12,"slow":26,"signal":9}},"cond":"crosses_above","right":{"type":"indicator","ind":"MACD_SIGNAL","params":{"fast":12,"slow":26,"signal":9}}}],"exit_long":[{"left":{"ind":"MACD_LINE","params":{"fast":12,"slow":26,"signal":9}},"cond":"crosses_below","right":{"type":"indicator","ind":"MACD_SIGNAL","params":{"fast":12,"slow":26,"signal":9}}}]},
+    "BB_BREAKOUT": {"entry_long":[{"left":{"ind":"close","params":{}},"cond":"crosses_above","right":{"type":"indicator","ind":"BB_UPPER","params":{"period":20,"std":2.0}}}],"exit_long":[{"left":{"ind":"close","params":{}},"cond":"crosses_below","right":{"type":"indicator","ind":"BB_MID","params":{"period":20,"std":2.0}}}]},
+    "BB_GRID": {"entry_long":[{"left":{"ind":"close","params":{}},"cond":"is_below","right":{"type":"indicator","ind":"BB_LOWER","params":{"period":20,"std":2.0}}}],"exit_long":[{"left":{"ind":"close","params":{}},"cond":"is_above","right":{"type":"indicator","ind":"BB_UPPER","params":{"period":20,"std":2.0}}}]},
+    "SYMMETRIC_GRID": {"entry_long":[{"left":{"ind":"close","params":{}},"cond":"is_below","right":{"type":"indicator","ind":"BB_LOWER","params":{"period":20,"std":2.0}}}],"exit_long":[{"left":{"ind":"close","params":{}},"cond":"is_above","right":{"type":"indicator","ind":"BB_UPPER","params":{"period":20,"std":2.0}}}]},
+    "MOMENTUM_BREAKOUT": {"entry_long":[{"left":{"ind":"RSI","params":{"period":14}},"cond":"is_greater_than","right":{"type":"value","value":55}}],"exit_long":[{"left":{"ind":"RSI","params":{"period":14}},"cond":"is_less_than","right":{"type":"value","value":50}}]},
+    "VWAP_REVERSION": {"entry_long":[{"left":{"ind":"close","params":{}},"cond":"is_below","right":{"type":"indicator","ind":"VWAP","params":{}}}],"exit_long":[{"left":{"ind":"close","params":{}},"cond":"is_above","right":{"type":"indicator","ind":"VWAP","params":{}}}]},
+    "SUPERTREND": {"entry_long":[{"left":{"ind":"close","params":{}},"cond":"is_above","right":{"type":"indicator","ind":"SUPERTREND","params":{"period":10,"multiplier":3.0}}}],"exit_long":[{"left":{"ind":"close","params":{}},"cond":"is_below","right":{"type":"indicator","ind":"SUPERTREND","params":{"period":10,"multiplier":3.0}}}]},
+    "TURTLE": {"entry_long":[{"left":{"ind":"close","params":{}},"cond":"is_above","right":{"type":"indicator","ind":"DONCHIAN_UPPER","params":{"period":20}}}],"exit_long":[{"left":{"ind":"close","params":{}},"cond":"is_below","right":{"type":"indicator","ind":"DONCHIAN_LOWER","params":{"period":10}}}]},
+    "TURTLE_TRADER": {"entry_long":[{"left":{"ind":"close","params":{}},"cond":"is_above","right":{"type":"indicator","ind":"DONCHIAN_UPPER","params":{"period":20}}}],"exit_long":[{"left":{"ind":"close","params":{}},"cond":"is_below","right":{"type":"indicator","ind":"DONCHIAN_LOWER","params":{"period":10}}}]},
+}
+
+def library_id_to_conditions(library_id: str) -> dict:
+    """Convert a library strategy ID to Builder conditions format."""
+    base = _LIBRARY_CONDITIONS.get(library_id, {})
+    return {
+        "entry_long": base.get("entry_long", []),
+        "exit_long": base.get("exit_long", []),
+        "entry_short": base.get("entry_short", []),
+        "exit_short": base.get("exit_short", []),
+        "entry_long_logic": base.get("entry_long_logic", "AND"),
+        "exit_long_logic": base.get("exit_long_logic", "OR"),
+    }
+
+
 # ── IBKR production bot generator ───────────────────────────────────────────
 
 _IND_CALC = {

@@ -36,7 +36,8 @@ from api.database import (
     get_latest_process, log_trade, get_trades, decrypt,
     save_ibkr_config, get_ibkr_config,
 )
-from api.generate import generate_master_bot, generate_ibkr_bot, generate_simple_lp_bot, generate_simple_ibkr_bot
+from api.generate import (generate_master_bot, generate_ibkr_bot, generate_simple_lp_bot,
+                          generate_simple_ibkr_bot, generate_ibkr_bot_prod, library_id_to_conditions)
 
 _log = _logging.getLogger("quantx-deployer")
 
@@ -960,18 +961,46 @@ async def deploy(req: DeployReq):
             lp_strats = [x for x in lp_strats if x["strategy_id"] != s["strategy_id"]]
             ibkr_strats = [x for x in ibkr_strats if x["strategy_id"] != s["strategy_id"]]
 
-    # If there are IBKR strategies, launch IBKR bot too
+    # If there are IBKR strategies, deploy each via production bot generator
     if ibkr_strats:
         ibkr_cfg = get_ibkr_config(email) or {"host": "127.0.0.1", "port": 7497, "client_id": 1}
-        ibkr_script = generate_ibkr_bot(email, ibkr_strats, student, ibkr_cfg)
-        email_safe = email.replace("@", "_at_").replace(".", "_")
-        ibkr_log = str(LOGS_DIR / f"{email_safe}_ibkr_master.log")
-        try:
-            ibkr_proc = _launch_bot(ibkr_script, ibkr_log)
-            save_process(email, ibkr_proc.pid, "running", str(ibkr_script), ibkr_log)
-            _log.info("[DEPLOY] IBKR bot PID: %s for %d strategies", ibkr_proc.pid, len(ibkr_strats))
-        except Exception as e:
-            _log.error("[DEPLOY] IBKR bot launch failed: %s", e)
+        ibkr_cfg["central_api_url"] = central_url
+        ibkr_cfg["account_id"] = ibkr_cfg.get("account_id", "")
+        for s in ibkr_strats:
+            try:
+                # Build strategy config for generate_ibkr_bot_prod
+                conds = s.get("conditions", {})
+                # If library strategy, convert to Builder conditions
+                if not conds.get("entry_long") and s.get("library_id"):
+                    conds = library_id_to_conditions(s["library_id"])
+                risk = s.get("risk", {})
+                strat_config = {
+                    "strategy_id": s["strategy_id"],
+                    "symbol": s["symbol"],
+                    "sec_type": conds.get("sec_type", "STK"),
+                    "exchange": conds.get("exchange", "SMART"),
+                    "currency": conds.get("currency", "USD"),
+                    "lot_size": int(risk.get("lots", 1)),
+                    "max_capital": float(s.get("allocation", 1000)),
+                    "bar_size": conds.get("bar_size", "1 min"),
+                    "interval_minutes": int(conds.get("interval_minutes", 1)),
+                    "stop_loss_pct": float(risk.get("sl_pct", 2)) / 100 if float(risk.get("sl_pct", 2)) > 1 else float(risk.get("sl_pct", 0.02)),
+                    "take_profit_pct": float(risk.get("tp_pct", 5)) / 100 if float(risk.get("tp_pct", 5)) > 1 else float(risk.get("tp_pct", 0.05)),
+                    "has_short": bool(conds.get("entry_short")),
+                    "entry_long": conds.get("entry_long", []),
+                    "exit_long": conds.get("exit_long", []),
+                    "entry_short": conds.get("entry_short", []),
+                    "exit_short": conds.get("exit_short", []),
+                    "entry_long_logic": conds.get("entry_long_logic", "AND"),
+                    "exit_long_logic": conds.get("exit_long_logic", "OR"),
+                }
+                sp, lp, tp = generate_ibkr_bot_prod(email, strat_config, ibkr_cfg)
+                proc = _launch_bot(sp, lp)
+                save_process(email, proc.pid, "running", sp, lp)
+                _log.info("[DEPLOY] IBKR prod bot PID: %s for %s %s", proc.pid, s["strategy_id"], s["symbol"])
+            except Exception as e:
+                import traceback
+                _log.error("[DEPLOY] IBKR prod bot FAILED for %s: %s\n%s", s["strategy_id"], e, traceback.format_exc())
 
     # Use LongPort strategies for the main bot (or all if no broker split)
     deploy_strats = lp_strats if lp_strats else strategies
