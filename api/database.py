@@ -149,6 +149,36 @@ def init_db():
         init_data_cache(conn)
     except Exception:
         pass
+    # Indicators table
+    try:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS indicators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                indicator_id TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                category TEXT DEFAULT 'custom',
+                description TEXT DEFAULT '',
+                output_type TEXT DEFAULT 'single',
+                output_labels TEXT DEFAULT '["main"]',
+                params TEXT DEFAULT '[]',
+                calc_code TEXT NOT NULL,
+                usage_example TEXT DEFAULT '',
+                pine_script_equivalent TEXT DEFAULT '',
+                tradingview_name TEXT DEFAULT '',
+                created_by TEXT DEFAULT 'system',
+                created_at TEXT DEFAULT (datetime('now')),
+                is_builtin INTEGER DEFAULT 0,
+                is_approved INTEGER DEFAULT 1,
+                usage_count INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_indicators_category ON indicators(category);
+        """)
+        conn.commit()
+        from .indicators_seed import seed_builtin_indicators
+        seed_builtin_indicators(conn)
+    except Exception:
+        pass
     conn.close()
 
 

@@ -1176,6 +1176,147 @@ async def data_prefetch(request: Request):
     return {"ok": True, "message": f"Fetching {symbol}/{timeframe} in background..."}
 
 
+# ── Indicators library ────────────────────────────────────────────────────
+
+@app.get("/api/indicators")
+async def list_indicators(category: str = Query(""), created_by: str = Query("")):
+    conn = get_db()
+    try:
+        q = "SELECT * FROM indicators WHERE 1=1"
+        params = []
+        if category:
+            q += " AND category=?"; params.append(category)
+        if created_by:
+            q += " AND created_by=?"; params.append(created_by)
+        q += " ORDER BY is_builtin DESC, category, name"
+        rows = conn.execute(q, params).fetchall()
+        indicators = []
+        cats = {}
+        for r in rows:
+            d = dict(r)
+            d["output_labels"] = json.loads(d.get("output_labels") or "[]")
+            d["params"] = json.loads(d.get("params") or "[]")
+            indicators.append(d)
+            cat = d.get("category", "custom")
+            cats[cat] = cats.get(cat, 0) + 1
+        custom_ct = sum(1 for i in indicators if not i.get("is_builtin"))
+        return {"indicators": indicators, "categories": cats, "total": len(indicators), "custom_count": custom_ct}
+    finally:
+        conn.close()
+
+
+@app.get("/api/indicators/{indicator_id}")
+async def get_indicator(indicator_id: str):
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM indicators WHERE indicator_id=?", (indicator_id.upper(),)).fetchone()
+        if not row:
+            raise HTTPException(404, "Indicator not found")
+        d = dict(row)
+        d["output_labels"] = json.loads(d.get("output_labels") or "[]")
+        d["params"] = json.loads(d.get("params") or "[]")
+        return d
+    finally:
+        conn.close()
+
+
+@app.post("/api/indicators")
+async def register_indicator(request: Request):
+    body = await request.json()
+    validate_only = request.query_params.get("validate_only", "false") == "true"
+    errors = []
+    # 1. Required fields
+    for f in ["id", "name", "calc_code"]:
+        if not body.get(f):
+            errors.append(f"Missing required field: {f}")
+    if errors:
+        return {"status": "error", "errors": errors}
+    ind_id = body["id"].upper().replace(" ", "_")
+    # 2. Format check
+    import re
+    if not re.match(r'^[A-Z][A-Z0-9_]{1,29}$', ind_id):
+        errors.append("ID must be UPPER_SNAKE_CASE, 2-30 chars, start with letter")
+    # 3. Duplicate check
+    conn = get_db()
+    existing = conn.execute("SELECT 1 FROM indicators WHERE indicator_id=?", (ind_id,)).fetchone()
+    if existing and not validate_only:
+        errors.append(f"Indicator {ind_id} already exists")
+    # 4. Code safety
+    calc_code = body.get("calc_code", "")
+    import ast
+    try:
+        tree = ast.parse(calc_code)
+    except SyntaxError as e:
+        errors.append(f"Invalid Python syntax: {e}")
+        tree = None
+    if tree:
+        forbidden = {"import", "exec", "eval", "open", "__import__", "subprocess", "os", "sys", "socket", "requests", "shutil"}
+        code_str = calc_code.lower()
+        for kw in forbidden:
+            if kw in code_str:
+                errors.append(f"Forbidden keyword: {kw}")
+        if calc_code.count("\n") > 60:
+            errors.append("Code too long (max 60 lines)")
+    # 5. Test execution
+    if not errors and tree:
+        try:
+            import math
+            ns = {"math": math, "__builtins__": {"len": len, "range": range, "list": list, "sum": sum,
+                   "max": max, "min": min, "abs": abs, "round": round, "None": None, "True": True, "False": False,
+                   "int": int, "float": float, "enumerate": enumerate, "zip": zip}}
+            exec(calc_code, ns)
+            fn_name = f"calc_{ind_id.lower()}"
+            if fn_name not in ns:
+                errors.append(f"Function {fn_name} not found in calc_code")
+            else:
+                dummy = [100.0 + i * 0.1 for i in range(100)]
+                result = ns[fn_name](dummy, dummy, dummy, dummy)
+                if not isinstance(result, (list, tuple)):
+                    errors.append("calc_code must return a list")
+                elif len(result) != 100:
+                    errors.append(f"Output length {len(result)} != input length 100")
+        except Exception as e:
+            errors.append(f"Test execution failed: {e}")
+    if errors:
+        conn.close()
+        return {"status": "error", "errors": errors}
+    if validate_only:
+        conn.close()
+        return {"status": "valid", "indicator_id": ind_id, "errors": []}
+    # Save
+    try:
+        conn.execute(
+            """INSERT INTO indicators (indicator_id, name, display_name, category, description,
+               output_type, output_labels, params, calc_code, usage_example, created_by, is_builtin)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,0)""",
+            (ind_id, body.get("name",""), body.get("display_name", body.get("name","")),
+             body.get("category","custom"), body.get("description",""),
+             body.get("output_type","single"), json.dumps(body.get("output_labels",["main"])),
+             json.dumps(body.get("params",[])), calc_code,
+             body.get("usage_example",""), body.get("created_by","unknown")))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "registered", "indicator_id": ind_id,
+            "message": f"{body.get('name',ind_id)} registered. Available in strategy builder."}
+
+
+@app.delete("/api/indicators/{indicator_id}")
+async def delete_indicator(indicator_id: str):
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT is_builtin FROM indicators WHERE indicator_id=?", (indicator_id.upper(),)).fetchone()
+        if not row:
+            raise HTTPException(404, "Not found")
+        if row["is_builtin"]:
+            raise HTTPException(403, "Cannot delete built-in indicator")
+        conn.execute("DELETE FROM indicators WHERE indicator_id=?", (indicator_id.upper(),))
+        conn.commit()
+        return {"status": "deleted", "indicator_id": indicator_id}
+    finally:
+        conn.close()
+
+
 @app.get("/api/status/{email}")
 async def status(email: str):
     email = email.lower().strip()
