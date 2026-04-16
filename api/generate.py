@@ -8,6 +8,7 @@ from .bot_template import BOT_TEMPLATE
 from .bot_template_ibkr import IBKR_BOT_TEMPLATE
 from .bot_template_simple import SIMPLE_LP_TEMPLATE, SIMPLE_IBKR_TEMPLATE
 from .bot_template_ibkr_prod import IBKR_PROD_TEMPLATE
+from .bot_template_lp_master import LP_MASTER_TEMPLATE
 try:
     from .bot_template_options import OPTIONS_BOT_TEMPLATE
 except ImportError:
@@ -385,6 +386,120 @@ def generate_ibkr_bot_prod(email: str, strategy_config: dict,
     assert not remaining, f"Unfilled placeholders: {remaining}"
 
     return str(script_path.resolve()), str(LOGS_DIR / log_name), trades_path
+
+
+# ── LongPort master bot generator (shared connections) ─────────────────────
+
+def generate_lp_master_bot(email: str, strategies: list[dict],
+                           lp_credentials: dict,
+                           initial_states: dict = None) -> tuple[str, str]:
+    """Generate one LP master bot handling multiple strategies with shared connections.
+    initial_states: {strategy_id: {position, entry_price, side}} for position preservation.
+    Returns (script_path, log_path)."""
+    BOTS_DIR.mkdir(parents=True, exist_ok=True)
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    TRADES_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+    email_safe = email.replace("@", "_at_").replace(".", "_")
+    script_path = BOTS_DIR / f"{email_safe}_lp_master.py"
+    log_name = f"{email_safe}_lp_master.log"
+
+    # Generate per-strategy compute_signals functions
+    signal_functions = []
+    strategies_meta = []
+    for s in strategies:
+        sid = s.get("strategy_id", "CUSTOM")
+        conds = s.get("conditions", {})
+        # If library strategy, convert to Builder conditions
+        if not conds.get("entry_long") and s.get("library_id"):
+            conds = library_id_to_conditions(s["library_id"])
+
+        fn_code = generate_signal_code(
+            entry_long=conds.get("entry_long", []),
+            exit_long=conds.get("exit_long", []),
+            entry_short=conds.get("entry_short", []),
+            exit_short=conds.get("exit_short", []),
+            entry_long_logic=conds.get("entry_long_logic", "AND"),
+            exit_long_logic=conds.get("exit_long_logic", "OR"),
+            has_short=bool(conds.get("entry_short")),
+        )
+        # Rename compute_signals -> compute_signals_XXXX
+        fn_code = fn_code.replace("def compute_signals(", f"def compute_signals_{sid}(")
+        signal_functions.append(f"# Strategy: {sid} ({s.get('symbol', '?')})")
+        signal_functions.append(fn_code)
+        signal_functions.append("")
+
+        risk = s.get("risk", {})
+        from .config import normalize_timeframe
+        tf = normalize_timeframe(s.get("timeframe", "1d"))
+        state = (initial_states or {}).get(sid, {})
+        strategies_meta.append({
+            "strategy_id": sid,
+            "symbol": s.get("symbol", ""),
+            "arena": s.get("arena", "HK"),
+            "timeframe": tf,
+            "risk": risk,
+            "has_short": bool(conds.get("entry_short")),
+            "initial_position": int(state.get("position", state.get("current_position", 0))),
+            "initial_entry_price": float(state.get("entry_price", 0.0)),
+        })
+
+    # Build strategies list as Python literal
+    strats_json = json.dumps(strategies_meta, indent=4)
+    strats_json = strats_json.replace(": true", ": True")
+    strats_json = strats_json.replace(": false", ": False")
+    strats_json = strats_json.replace(": null", ": None")
+
+    # Load custom indicators from DB and inject into generated script
+    custom_code_blocks = []
+    try:
+        from .database import get_db, get_custom_indicators
+        conn = get_db()
+        customs = get_custom_indicators(conn, email)
+        conn.close()
+        for ind in customs:
+            code = ind.get("calc_code", "")
+            if code:
+                custom_code_blocks.append(f"# Custom indicator: {ind.get('name', ind['indicator_id'])}")
+                custom_code_blocks.append(code)
+                custom_code_blocks.append("")
+    except Exception as e:
+        import logging
+        logging.getLogger("quantx-generate").warning("Custom indicator load failed: %s", e)
+
+    if custom_code_blocks:
+        signal_functions = custom_code_blocks + [""] + signal_functions
+
+    content = LP_MASTER_TEMPLATE
+    replacements = {
+        '__EMAIL__': email,
+        '__CENTRAL_API_URL__': lp_credentials.get("central_api_url", ""),
+        '__APP_KEY__': lp_credentials.get("app_key", ""),
+        '__APP_SECRET__': lp_credentials.get("app_secret", ""),
+        '__ACCESS_TOKEN__': lp_credentials.get("access_token", ""),
+        '__LOG_DIR__': str(LOGS_DIR).replace("\\", "/"),
+        '__TRADES_DIR__': str(TRADES_DIR).replace("\\", "/"),
+        '__STATE_DIR__': str(STATE_DIR).replace("\\", "/"),
+        '__LOG_NAME__': log_name,
+        '__STRATEGY_COUNT__': str(len(strategies_meta)),
+        '__STRATEGIES_LIST__': strats_json,
+        '__SIGNAL_FUNCTIONS__': "\n".join(signal_functions),
+    }
+
+    for placeholder, value in replacements.items():
+        content = content.replace(placeholder, value)
+
+    script_path.write_text(content, encoding="utf-8")
+
+    # Verify
+    written = script_path.read_text(encoding="utf-8")
+    assert email in written, "Template fill failed: email not in script"
+    import re
+    remaining = re.findall(r'__[A-Z_]{3,}__', written)
+    assert not remaining, f"Unfilled placeholders: {remaining}"
+
+    return str(script_path.resolve()), str(LOGS_DIR / log_name)
 
 
 # ── Options bot generator ────────────────────────────────────────────────────

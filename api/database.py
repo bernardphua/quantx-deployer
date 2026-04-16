@@ -179,7 +179,76 @@ def init_db():
         seed_builtin_indicators(conn)
     except Exception:
         pass
+    # Indicator table migrations
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(indicators)").fetchall()}
+        if "source" not in cols:
+            conn.execute("ALTER TABLE indicators ADD COLUMN source TEXT DEFAULT ''")
+        if "inputs" not in cols:
+            conn.execute("ALTER TABLE indicators ADD COLUMN inputs TEXT DEFAULT '[\"closes\"]'")
+        conn.commit()
+    except Exception:
+        pass
+    # Broker accounts table
+    try:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS broker_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                broker TEXT NOT NULL,
+                account_type TEXT NOT NULL DEFAULT 'paper',
+                account_id TEXT DEFAULT '',
+                nickname TEXT DEFAULT '',
+                app_key_enc TEXT DEFAULT '',
+                app_secret_enc TEXT DEFAULT '',
+                access_token_enc TEXT DEFAULT '',
+                ibkr_host TEXT DEFAULT '127.0.0.1',
+                ibkr_port INTEGER DEFAULT 7497,
+                is_connected INTEGER DEFAULT 0,
+                last_tested TEXT DEFAULT '',
+                last_error TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(email, broker, account_type)
+            );
+        """)
+        conn.commit()
+        # Migrate existing LongPort credentials
+        _migrate_broker_accounts(conn)
+    except Exception:
+        pass
     conn.close()
+
+
+def _migrate_broker_accounts(conn):
+    """One-time migration: copy existing credentials into broker_accounts."""
+    try:
+        existing = conn.execute("SELECT COUNT(*) FROM broker_accounts").fetchone()[0]
+        if existing > 0:
+            return  # already migrated
+        # Migrate LongPort from students table
+        rows = conn.execute(
+            "SELECT email, app_key_enc, app_secret_enc, access_token_enc FROM students WHERE app_key_enc != ''"
+        ).fetchall()
+        for r in rows:
+            conn.execute(
+                """INSERT OR IGNORE INTO broker_accounts
+                   (email, broker, account_type, nickname, app_key_enc, app_secret_enc, access_token_enc)
+                   VALUES (?, 'longport', 'paper', 'LongPort Demo', ?, ?, ?)""",
+                (r[0], r[1], r[2], r[3]))
+        # Migrate IBKR from ibkr_configs table
+        try:
+            ibkr_rows = conn.execute("SELECT email, host, port FROM ibkr_configs").fetchall()
+            for r in ibkr_rows:
+                conn.execute(
+                    """INSERT OR IGNORE INTO broker_accounts
+                       (email, broker, account_type, nickname, ibkr_host, ibkr_port)
+                       VALUES (?, 'ibkr', 'paper', 'IBKR Paper', ?, ?)""",
+                    (r[0], r[1], r[2]))
+        except Exception:
+            pass
+        conn.commit()
+    except Exception:
+        pass
 
 
 # ── Student helpers ─────────────────────────────────────────────────────────
@@ -418,3 +487,150 @@ def get_ibkr_config(email: str) -> dict | None:
         return {"host": row["host"], "port": row["port"], "client_id": row["client_id"]}
     finally:
         conn.close()
+
+
+# ── Broker accounts helpers ────────────────────────────────────────────────
+
+def get_broker_accounts(email: str) -> list[dict]:
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM broker_accounts WHERE email = ? ORDER BY broker, account_type",
+            (email,)).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Don't expose encrypted credentials
+            d.pop("app_key_enc", None)
+            d.pop("app_secret_enc", None)
+            d.pop("access_token_enc", None)
+            result.append(d)
+        return result
+    finally:
+        conn.close()
+
+
+def get_broker_account(account_id: int) -> dict | None:
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM broker_accounts WHERE id = ?", (account_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def save_broker_account(email: str, broker: str, account_type: str,
+                        nickname: str = "", account_id: str = "",
+                        app_key: str = "", app_secret: str = "",
+                        access_token: str = "",
+                        ibkr_host: str = "127.0.0.1", ibkr_port: int = 7497) -> int:
+    conn = get_db()
+    try:
+        # Encrypt LP credentials if provided
+        ak_enc = encrypt(app_key) if app_key else ""
+        as_enc = encrypt(app_secret) if app_secret else ""
+        at_enc = encrypt(access_token) if access_token else ""
+        conn.execute(
+            """INSERT INTO broker_accounts
+               (email, broker, account_type, nickname, account_id,
+                app_key_enc, app_secret_enc, access_token_enc,
+                ibkr_host, ibkr_port)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(email, broker, account_type) DO UPDATE SET
+                 nickname=excluded.nickname, account_id=excluded.account_id,
+                 app_key_enc=excluded.app_key_enc, app_secret_enc=excluded.app_secret_enc,
+                 access_token_enc=excluded.access_token_enc,
+                 ibkr_host=excluded.ibkr_host, ibkr_port=excluded.ibkr_port""",
+            (email, broker, account_type, nickname, account_id,
+             ak_enc, as_enc, at_enc, ibkr_host, ibkr_port))
+        conn.commit()
+        row = conn.execute(
+            "SELECT id FROM broker_accounts WHERE email=? AND broker=? AND account_type=?",
+            (email, broker, account_type)).fetchone()
+        return row["id"] if row else 0
+    finally:
+        conn.close()
+
+
+def update_broker_account_status(account_id: int, is_connected: bool,
+                                  last_error: str = ""):
+    conn = get_db()
+    try:
+        conn.execute(
+            """UPDATE broker_accounts SET is_connected=?, last_tested=datetime('now'),
+               last_error=? WHERE id=?""",
+            (1 if is_connected else 0, last_error, account_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_broker_account(account_id: int) -> bool:
+    conn = get_db()
+    try:
+        cur = conn.execute("DELETE FROM broker_accounts WHERE id = ?", (account_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_broker_credentials(account_id: int) -> dict | None:
+    """Get decrypted credentials for a broker account."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM broker_accounts WHERE id = ?", (account_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("app_key_enc"):
+            d["app_key"] = decrypt(d["app_key_enc"])
+            d["app_secret"] = decrypt(d["app_secret_enc"])
+            d["access_token"] = decrypt(d["access_token_enc"])
+        return d
+    finally:
+        conn.close()
+
+
+# ── Custom indicator helpers ───────────────────────────────────────────────
+
+def register_custom_indicator(conn, data: dict, email: str,
+                              overwrite: bool = False) -> str:
+    """Register a custom indicator from .quantx file data. Returns indicator_id."""
+    ind_id = data["indicator_id"]
+    calc_code = "\n".join(data["calc_code"]) if isinstance(data.get("calc_code"), list) else data.get("calc_code", "")
+    if overwrite:
+        conn.execute("DELETE FROM indicators WHERE indicator_id = ? AND is_builtin = 0", (ind_id,))
+    conn.execute(
+        """INSERT OR REPLACE INTO indicators
+           (indicator_id, name, display_name, category, description,
+            output_type, output_labels, params, calc_code, usage_example,
+            inputs, source, created_by, is_builtin, is_approved)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,1)""",
+        (ind_id, data.get("name", ind_id), data.get("display_name", data.get("name", ind_id)),
+         data.get("category", "custom"), data.get("description", ""),
+         data.get("output_type", "single"),
+         json.dumps(data.get("output_labels", ["main"])),
+         json.dumps(data.get("params", [])),
+         calc_code,
+         data.get("usage_example", f"calc_{ind_id.lower()}(closes, ...)"),
+         json.dumps(data.get("inputs", ["closes"])),
+         data.get("source", ""),
+         email))
+    conn.commit()
+    return ind_id
+
+
+def get_custom_indicators(conn, email: str = None) -> list:
+    """Return all non-builtin indicators as dicts.
+    On a local app there's no multi-tenancy, so return all custom indicators."""
+    rows = conn.execute(
+        "SELECT * FROM indicators WHERE is_builtin = 0 ORDER BY name").fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["output_labels"] = json.loads(d.get("output_labels") or "[]")
+        d["params"] = json.loads(d.get("params") or "[]")
+        d["inputs"] = json.loads(d.get("inputs") or '["closes"]')
+        result.append(d)
+    return result

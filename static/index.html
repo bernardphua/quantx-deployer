@@ -98,6 +98,75 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 .form-hint { font-size:11px; color:var(--text-muted); margin-top:3px; }
 .form-row { display:grid; gap:16px; }
 
+/* ── Strategy Studio ─────────────────── */
+.studio-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+.studio-card-head { padding:12px 16px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; gap:8px; user-select:none; }
+.studio-card-head:hover { background:var(--surface-2); }
+.studio-card-body { padding:0 16px 14px; border-top:1px solid var(--border); }
+.studio-card-body[hidden] { display:none; }
+.studio-rule-row { display:flex; align-items:center; gap:6px; padding:8px 10px; background:var(--surface-2); border-radius:8px; margin-bottom:6px; flex-wrap:wrap; }
+.studio-chip { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:500; cursor:pointer; border:1px solid transparent; transition:all .15s; }
+.studio-chip:hover { opacity:.8; }
+.studio-chip-blue { background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE; }
+.studio-chip-orange { background:#FFF7ED; color:#C2410C; border-color:#FED7AA; }
+.studio-chip-gray { background:var(--surface-2); color:var(--text-muted); border-color:var(--border); }
+.studio-chip-green { background:#F0FDF4; color:#15803D; border-color:#86EFAC; }
+.studio-chip-red { background:#FEF2F2; color:#B91C1C; border-color:#FCA5A5; }
+.studio-add-rule { width:100%; padding:8px; border:1px dashed var(--border); border-radius:8px; background:none; color:var(--text-muted); font-size:12px; cursor:pointer; margin-top:6px; font-family:inherit; transition:all .15s; }
+.studio-add-rule:hover { background:var(--surface-2); color:var(--text-primary); }
+.studio-ind-picker { margin-top:10px; background:var(--surface-2); border-radius:10px; padding:12px; border:1px solid var(--border); }
+.studio-ind-cat { padding:6px 8px; border-radius:6px; font-size:12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; color:var(--text-muted); }
+.studio-ind-cat:hover { background:var(--surface); }
+.studio-ind-pill { font-size:11px; padding:3px 8px; border-radius:20px; border:1px solid var(--border); color:var(--text-muted); cursor:pointer; background:var(--surface); transition:all .15s; display:inline-block; margin:2px; }
+.studio-ind-pill:hover { border-color:#3B82F6; color:#1D4ED8; background:#EFF6FF; }
+.studio-summary-box { background:var(--surface-2); border:1px solid var(--border); border-left:3px solid #16A34A; border-radius:8px; padding:12px 14px; font-size:13px; color:var(--text-primary); line-height:1.7; }
+.studio-metric-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.studio-metric-card { background:var(--surface-2); border-radius:8px; padding:10px; text-align:center; }
+.studio-read-only-banner { background:#FEF3C7; border:1px solid #F59E0B; border-radius:8px; padding:10px 14px; font-size:13px; color:#92400E; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; }
+.studio-rule-editor { background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:14px; margin-top:8px; }
+.studio-rule-editor select, .studio-rule-editor input[type="number"] { padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:var(--surface); }
+.studio-rule-editor .lbl { font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px; }
+.sre-toggle { padding:5px 12px; border:1px solid var(--border); border-radius:6px; font-size:12px; cursor:pointer; background:var(--surface); color:var(--text-secondary); font-family:inherit; transition:all .15s; }
+.sre-toggle.active { background:#1E40AF; color:#fff; border-color:#1E40AF; }
+
+/* ── Deploy Progress ─────────────────── */
+.deploy-progress-row td { padding:0 16px 10px !important; background:var(--surface-2); border-bottom:1px solid var(--border); }
+.deploy-status-msg { font-size:12px; color:var(--text-secondary); margin-bottom:4px; min-height:16px; }
+.deploy-bar-track { height:3px; background:#E5E7EB; border-radius:2px; overflow:hidden; max-width:280px; }
+.deploy-bar-fill { height:100%; border-radius:2px; background:#1E40AF; width:0%; transition:width .5s ease; }
+.deploy-bar-fill.success { background:#16A34A; }
+.deploy-bar-fill.error { background:#DC2626; }
+
+/* ── Backtester Broker/Depth ─────────── */
+.bt-broker-btn { padding:6px 16px; border-radius:6px; font-size:13px; font-weight:600; border:1px solid var(--border); background:transparent; color:var(--text-secondary); cursor:pointer; transition:all .15s; font-family:inherit; }
+.bt-broker-btn.active { background:#1E40AF; color:#fff; border-color:#1E40AF; }
+.bt-broker-btn:not(.active):hover { border-color:var(--blue-primary); color:var(--blue-primary); }
+.bt-depth-bar { width:100%; height:6px; background:#E5E7EB; border-radius:3px; margin-top:6px; overflow:hidden; }
+.bt-depth-fill { height:100%; border-radius:3px; transition:width .3s, background .3s; }
+.filter-pill.disabled { opacity:.35; cursor:not-allowed; text-decoration:line-through; pointer-events:none; }
+.filter-pill.has-data { border-color:#166534; color:#166534; background:#F0FDF4; }
+.filter-pill.has-data.active { background:#166534; color:#fff; border-color:#166534; }
+
+/* ── Ticker Dropdown ─────────────────── */
+.ticker-dropdown {
+  position: absolute; z-index: 1000; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12); max-height: 280px;
+  overflow-y: auto; width: 100%; display: none;
+}
+.ticker-item {
+  padding: 10px 14px; cursor: pointer; display: flex;
+  align-items: center; gap: 12px; border-bottom: 1px solid #F3F4F6;
+}
+.ticker-item:hover { background: var(--blue-pale); }
+.ticker-symbol { font-weight: 600; font-size: 14px; color: var(--text-primary); min-width: 80px; }
+.ticker-name   { font-size: 13px; color: var(--text-secondary); flex: 1; }
+.ticker-badge  { font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 500; }
+.ticker-badge.HK { background: #FEF3C7; color: #92400E; }
+.ticker-badge.US { background: #DBEAFE; color: #1E40AF; }
+.ticker-badge.SG { background: #FEE2E2; color: #991B1B; }
+.ticker-lot    { font-size: 11px; color: var(--text-muted); }
+
 /* ── Builder ─────────────────────────── */
 .bldr-tab { background:none; border:none; padding:8px 16px; font-size:13px; color:var(--text-secondary); cursor:pointer; border-bottom:2px solid transparent; font-family:inherit; margin-bottom:-2px; }
 .bldr-tab.active { color:#1565C0; border-bottom-color:#1565C0; font-weight:500; }
@@ -228,6 +297,9 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
     </div>
     <div class="nav-item" data-page="backtester" onclick="navigate('backtester')">
       <span class="nav-icon">📊</span><span class="nav-label">Backtester</span>
+    </div>
+    <div class="nav-item" data-page="studio" onclick="navigate('studio')">
+      <span class="nav-icon">🪄</span><span class="nav-label">Studio</span>
     </div>
     <div class="nav-item" data-page="brokers" onclick="navigate('brokers')">
       <span class="nav-icon">🔗</span><span class="nav-label">Brokers</span>
@@ -490,33 +562,48 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
         <span class="filter-pill" id="bt-mode-builder" onclick="setBtMode('builder')">🔧 Builder</span>
       </div>
     </div>
+    <!-- Step 1: Broker -->
+    <div style="margin-bottom:12px">
+      <label>Data Source</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="bt-broker-btn active" id="bt-broker-lp" onclick="setBtBroker('longport')">LongPort</button>
+        <button class="bt-broker-btn" id="bt-broker-ibkr" onclick="setBtBroker('ibkr')">IBKR</button>
+        <button class="bt-broker-btn" id="bt-broker-yahoo" onclick="setBtBroker('yahoo')">Yahoo</button>
+        <span id="bt-broker-note" style="font-size:11px;color:var(--text-muted);margin-left:4px"></span>
+      </div>
+    </div>
+    <!-- Step 2: Symbol + Strategy + Timeframe + Capital -->
     <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr">
       <div class="form-group">
         <label>Symbol</label>
-        <input type="text" id="bt-symbol" value="TQQQ.US" placeholder="e.g. TQQQ.US, D05.SI">
-        <div class="quicktags"><span class="qtag" onclick="document.getElementById('bt-symbol').value='TQQQ.US'">TQQQ</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='SPY.US'">SPY</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='D05.SI'">DBS</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='0700.HK'">Tencent</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='AAPL.US'">AAPL</span></div>
+        <div style="position:relative">
+          <input type="text" id="bt-symbol" value="TQQQ.US" placeholder="Search: AAPL, Tencent, 700..." autocomplete="off" oninput="searchTickers(this,'bt')" onfocus="searchTickers(this,'bt')">
+          <div id="ticker-dropdown-bt" class="ticker-dropdown"></div>
+        </div>
+        <div class="quicktags"><span class="qtag" onclick="document.getElementById('bt-symbol').value='TQQQ.US'">TQQQ</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='SPY.US'">SPY</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='D05.SI'">DBS</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='700.HK'">Tencent</span><span class="qtag" onclick="document.getElementById('bt-symbol').value='AAPL.US'">AAPL</span></div>
       </div>
-      <!-- Library mode: strategy dropdown -->
       <div class="form-group" id="bt-lib-strat">
         <label>Strategy</label>
         <select id="bt-strategy"></select>
       </div>
       <div class="form-group">
         <label>Timeframe</label>
-        <select id="bt-timeframe"><option value="1min">1m</option><option value="5min">5m</option><option value="15min">15m</option><option value="30min">30m</option><option value="1hour">1h</option><option value="4hour">4h</option><option value="1day" selected>1d</option><option value="1week">1W</option></select>
+        <select id="bt-timeframe" onchange="updateDataDepth()"><option value="1min">1m</option><option value="5min">5m</option><option value="15min">15m</option><option value="30min">30m</option><option value="1hour">1h</option><option value="1day" selected>1d</option><option value="1week">1W</option></select>
+        <div id="bt-data-depth" style="margin-top:4px">
+          <div style="display:flex;justify-content:space-between;font-size:11px">
+            <span id="bt-depth-label" style="color:var(--text-muted)"></span>
+            <span id="bt-depth-value" style="font-weight:600"></span>
+          </div>
+          <div class="bt-depth-bar"><div class="bt-depth-fill" id="bt-depth-fill"></div></div>
+        </div>
       </div>
       <div class="form-group">
         <label>Capital ($)</label>
         <input type="number" id="bt-capital" value="10000">
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <span class="filter-pill active" onclick="setBtPeriod(252,this)">1Y</span>
-      <span class="filter-pill" onclick="setBtPeriod(504,this)">2Y</span>
-      <span class="filter-pill" onclick="setBtPeriod(756,this)">3Y</span>
-      <span class="filter-pill" onclick="setBtPeriod(1260,this)">5Y</span>
-      <span class="filter-pill" onclick="setBtPeriod(2520,this)">10Y</span>
-    </div>
+    <!-- Step 3: Smart period pills -->
+    <div id="bt-period-pills" style="display:flex;gap:8px;margin-bottom:12px"></div>
     <div id="bt-params-container"></div>
     <!-- Strategy Builder (hidden by default) -->
     <div id="bt-builder" style="display:none;margin-bottom:12px">
@@ -563,6 +650,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
   </div>
   <!-- Results -->
   <div id="bt-results" style="display:none">
+    <div id="bt-data-warning" style="display:none;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#92400E"></div>
     <div class="stat-row" style="grid-template-columns:repeat(6,1fr)">
       <div class="stat-card"><div class="stat-label">Total Return</div><div class="stat-value" id="btr-return">—</div></div>
       <div class="stat-card"><div class="stat-label">CAGR</div><div class="stat-value" id="btr-cagr">—</div></div>
@@ -601,49 +689,36 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 
 <!-- ══════════════════════════════════════ BROKERS ══════════════════════════════════════ -->
 <div class="page" id="page-brokers">
-  <div class="page-header"><h1 class="page-title">Trading Accounts</h1></div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
-    <!-- LongPort -->
-    <div class="broker-card">
-      <div class="broker-icon" style="background:var(--blue-primary)">LP</div>
-      <div class="broker-title">LongPort</div>
-      <div class="broker-desc">Connect your LongPort account to trade HK, SG and US markets</div>
-      <div id="lp-connected" style="display:none">
-        <div style="margin-bottom:12px"><span class="badge badge-green">Connected</span></div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-outline btn-sm" onclick="testConnection()">Test Connection</button>
-          <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red-light)" onclick="disconnectBroker('longport')">Disconnect</button>
-        </div>
-        <div id="lp-test-result" style="font-size:12px;margin-top:8px;min-height:18px"></div>
-      </div>
-      <div id="lp-form">
-        <div class="form-group"><label>App Key</label><input type="text" id="lp-appkey" placeholder="Your LongPort App Key"></div>
-        <div class="form-group"><label>App Secret</label><input type="password" id="lp-appsecret" placeholder="Your LongPort App Secret"></div>
-        <div class="form-group"><label>Access Token</label><input type="text" id="lp-token" placeholder="Your Access Token"></div>
-        <button class="btn btn-primary" onclick="connectLongPort()" style="width:100%">Connect LongPort</button>
-      </div>
+  <div class="page-header">
+    <h1 class="page-title">Trading Accounts</h1>
+    <button class="btn btn-primary" onclick="openAddAccountModal()">+ Add Account</button>
+  </div>
+  <div id="broker-accounts-list"></div>
+  <div id="broker-accounts-empty" class="empty-state" style="display:none;padding:40px">
+    <div class="empty-state-icon">🔗</div>
+    <div class="empty-state-text">No trading accounts connected yet.</div>
+    <button class="btn btn-primary" onclick="openAddAccountModal()">+ Add Account</button>
+  </div>
+</div>
+<!-- Add Account Modal -->
+<div class="modal-overlay" id="add-acct-modal">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Add Trading Account</div><button class="modal-close" onclick="closeModal('add-acct-modal')">x</button></div>
+    <div class="form-group"><label>Broker</label><div style="display:flex;gap:6px"><span class="filter-pill active" id="aa-lp" onclick="setAcctBroker('longport')">LongPort</span><span class="filter-pill" id="aa-ib" onclick="setAcctBroker('ibkr')">IBKR</span></div><input type="hidden" id="aa-broker" value="longport"></div>
+    <div class="form-group"><label>Account Type</label><div style="display:flex;gap:8px"><label style="font-size:13px;cursor:pointer"><input type="radio" name="aa-type" value="paper" checked> Paper/Demo</label><label style="font-size:13px;cursor:pointer"><input type="radio" name="aa-type" value="live"> Live</label></div></div>
+    <div class="form-group"><label>Nickname</label><input type="text" id="aa-nickname" placeholder="e.g. IBKR Paper"></div>
+    <div id="aa-lp-fields">
+      <div class="form-group"><label>App Key</label><input type="text" id="aa-appkey" placeholder="LongPort App Key"></div>
+      <div class="form-group"><label>App Secret</label><input type="password" id="aa-appsecret" placeholder="LongPort App Secret"></div>
+      <div class="form-group"><label>Access Token</label><input type="text" id="aa-token" placeholder="Access Token"></div>
     </div>
-    <!-- IBKR -->
-    <div class="broker-card">
-      <div class="broker-icon" style="background:var(--orange)">IB</div>
-      <div class="broker-title">Interactive Brokers</div>
-      <div class="broker-desc">Connect your IBKR account to trade global markets</div>
-      <div id="ibkr-connected" style="display:none;margin-bottom:12px">
-        <div style="margin-bottom:8px"><span class="badge badge-green">Saved</span> <span style="font-size:12px;color:var(--text-muted);margin-left:4px" id="ibkr-info"></span></div>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button class="btn btn-outline btn-sm" onclick="testIbkrConnection()">Test Connection</button>
-          <button class="btn btn-outline btn-sm" onclick="editIbkrConfig()">Edit</button>
-        </div>
-        <div id="ibkr-test-result" style="font-size:12px;min-height:18px"></div>
-      </div>
-      <div id="ibkr-form">
-        <div class="form-group"><label>TWS/Gateway Host</label><input type="text" id="ibkr-host" value="127.0.0.1"></div>
-        <div class="form-group"><label>Port</label><input type="number" id="ibkr-port" value="7497"></div>
-        <div class="form-group"><label>Client ID</label><input type="number" id="ibkr-clientid" value="1"></div>
-        <div class="form-hint" style="margin-bottom:12px">Make sure TWS or IB Gateway is running before connecting</div>
-        <button class="btn btn-primary" onclick="saveIbkrConfig()" style="width:100%">Save IBKR Config</button>
-      </div>
+    <div id="aa-ibkr-fields" style="display:none">
+      <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="form-group"><label>TWS Host</label><input type="text" id="aa-host" value="127.0.0.1"></div><div class="form-group"><label>Port</label><input type="number" id="aa-port" value="7497"></div></div>
+      <div class="form-hint">Paper=7497, Live=7496. TWS or IB Gateway must be running.</div>
     </div>
+    <div id="aa-live-warn" style="display:none;margin-top:8px;padding:10px;background:var(--red-light);border:1px solid #FECACA;border-radius:6px"><div style="font-size:12px;color:var(--red);font-weight:600">Real Money Warning</div><div style="font-size:12px;color:var(--red)">This account uses real funds. Type CONFIRM to proceed:</div><input type="text" id="aa-confirm" placeholder="Type CONFIRM" style="margin-top:6px"></div>
+    <div id="aa-error" style="color:var(--red);font-size:12px;min-height:18px;margin-top:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-outline" onclick="closeModal('add-acct-modal')" style="flex:1">Cancel</button><button class="btn btn-primary" onclick="saveNewAccount()" style="flex:2">Save Account</button></div>
   </div>
 </div>
 
@@ -655,17 +730,113 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
     <div class="form-group"><label>Email</label><input type="text" id="set-email" disabled></div>
     <div class="form-group"><label>Name</label><input type="text" id="set-name" disabled></div>
     <div class="form-group"><label>License Key</label><input type="text" id="set-license" disabled></div>
-    <div class="form-group"><label>Central API URL</label><input type="text" id="set-central" disabled></div>
+    <div class="form-group"><label>Central API URL</label><div style="display:flex;gap:8px"><input type="text" id="set-central" disabled style="flex:1"><button class="btn btn-outline btn-sm" onclick="useLocalOnly()" title="Clear remote URL and use local data only">Use Local Only</button></div></div>
     <div class="form-group"><label>Version</label><input type="text" id="set-version" disabled></div>
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
       <button class="btn btn-outline btn-sm" onclick="clearAndLogout()" style="color:var(--red)">Clear Data & Logout</button>
     </div>
   </div>
 </div>
+<!-- Register Indicator Modal -->
+<div class="modal-overlay" id="register-ind-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">Register Custom Indicator</div><button class="modal-close" onclick="closeModal('register-ind-modal')">x</button></div>
+    <div class="form-group"><label>Indicator ID</label><input type="text" id="ri-id" placeholder="MY_INDICATOR (UPPER_SNAKE_CASE)"></div>
+    <div class="form-group"><label>Name</label><input type="text" id="ri-name" placeholder="My Custom Indicator"></div>
+    <div class="form-group"><label>Description</label><input type="text" id="ri-desc" placeholder="What this indicator measures..."></div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr">
+      <div class="form-group"><label>Output Type</label><select id="ri-output-type" onchange="document.getElementById('ri-labels-row').style.display=this.value==='single'?'none':''"><option value="single">Single value (e.g. RSI, EMA)</option><option value="dual">Two values (e.g. Stochastic K+D)</option><option value="triple">Three values (e.g. MACD)</option><option value="multi">Multiple values (e.g. Ichimoku)</option></select></div>
+      <div class="form-group" id="ri-labels-row" style="display:none"><label>Output Labels (comma-separated)</label><input type="text" id="ri-output-labels" placeholder="e.g. vi_plus, vi_minus"><div class="form-hint">Name each output line your function returns.</div></div>
+    </div>
+    <div class="form-group"><label>Python Code</label>
+      <textarea id="ri-code" rows="10" placeholder="def calc_my_indicator(close, high, low, volume):
+    # Must return a list same length as inputs
+    result = [None] * len(close)
+    period = 14
+    for i in range(period, len(close)):
+        result[i] = sum(close[i-period+1:i+1]) / period
+    return result" style="font-family:monospace;font-size:12px;resize:vertical"></textarea>
+      <div class="form-hint">Function must be named calc_XXXX (lowercase ID). Takes (close, high, low, volume) lists, returns list of same length.</div>
+    </div>
+    <div id="ri-feedback" style="min-height:20px;font-size:12px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px"><button class="btn btn-outline" onclick="closeModal('register-ind-modal')" style="flex:1">Cancel</button><button class="btn btn-outline" onclick="validateIndicator()" style="flex:1">Validate</button><button class="btn btn-primary" onclick="registerIndicator()" style="flex:2">Register</button></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════ OPTIMIZE ══════════════════════════════════════ -->
+<div class="page" id="page-optimize">
+  <div style="margin-bottom:16px">
+    <button class="btn btn-outline btn-sm" onclick="navigate('studio')" style="margin-bottom:8px">&larr; Back to Studio</button>
+    <h2 style="font-size:20px;font-weight:500;margin:0" id="opt-title">Optimize Strategy</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin:4px 0 0">Find the best parameter combination for your strategy</p>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card">
+      <h3 style="font-size:14px;margin-bottom:12px">Parameter Grid</h3>
+      <div id="opt-params"></div>
+      <div style="margin-top:12px">
+        <label style="font-size:11px">Optimize for</label>
+        <select id="opt-metric" style="width:200px"><option value="sharpe_ratio">Sharpe Ratio</option><option value="cagr_pct">CAGR</option><option value="win_rate_pct">Win Rate</option><option value="profit_factor">Profit Factor</option></select>
+      </div>
+      <div style="margin-top:12px;padding:10px 12px;background:var(--surface-2);border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:500;margin-bottom:6px">Trailing Stop</div>
+        <div style="display:flex;align-items:center;gap:10px"><label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="opt-trailing-enabled" onchange="document.getElementById('opt-trailing-fields').style.display=this.checked?'flex':'none';_optUpdateComboCount()"> Enable</label>
+        <div id="opt-trailing-fields" style="display:none;display:flex;gap:6px;align-items:center;font-size:11px"><span style="color:var(--text-muted)">Trail%</span><input type="number" id="opt-trail-min" value="1" style="width:50px;padding:3px;border:1px solid var(--border);border-radius:4px;font-size:11px" step="0.5"><span>to</span><input type="number" id="opt-trail-max" value="5" style="width:50px;padding:3px;border:1px solid var(--border);border-radius:4px;font-size:11px" step="0.5"><span>step</span><input type="number" id="opt-trail-step" value="1" style="width:50px;padding:3px;border:1px solid var(--border);border-radius:4px;font-size:11px" step="0.5"></div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px" id="opt-combo-count"></div>
+      <button class="btn btn-primary" onclick="studioRunOptimize()" style="width:100%;margin-top:12px" id="opt-run-btn">Run Optimization</button>
+      <div id="opt-progress" style="display:none;margin-top:8px;font-size:12px;color:var(--text-muted)"></div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;margin-bottom:12px">Results</h3>
+      <div id="opt-results" style="font-size:13px;color:var(--text-muted)">Run optimization to see results.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════ STRATEGY STUDIO ══════════════════════════════════════ -->
+<div class="page" id="page-studio">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+    <div>
+      <h2 style="font-size:20px;font-weight:500;margin:0">Strategy Studio</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin:4px 0 0">Build, backtest and deploy your strategy</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="studioLoadMySaved()">My strategies</button>
+      <button class="btn btn-primary btn-sm" onclick="studioNew()">+ New</button>
+    </div>
+  </div>
+  <div id="studio-banner"></div>
+  <div style="display:grid;grid-template-columns:1fr 290px;gap:12px" id="studio-layout">
+    <div id="studio-left"></div>
+    <div id="studio-right"></div>
+  </div>
+</div>
 
 </div><!-- /main -->
 
 <!-- ══════════════════════════════════════ NEW BOT MODAL ══════════════════════════════════════ -->
+<!-- Studio Full Results Modal -->
+<div class="modal-overlay" id="studio-results-modal">
+  <div class="modal" style="max-width:720px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header"><div class="modal-title">Backtest Results</div><button class="modal-close" onclick="closeModal('studio-results-modal')">x</button></div>
+    <div id="studio-results-full"></div>
+  </div>
+</div>
+<!-- Redeploy Modal -->
+<div class="modal-overlay" id="redeploy-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title">Open Positions Detected</div><button class="modal-close" onclick="closeModal('redeploy-modal')">x</button></div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">You have open positions that will be affected by redeploying:</div>
+    <div id="redeploy-positions" style="margin-bottom:16px"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary" onclick="executeRedeploy('keep')" style="width:100%">Keep positions & redeploy</button>
+      <button class="btn btn-outline" onclick="executeRedeploy('close')" style="width:100%;color:var(--orange);border-color:var(--orange)">Close positions & redeploy</button>
+      <button class="btn btn-outline" onclick="closeModal('redeploy-modal')" style="width:100%">Cancel</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:10px"><strong>Keep positions:</strong> Bot resumes tracking your existing holdings.<br><strong>Close positions:</strong> Market-sells all open positions first, then deploys fresh.</div>
+  </div>
+</div>
 <div class="modal-overlay" id="newbot-modal">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">New Bot</div><button class="modal-close" onclick="closeModal('newbot-modal')">×</button></div>
@@ -679,8 +850,9 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       </div>
       <div class="form-group"><label>Symbol</label>
         <div style="position:relative">
-          <input type="text" id="nb-symbol" value="" placeholder="Search symbol..." autocomplete="off" oninput="nbSearchSymbol(this.value)" onfocus="nbSearchSymbol(this.value)">
+          <input type="text" id="nb-symbol" value="" placeholder="Search: AAPL, Tencent, 700..." autocomplete="off" oninput="nbSearchSymbol(this.value); searchTickers(this,'bot')" onfocus="nbSearchSymbol(this.value)">
           <div id="nb-sym-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow-lg);max-height:200px;overflow-y:auto;z-index:1000"></div>
+          <div id="ticker-dropdown-bot" class="ticker-dropdown"></div>
         </div>
         <div id="nb-sym-validation" style="margin-top:4px;font-size:12px;min-height:16px"></div>
         <div class="quicktags" id="nb-sym-qtags"></div>
@@ -709,15 +881,75 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
    QuantX Deployer — Frontend
    ════════════════════════════════════════════════════════════════════════════ */
 const API = '';
-let CENTRAL = localStorage.getItem('qx_central_url') || localStorage.getItem('qx_central') || '';
+let CENTRAL = ''; // Set by loadConfig() after validation — never trust localStorage alone
 let EMAIL = localStorage.getItem('qx_email') || '';
 let UNAME = localStorage.getItem('qx_name') || '';
 let LICENSE = localStorage.getItem('qx_license') || '';
 
 function getBacktestBaseUrl() {
-  const c = CENTRAL || localStorage.getItem('qx_central_url') || localStorage.getItem('qx_central') || '';
-  if (c && c.startsWith('http') && !c.includes('localhost:8001')) return c.replace(/\/$/,'');
+  const c = CENTRAL || '';
+  if (c && c.startsWith('http') && !c.includes('localhost')) return c.replace(/\/$/,'');
   return window.location.origin;
+}
+
+async function validateAndSetCentral(url) {
+  if (!url || url.includes('localhost') || !url.startsWith('http')) {
+    CENTRAL = '';
+    localStorage.removeItem('qx_central_url');
+    localStorage.removeItem('qx_central');
+    return false;
+  }
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(url.replace(/\/$/, '') + '/api/health', { signal: ctrl.signal });
+    if (r.ok) {
+      CENTRAL = url.replace(/\/$/, '');
+      localStorage.setItem('qx_central_url', CENTRAL);
+      return true;
+    }
+  } catch(e) { console.warn('[CENTRAL] Unreachable:', url, e.message); }
+  CENTRAL = '';
+  localStorage.removeItem('qx_central_url');
+  localStorage.removeItem('qx_central');
+  return false;
+}
+
+let _hasLpCreds = false; // set by checkLpCredentials()
+
+async function checkLpCredentials() {
+  if (!EMAIL) { _hasLpCreds = false; return; }
+  try {
+    const r = await fetch(API + '/api/me?email=' + encodeURIComponent(EMAIL));
+    if (r.ok) {
+      const d = await r.json();
+      _hasLpCreds = !!d.has_credentials;
+    }
+  } catch(e) { /* ignore */ }
+}
+
+function updateBacktestBadge() {
+  const badge = document.getElementById('arch-bt-badge');
+  const btBadge = document.getElementById('bt-source-badge');
+  const base = getBacktestBaseUrl();
+  const isCloud = base !== window.location.origin;
+  const broker = _btBroker || 'yahoo';
+  const badges = {
+    longport: {text:'LongPort', icon:'\uD83D\uDCCA', bg:'#DCFCE7', fg:'#166534'},
+    ibkr:     {text:'IBKR',     icon:'\uD83D\uDCCA', bg:'#DBEAFE', fg:'#1E40AF'},
+    yahoo:    {text:'Yahoo',    icon:'\uD83D\uDCBB', bg:'#F3F4F6', fg:'#6B7280'},
+  };
+  const b = isCloud ? {text:'Railway', icon:'\uD83D\uDCE1', bg:'#DCFCE7', fg:'#166534'} : (badges[broker] || badges.yahoo);
+  if (badge) { badge.textContent = b.text; badge.style.cssText = 'padding:1px 8px;border-radius:10px;font-size:11px;background:' + b.bg + ';color:' + b.fg; }
+  if (btBadge) { btBadge.textContent = b.icon + ' Using ' + b.text + ' data'; btBadge.style.cssText = 'font-size:11px;padding:3px 10px;border-radius:10px;background:' + b.bg + ';color:' + b.fg; }
+}
+
+async function fallbackToLocal(reason) {
+  console.warn('[BACKTEST] Falling back to local:', reason);
+  CENTRAL = '';
+  localStorage.removeItem('qx_central_url');
+  localStorage.removeItem('qx_central');
+  updateBacktestBadge();
 }
 let LIB_CACHE = null;
 let ALL_STRATEGIES = [];   // library strategies (from /api/strategies-library)
@@ -784,30 +1016,42 @@ let _savedBacktests = JSON.parse(localStorage.getItem('qx_backtests') || '[]');
     document.getElementById('home-login-form').style.display = '';
   }
 
-  loadConfig();
+  await loadConfig();  // Must complete before loadLibrary — sets CENTRAL
+  await checkLpCredentials();
+  initBtBroker();
   loadLibrary();
   checkArchStatus();
   const lastTab = localStorage.getItem('qx_tab') || 'home';
   navigate(lastTab);
   renderSavedBacktests();
   _statusInterval = setInterval(() => { if (EMAIL) refreshStatus(); }, 10000);
+
+  // Check for ?share= URL parameter (Strategy Studio share link)
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const shareData = sp.get('share');
+    if (shareData) {
+      const shared = JSON.parse(atob(shareData));
+      Object.assign(STUDIO, {
+        name: shared.name || 'Shared Strategy',
+        symbol: shared.symbol || '',
+        timeframe: shared.timeframe || '1day',
+        entry_long: shared.entry_long || {conditions:[],logic:'AND'},
+        exit_long: shared.exit_long || {conditions:[],logic:'OR'},
+        risk: shared.risk || {stop_loss_pct:3,take_profit_pct:8,capital:10000},
+        last_backtest: shared.results || null,
+        _readOnly: true,
+        _sharedBy: shared.name || 'Unknown',
+      });
+      navigate('studio');
+      // Clean the URL without reloading
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(e) { console.warn('Invalid share link:', e); }
 })();
 
 function checkArchStatus() {
-  const badge = document.getElementById('arch-bt-badge');
-  const base = getBacktestBaseUrl();
-  if (base === window.location.origin) {
-    if (badge) { badge.textContent = 'Local (Yahoo)'; badge.style.cssText = 'padding:1px 8px;border-radius:10px;font-size:11px;background:#FEF3C7;color:#92400E'; }
-    return;
-  }
-  fetch(base + '/api/health', {signal: AbortSignal.timeout(3000)})
-    .then(r => r.json())
-    .then(d => {
-      if (badge) { badge.textContent = 'Railway'; badge.style.cssText = 'padding:1px 8px;border-radius:10px;font-size:11px;background:#DCFCE7;color:#166534'; }
-    })
-    .catch(() => {
-      if (badge) { badge.textContent = 'Local (Yahoo)'; badge.style.cssText = 'padding:1px 8px;border-radius:10px;font-size:11px;background:#FEF3C7;color:#92400E'; }
-    });
+  updateBacktestBadge();
 }
 
 /* ── License Activation ────────────────────────────────────────────── */
@@ -820,8 +1064,7 @@ function activateLicense() {
   localStorage.setItem('qx_license', key);
   LICENSE = key;
   document.getElementById('activation').classList.remove('show');
-  loadConfig();
-  loadLibrary();
+  loadConfig().then(() => { loadLibrary(); checkArchStatus(); });
   navigate('brokers'); // First thing: connect a broker
   showToast('License activated! Connect your broker to get started.', 'success');
 }
@@ -838,16 +1081,14 @@ function navigate(page) {
   // Load data for page
   if (page === 'bots') loadBots();
   if (page === 'home') loadHome();
-  if (page === 'brokers') checkBrokerStatus();
+  if (page === 'brokers') loadBrokerAccounts();
+  // Custom indicators now managed in Studio page, not Settings
+  if (page === 'studio') { studioLoadCustomInds().then(() => { _studioRebuildIndDropdowns(); studioRender(); }); }
+  if (page === 'optimize') studioInitOptimize();
   if (page === 'backtester') {
     populateStrategySelects(); renderSavedBacktests();
-    const badge = document.getElementById('bt-source-badge');
-    const base = getBacktestBaseUrl();
-    const isCloud = base !== window.location.origin;
-    if (badge) {
-      badge.textContent = isCloud ? '\uD83D\uDCE1 Using Railway data' : '\uD83D\uDCBB Using local data';
-      badge.style.cssText = 'font-size:11px;padding:3px 10px;border-radius:10px;' + (isCloud ? 'background:#DCFCE7;color:#166534' : 'background:#F3F4F6;color:#6B7280');
-    }
+    updateDataDepth();
+    updateBacktestBadge();
   }
   // Stop log polling when leaving bot detail
   if (page !== 'bot-detail' && _logInterval) { clearInterval(_logInterval); _logInterval = null; }
@@ -864,12 +1105,18 @@ async function loadConfig() {
     const d = await r.json();
     document.getElementById('set-central').value = d.central_api_url || '';
     document.getElementById('set-version').value = 'v' + (d.version || '1.0.0');
-    // Auto-store central URL for backtest routing
-    if (d.central_api_url && d.central_api_url !== 'http://localhost:8001' && d.central_api_url.startsWith('http')) {
-      localStorage.setItem('qx_central_url', d.central_api_url);
-      CENTRAL = d.central_api_url;
-      console.log('[CONFIG] Central API:', CENTRAL);
+    // Validate central URL before trusting it
+    const candidateUrl = d.central_api_url || '';
+    if (candidateUrl && candidateUrl.startsWith('http') && !candidateUrl.includes('localhost')) {
+      const ok = await validateAndSetCentral(candidateUrl);
+      console.log('[CONFIG] Central API:', candidateUrl, ok ? '(reachable)' : '(unreachable, using local)');
+    } else {
+      // No central configured on backend — clear any stale localStorage
+      CENTRAL = '';
+      localStorage.removeItem('qx_central_url');
+      localStorage.removeItem('qx_central');
     }
+    updateBacktestBadge();
   } catch (e) { console.warn('Config load failed:', e); }
 }
 
@@ -952,7 +1199,14 @@ async function loadHome() {
     return;
   }
   document.getElementById('home-login-form').style.display = 'none';
-  document.getElementById('home-brokers').textContent = EMAIL ? '1' : '0';
+  document.getElementById('home-brokers').textContent = BROKER_ACCOUNTS.length || '0';
+  if (EMAIL && !BROKER_ACCOUNTS.length) {
+    fetch(API + '/api/broker-accounts?email=' + encodeURIComponent(EMAIL))
+      .then(r => r.json()).then(d => {
+        BROKER_ACCOUNTS = d.accounts || [];
+        document.getElementById('home-brokers').textContent = BROKER_ACCOUNTS.length;
+      }).catch(() => {});
+  }
   try {
     const r = await fetch(API + '/api/strategies/' + encodeURIComponent(EMAIL));
     const d = await r.json();
@@ -1028,7 +1282,7 @@ function renderBots() {
       <td style="font-size:20px">🤖</td>
       <td><strong>${s.strategy_name || s.strategy_id}</strong></td>
       <td>${s.broker === 'ibkr' ? '<span class="badge badge-orange">IBKR</span>' : '<span class="badge badge-blue">LongPort</span>'}</td>
-      <td style="font-weight:600;color:var(--blue-primary)">${s.symbol}</td>
+      <td style="font-weight:600;color:var(--blue-primary)">${s.symbol}${s.current_position ? '<div style="font-size:10px;font-weight:400;color:' + (s.current_position > 0 ? 'var(--green)' : 'var(--red)') + '">' + (s.current_position > 0 ? 'Long' : 'Short') + ' ' + Math.abs(s.current_position) + ' @ $' + (s.position_entry_price||0).toFixed(2) + '</div>' : ''}</td>
       <td>${s.library_id || s.mode || '—'}</td>
       <td class="stat-value ${retClass}" style="font-size:13px">${mf(bt.total_return_pct)}%</td>
       <td>${mf(bt.sharpe_ratio)}</td>
@@ -1101,29 +1355,31 @@ function _renderDeployBtn(s) {
   return `<button class="deploy-btn deploy-btn-off" onclick="event.stopPropagation();toggleBot('${s.strategy_id}',true)">\u25B6 Deploy</button>`;
 }
 
+let _pendingDeploySid = null;
+
 async function toggleBot(sid, active) {
   const s = USER_STRATEGIES.find(x => x.strategy_id === sid);
   if (!s) return;
   const broker = s.broker || 'longport';
   const cell = document.getElementById('btn-' + sid);
-  // Immediately show loading state
   s._toggling = active ? 'deploy' : 'stop';
   if (cell) cell.innerHTML = _renderDeployBtn(s);
   try {
     if (active) {
       await fetch(API + '/api/strategy/' + encodeURIComponent(sid) + '/toggle?active=true', { method: 'PUT' });
-      const dr = await fetch(API + '/api/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
-      if (!dr.ok) { const dd = await dr.json(); throw new Error(dd.detail || 'Deploy failed'); }
-      if (broker === 'ibkr') IBKR_BOT_RUNNING = true; else LP_BOT_RUNNING = true;
-      BOT_RUNNING = true;
-      s.is_active = true;
-      _deployedAt = Date.now();
-      showToast('Bot deployed (' + broker + ')', 'success');
-      // Show stop button immediately
-      s._toggling = false;
-      if (cell) cell.innerHTML = _renderDeployBtn(s);
-      // Delayed refresh — don't revert if within 10s of deploy
-      setTimeout(loadBots, 5000);
+      // Check for open positions before deploying
+      try {
+        const ck = await fetch(API + '/api/deploy/check?email=' + encodeURIComponent(EMAIL));
+        const cd = await ck.json();
+        if (cd.has_open_positions) {
+          _pendingDeploySid = sid;
+          showRedeployModal(cd);
+          s._toggling = false;
+          if (cell) cell.innerHTML = _renderDeployBtn(s);
+          return;
+        }
+      } catch(e) { /* check failed, proceed with normal deploy */ }
+      await _executeDeploy(sid, '/api/deploy');
     } else {
       const sr = await fetch(API + '/api/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL, broker: broker }) });
       if (!sr.ok) { const sd = await sr.json(); throw new Error(sd.detail || 'Stop failed'); }
@@ -1137,6 +1393,130 @@ async function toggleBot(sid, active) {
       setTimeout(loadBots, 2000);
     }
   } catch (e) {
+    showToast(e.message, 'error');
+    s._toggling = false;
+    if (cell) cell.innerHTML = _renderDeployBtn(s);
+  }
+}
+
+function showRedeployModal(checkData) {
+  const posEl = document.getElementById('redeploy-positions');
+  if (posEl) {
+    posEl.innerHTML = checkData.open_positions.map(p =>
+      '<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--surface-2);border-radius:6px;margin-bottom:4px;font-size:13px">'
+      + '<span><strong>' + esc(p.symbol) + '</strong> ' + esc(p.side) + '</span>'
+      + '<span>' + p.position + ' shares @ $' + (p.entry_price || 0).toFixed(2) + '</span>'
+      + '</div>'
+    ).join('');
+  }
+  openModal('redeploy-modal');
+}
+
+async function executeRedeploy(mode) {
+  closeModal('redeploy-modal');
+  const endpoint = mode === 'close' ? '/api/deploy/close-and-redeploy' : '/api/deploy';
+  if (mode === 'close') showToast('Closing positions and redeploying...', 'info');
+  await _executeDeploy(_pendingDeploySid, endpoint);
+}
+
+const DEPLOY_MESSAGES = [
+  "Generating bot script...",
+  "Connecting to broker...",
+  "Cancelling open orders...",
+  "Starting bot process...",
+  "Verifying connection...",
+  "Almost there...",
+];
+let _deployMsgInterval = null;
+let _deployBarInterval = null;
+
+function _showDeployProgress(sid) {
+  // Insert progress row below the bot's table row
+  const btnCell = document.getElementById('btn-' + sid);
+  const botRow = btnCell ? btnCell.closest('tr') : null;
+  // Remove any existing progress row
+  _hideDeployProgress(sid);
+  if (botRow) {
+    const progRow = document.createElement('tr');
+    progRow.id = 'deploy-progress-' + sid;
+    progRow.className = 'deploy-progress-row';
+    progRow.innerHTML = '<td colspan="10" style="padding:4px 16px 10px;text-align:right;background:var(--surface-2);border-bottom:1px solid var(--border)">'
+      + '<div style="display:inline-block;width:280px;text-align:left">'
+      + '<div class="deploy-status-msg" id="deploy-msg-' + sid + '">' + DEPLOY_MESSAGES[0] + '</div>'
+      + '<div class="deploy-bar-track"><div class="deploy-bar-fill" id="deploy-bar-' + sid + '"></div></div>'
+      + '</div></td>';
+    botRow.parentNode.insertBefore(progRow, botRow.nextSibling);
+  }
+  // Cycle messages
+  let mi = 0;
+  _deployMsgInterval = setInterval(() => {
+    mi = (mi + 1) % DEPLOY_MESSAGES.length;
+    const msg = document.getElementById('deploy-msg-' + sid);
+    if (msg) msg.textContent = DEPLOY_MESSAGES[mi];
+  }, 8000);
+  // Animate bar: 0% -> 90% over 60s
+  const bar = document.getElementById('deploy-bar-' + sid);
+  if (bar) {
+    let pct = 0;
+    _deployBarInterval = setInterval(() => {
+      pct = Math.min(90, pct + 1.5);
+      bar.style.width = pct + '%';
+      if (pct >= 90) clearInterval(_deployBarInterval);
+    }, 1000);
+  }
+}
+
+function _deploySuccess(sid, message) {
+  clearInterval(_deployMsgInterval);
+  clearInterval(_deployBarInterval);
+  const msg = document.getElementById('deploy-msg-' + sid);
+  const bar = document.getElementById('deploy-bar-' + sid);
+  if (msg) msg.textContent = message || 'Bot deployed successfully!';
+  if (msg) msg.style.color = 'var(--green)';
+  if (bar) { bar.style.width = '100%'; bar.classList.add('success'); }
+  setTimeout(() => _hideDeployProgress(sid), 2500);
+}
+
+function _deployError(sid, error) {
+  clearInterval(_deployMsgInterval);
+  clearInterval(_deployBarInterval);
+  const msg = document.getElementById('deploy-msg-' + sid);
+  const bar = document.getElementById('deploy-bar-' + sid);
+  if (msg) { msg.textContent = error || 'Deploy failed'; msg.style.color = 'var(--red)'; }
+  if (bar) { bar.style.width = '100%'; bar.classList.add('error'); }
+}
+
+function _hideDeployProgress(sid) {
+  const row = document.getElementById('deploy-progress-' + sid);
+  if (row) row.remove();
+  clearInterval(_deployMsgInterval);
+  clearInterval(_deployBarInterval);
+}
+
+async function _executeDeploy(sid, endpoint) {
+  const s = USER_STRATEGIES.find(x => x.strategy_id === sid);
+  if (!s) return;
+  const broker = s.broker || 'longport';
+  const cell = document.getElementById('btn-' + sid);
+  s._toggling = 'deploy';
+  if (cell) cell.innerHTML = _renderDeployBtn(s);
+  _showDeployProgress(sid);
+  try {
+    const dr = await fetch(API + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
+    if (!dr.ok) { const dd = await dr.json(); throw new Error(dd.detail || 'Deploy failed'); }
+    const result = await dr.json();
+    if (broker === 'ibkr') IBKR_BOT_RUNNING = true; else LP_BOT_RUNNING = true;
+    BOT_RUNNING = true;
+    s.is_active = true;
+    _deployedAt = Date.now();
+    const extra = (result.positions_closed && result.positions_closed.length) ? ' (' + result.positions_closed.length + ' positions closed)' : '';
+    _deploySuccess(sid, 'Bot deployed (' + broker + ')' + extra);
+    showToast('Bot deployed (' + broker + ')' + extra, 'success');
+    s._toggling = false;
+    if (cell) cell.innerHTML = _renderDeployBtn(s);
+    setTimeout(loadBots, 5000);
+  } catch (e) {
+    _deployError(sid, e.message);
     showToast(e.message, 'error');
     s._toggling = false;
     if (cell) cell.innerHTML = _renderDeployBtn(s);
@@ -1368,10 +1748,140 @@ async function deleteBot() {
 }
 
 /* ═══════════════════ BACKTESTER ═══════════════════ */
+/* ═══════════════════ BACKTESTER DATA DEPTH ═══════════════════ */
+const DATA_DEPTH = {
+  longport: {
+    "1min":  {bars:20000, months:3,   label:"~3 months"},
+    "5min":  {bars:20000, months:15,  label:"~15 months"},
+    "15min": {bars:11400, months:24,  label:"~2 years"},
+    "30min": {bars:3454,  months:24,  label:"~2 years"},
+    "1hour": {bars:3454,  months:24,  label:"~2 years"},
+    "1day":  {bars:5382,  months:264, label:"22 years"},
+    "1week": {bars:999,   months:999, label:"20+ years"},
+  },
+  yahoo: {
+    "1min":  {bars:500,   months:0.25, label:"~7 days"},
+    "5min":  {bars:1500,  months:2,    label:"~60 days"},
+    "15min": {bars:1500,  months:2,    label:"~60 days"},
+    "30min": {bars:1500,  months:2,    label:"~60 days"},
+    "1hour": {bars:2000,  months:24,   label:"~2 years"},
+    "1day":  {bars:10000, months:300,  label:"25 years"},
+    "1week": {bars:999,   months:999,  label:"20+ years"},
+  },
+  ibkr: {
+    "1min":  {bars:20000, months:6,   label:"~6 months"},
+    "5min":  {bars:20000, months:36,  label:"~3 years"},
+    "15min": {bars:20000, months:60,  label:"~5 years"},
+    "30min": {bars:20000, months:120, label:"~10 years"},
+    "1hour": {bars:20000, months:120, label:"~10 years"},
+    "1day":  {bars:20000, months:600, label:"50 years"},
+    "1week": {bars:999,   months:999, label:"50+ years"},
+  }
+};
+const PERIOD_DEFS = [
+  {key:"1Y",  bars:252,   months:12},
+  {key:"2Y",  bars:504,   months:24},
+  {key:"3Y",  bars:756,   months:36},
+  {key:"5Y",  bars:1260,  months:60},
+  {key:"10Y", bars:2520,  months:120},
+  {key:"Max", bars:99999, months:0},
+];
+let _btBroker = 'longport';
+
+function setBtBroker(broker) {
+  _btBroker = broker;
+  document.getElementById('bt-broker-lp').classList.toggle('active', broker === 'longport');
+  document.getElementById('bt-broker-ibkr').classList.toggle('active', broker === 'ibkr');
+  document.getElementById('bt-broker-yahoo').classList.toggle('active', broker === 'yahoo');
+  const note = document.getElementById('bt-broker-note');
+  if (broker === 'ibkr' && !localStorage.getItem('ibkr_config')) {
+    note.textContent = 'Connect IBKR in Brokers tab first';
+    note.style.color = 'var(--orange)';
+  } else if (broker === 'longport' && !_hasLpCreds) {
+    note.textContent = 'Connect LongPort in Brokers tab first';
+    note.style.color = 'var(--orange)';
+  } else {
+    note.textContent = '';
+  }
+  updateDataDepth();
+  updateBacktestBadge();
+}
+
+function getBtTimeframe() {
+  return document.getElementById('bt-timeframe').value || '1day';
+}
+
+function updateDataDepth() {
+  const broker = _btBroker;
+  const tf = getBtTimeframe();
+  const src = DATA_DEPTH[broker] || DATA_DEPTH.yahoo;
+  const depth = src[tf] || src['1day'];
+  const label = document.getElementById('bt-depth-label');
+  const value = document.getElementById('bt-depth-value');
+  const fill = document.getElementById('bt-depth-fill');
+  const brokerName = {longport:'LongPort',ibkr:'IBKR',yahoo:'Yahoo'}[broker] || broker;
+  if (label) label.textContent = brokerName + ' data depth:';
+  if (value) { value.textContent = depth.label; value.style.color = depth.months >= 24 ? 'var(--green)' : depth.months >= 6 ? 'var(--orange)' : 'var(--red)'; }
+  if (fill) {
+    const pct = Math.min(100, (depth.months / 300) * 100);
+    fill.style.width = pct + '%';
+    fill.style.background = depth.months >= 24 ? 'var(--green)' : depth.months >= 6 ? '#F59E0B' : 'var(--red)';
+  }
+  updatePeriodPills();
+}
+
+function _monthsLabel(m) {
+  if (m >= 12) { const y = Math.round(m / 12); return y + 'Y'; }
+  return Math.round(m) + 'mo';
+}
+
+function updatePeriodPills() {
+  const broker = _btBroker;
+  const tf = getBtTimeframe();
+  const src = DATA_DEPTH[broker] || DATA_DEPTH.yahoo;
+  const depth = src[tf] || src['1day'];
+  const container = document.getElementById('bt-period-pills');
+  if (!container) return;
+
+  let bestEnabled = null;
+  const pills = PERIOD_DEFS.map(p => {
+    const enabled = p.months === 0 || depth.months >= p.months;
+    if (enabled && p.key !== 'Max') bestEnabled = p;
+    const label = p.key === 'Max' ? 'Max (' + _monthsLabel(depth.months) + ')' : p.key;
+    const limit = p.key === 'Max' ? depth.bars : p.bars;
+    const cls = enabled ? 'filter-pill has-data' : 'filter-pill disabled';
+    const tip = enabled ? '' : ' title="Only ' + depth.label + ' available for this timeframe"';
+    return {html: '<span class="' + cls + '" data-limit="' + limit + '"' + tip
+      + (enabled ? ' onclick="setBtPeriod(' + limit + ',this)"' : '')
+      + '>' + label + '</span>', enabled, limit, key: p.key};
+  });
+  container.innerHTML = pills.map(p => p.html).join('');
+
+  // Auto-select largest enabled non-Max
+  if (bestEnabled) {
+    _btLimit = bestEnabled.bars;
+    const active = container.querySelector('[data-limit="' + bestEnabled.bars + '"]');
+    if (active) active.classList.add('active');
+  } else {
+    // Only Max available
+    _btLimit = depth.bars;
+    const maxPill = container.querySelector('[data-limit="' + depth.bars + '"]');
+    if (maxPill) maxPill.classList.add('active');
+  }
+}
+
 function setBtPeriod(limit, el) {
   _btLimit = limit;
-  el.parentElement.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+  document.getElementById('bt-period-pills').querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
+}
+
+function initBtBroker() {
+  // Default broker based on available credentials
+  if (_hasLpCreds) _btBroker = 'longport';
+  else if (localStorage.getItem('ibkr_config')) _btBroker = 'ibkr';
+  else _btBroker = 'yahoo';
+  setBtBroker(_btBroker);
 }
 
 function openNewBacktest() {
@@ -1397,14 +1907,14 @@ async function runBacktest() {
   if (prog) prog.style.display = 'flex';
   if (progMsg) progMsg.textContent = msgs[0];
   const msgInt = setInterval(() => { mi = (mi + 1) % msgs.length; if (progMsg) progMsg.textContent = msgs[mi]; }, 2000);
+  const btPayload = JSON.stringify({ symbol: sym, strategy: strat, params: {}, initial_capital: cap, timeframe: tf, limit: _btLimit, email: EMAIL, use_ibkr: _btBroker === 'ibkr', broker_hint: _btBroker, skip_cache: false, commission_pct: parseFloat(document.getElementById('bt-commission')?.value||'0.1'), slippage_pct: parseFloat(document.getElementById('bt-slippage')?.value||'0.05') });
+  let btBase = getBacktestBaseUrl();
   try {
-    const btBase = getBacktestBaseUrl();
     console.log('[BT] Running on:', btBase);
-    const r = await fetch(btBase + '/api/backtest/run', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol: sym, strategy: strat, params: {}, initial_capital: cap, timeframe: tf, limit: _btLimit, email: EMAIL, use_ibkr: !!localStorage.getItem('ibkr_config'), skip_cache: false, commission_pct: parseFloat(document.getElementById('bt-commission')?.value||'0.1'), slippage_pct: parseFloat(document.getElementById('bt-slippage')?.value||'0.05') })
+    let r = await fetch(btBase + '/api/backtest/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: btPayload
     });
-    const d = await r.json();
+    let d = await r.json();
     if (d.status === 'error') throw new Error(d.message || 'Failed');
     if (!r.ok) throw new Error(d.detail || 'Failed');
     showBacktestResults(d, sym, strat, tf);
@@ -1412,7 +1922,28 @@ async function runBacktest() {
     if (_savedBacktests.length > 50) _savedBacktests = _savedBacktests.slice(0, 50);
     localStorage.setItem('qx_backtests', JSON.stringify(_savedBacktests));
     renderSavedBacktests();
-  } catch (e) { showToast('Backtest error: ' + e.message, 'error'); }
+  } catch (e) {
+    // If remote server failed with network error, auto-fallback to local and retry
+    if (btBase !== window.location.origin && (e.message === 'Failed to fetch' || e.name === 'TypeError' || e.name === 'AbortError')) {
+      showToast('Remote server unreachable. Switching to local data...', 'info');
+      await fallbackToLocal(e.message);
+      try {
+        const r2 = await fetch(window.location.origin + '/api/backtest/run', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: btPayload
+        });
+        const d2 = await r2.json();
+        if (d2.status === 'error') throw new Error(d2.message || 'Failed');
+        if (!r2.ok) throw new Error(d2.detail || 'Failed');
+        showBacktestResults(d2, sym, strat, tf);
+        _savedBacktests.unshift({ date: new Date().toISOString(), symbol: sym, strategy: strat, timeframe: tf, period: _btLimit, metrics: d2.metrics });
+        if (_savedBacktests.length > 50) _savedBacktests = _savedBacktests.slice(0, 50);
+        localStorage.setItem('qx_backtests', JSON.stringify(_savedBacktests));
+        renderSavedBacktests();
+      } catch (e2) { showToast('Backtest error: ' + e2.message, 'error'); }
+    } else {
+      showToast('Backtest error: ' + e.message, 'error');
+    }
+  }
   clearInterval(msgInt);
   if (prog) prog.style.display = 'none';
   btn.disabled = false; btn.textContent = 'Run Backtest';
@@ -1464,6 +1995,22 @@ function showBacktestResults(d, sym, strat, tf) {
   ].join('');
   // Monthly P/L table
   buildMonthlyPL(trades);
+  // Data coverage warning
+  const warnEl = document.getElementById('bt-data-warning');
+  if (warnEl) {
+    const avail = d.bars_available || d.bar_count || 0;
+    const req = d.bars_requested || _btLimit || 0;
+    if (req > 0 && avail < req * 0.8) {
+      const reqLabel = {252:'1Y',504:'2Y',756:'3Y',1260:'5Y',2520:'10Y'}[req] || req + ' bars';
+      const from = d.date_from || '';
+      const to = d.date_to || '';
+      const range = (from && to) ? ' Chart shows <strong>' + esc(from) + ' to ' + esc(to) + '</strong>.' : '';
+      warnEl.innerHTML = '&#9888;&#65039; Only <strong>' + avail + ' bars</strong> available (you requested ' + reqLabel + ').' + range + ' Results may be less reliable with limited data.';
+      warnEl.style.display = '';
+    } else {
+      warnEl.style.display = 'none';
+    }
+  }
   document.getElementById('bt-results').style.display = '';
   document.getElementById('bt-results').scrollIntoView({ behavior: 'smooth' });
 }
@@ -1710,7 +2257,25 @@ function _bldrGenCalc(id, params) {
     donch_upper:`calc_donchian(high, low, ${p.period||20})[0]`,
     donch_lower:`calc_donchian(high, low, ${p.period||20})[1]`,
   };
-  return m[id] || id;
+  if (m[id]) return m[id];
+  // Handle custom indicators and output-indexed variants (e.g. "vortex_out0")
+  const outMatch = id.match(/^(.+)_out(\d+)$/);
+  const baseId = outMatch ? outMatch[1] : id;
+  const outIdx = outMatch ? outMatch[2] : null;
+  // Try to find in BLDR_INDICATORS (includes custom group)
+  const ind = _studioFindInd ? _studioFindInd(baseId) : null;
+  if (ind && ind.p) {
+    // Build input mapping from declared inputs
+    const inputMap = {'closes':'close','highs':'high','lows':'low','opens':'open_','volumes':'vol'};
+    const inputs = (ind._inputs || ['closes']).map(inp => inputMap[inp.toLowerCase()] || 'close');
+    const paramArgs = ind.p.map(pp => p[pp.k] || pp.d);
+    const call = `calc_${baseId}(${[...inputs, ...paramArgs].join(', ')})`;
+    return outIdx !== null ? call + '[' + outIdx + ']' : call;
+  }
+  // Fallback: generate generic calc_ call with all params
+  const paramVals = Object.values(p);
+  if (paramVals.length) return `calc_${baseId}(close, ${paramVals.join(', ')})` + (outIdx !== null ? '['+outIdx+']' : '');
+  return `calc_${baseId}(close)` + (outIdx !== null ? '['+outIdx+']' : '');
 }
 
 function _bldrGenCond(c, varMap) {
@@ -1789,11 +2354,11 @@ async function runBuilderBacktest() {
   const msgInt = setInterval(() => { mi = (mi + 1) % msgs.length; if (progMsg) progMsg.textContent = msgs[mi]; }, 2000);
   const script = bldrGenerateScript();
   console.log('[BUILDER] Generated script:\n', script);
+  const bldrPayload = JSON.stringify({ symbol: sym, script: script, initial_capital: cap, timeframe: tf, limit: _btLimit, email: EMAIL || '', use_ibkr: _btBroker === 'ibkr', broker_hint: _btBroker, skip_cache: false });
+  let btBase = getBacktestBaseUrl();
   try {
-    const btBase = getBacktestBaseUrl();
     const r = await fetch(btBase + '/api/backtest/run-script', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol: sym, script: script, initial_capital: cap, timeframe: tf, limit: _btLimit, email: EMAIL || '', use_ibkr: !!localStorage.getItem('ibkr_config'), skip_cache: false })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: bldrPayload
     });
     const d = await r.json();
     if (d.status === 'error') throw new Error(d.message || d.detail || 'Failed');
@@ -1804,13 +2369,29 @@ async function runBuilderBacktest() {
     if (_savedBacktests.length > 50) _savedBacktests = _savedBacktests.slice(0, 50);
     localStorage.setItem('qx_backtests', JSON.stringify(_savedBacktests));
     renderSavedBacktests();
-  } catch (e) { showToast('Builder backtest error: ' + e.message, 'error'); }
+  } catch (e) {
+    if (btBase !== window.location.origin && (e.message === 'Failed to fetch' || e.name === 'TypeError' || e.name === 'AbortError')) {
+      showToast('Remote server unreachable. Switching to local data...', 'info');
+      await fallbackToLocal(e.message);
+      try {
+        const r2 = await fetch(window.location.origin + '/api/backtest/run-script', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: bldrPayload
+        });
+        const d2 = await r2.json();
+        if (d2.status === 'error') throw new Error(d2.message || d2.detail || 'Failed');
+        if (!r2.ok) throw new Error(d2.detail || 'Failed');
+        const stratName = document.getElementById('bldr-name').value || 'Custom Strategy';
+        showBacktestResults(d2, sym, stratName, tf);
+      } catch (e2) { showToast('Builder backtest error: ' + e2.message, 'error'); }
+    } else {
+      showToast('Builder backtest error: ' + e.message, 'error');
+    }
+  }
   clearInterval(msgInt);
   if (prog) prog.style.display = 'none';
   btn.disabled = false; btn.textContent = 'Run Backtest';
 }
 
-/* ═══════════════════ BROKERS ═══════════════════ */
 /* ═══════════════════ OPTIONS BOTS ═══════════════════ */
 function switchBotsTab(tab) {
   document.getElementById('bots-equity-section').style.display = tab === 'equity' ? '' : 'none';
@@ -1915,107 +2496,171 @@ async function loadOptionsBots() {
   } catch (e) {}
 }
 
-/* ═══════════════════ BROKERS ═══════════════════ */
-function checkBrokerStatus() {
-  if (EMAIL) {
-    document.getElementById('lp-connected').style.display = '';
-    document.getElementById('lp-form').style.display = 'none';
-  } else {
-    document.getElementById('lp-connected').style.display = 'none';
-    document.getElementById('lp-form').style.display = '';
+/* ═══════════════════ BROKERS (multi-account) ═══════════════════ */
+let BROKER_ACCOUNTS = [];
+
+async function loadBrokerAccounts() {
+  if (!EMAIL) {
+    document.getElementById('broker-accounts-list').innerHTML = '';
+    document.getElementById('broker-accounts-empty').style.display = '';
+    return;
   }
-  checkIbkrStatus();
+  try {
+    const r = await fetch(API + '/api/broker-accounts?email=' + encodeURIComponent(EMAIL));
+    const d = await r.json();
+    BROKER_ACCOUNTS = d.accounts || [];
+    renderAccountCards();
+  } catch (e) {
+    console.warn('Failed to load broker accounts:', e);
+    BROKER_ACCOUNTS = [];
+    renderAccountCards();
+  }
 }
 
-async function connectLongPort() {
-  const appkey = document.getElementById('lp-appkey').value.trim();
-  const appsecret = document.getElementById('lp-appsecret').value.trim();
-  const token = document.getElementById('lp-token').value.trim();
-  if (!appkey || !appsecret || !token) { showToast('All fields required', 'error'); return; }
+function renderAccountCards() {
+  const list = document.getElementById('broker-accounts-list');
+  const empty = document.getElementById('broker-accounts-empty');
+  if (!BROKER_ACCOUNTS.length) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = BROKER_ACCOUNTS.map(a => {
+    const isLp = a.broker === 'longport';
+    const icon = isLp ? 'LP' : 'IB';
+    const iconBg = isLp ? 'var(--blue-primary)' : 'var(--orange)';
+    const statusDot = a.is_connected
+      ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px"></span>Connected'
+      : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--text-muted);margin-right:6px"></span>Not tested';
+    const typeBadge = a.account_type === 'live'
+      ? '<span style="font-size:10px;padding:2px 8px;border-radius:4px;background:var(--red-light);color:var(--red);font-weight:600;text-transform:uppercase">Live</span>'
+      : '<span style="font-size:10px;padding:2px 8px;border-radius:4px;background:var(--blue-pale);color:var(--blue-primary);font-weight:600;text-transform:uppercase">Paper</span>';
+    const detail = isLp
+      ? 'App Key: ' + esc((a.account_id || 'configured'))
+      : esc((a.ibkr_host || '127.0.0.1') + ':' + (a.ibkr_port || 7497)) + (a.account_id ? ' (' + esc(a.account_id) + ')' : '');
+    return `<div class="broker-card" style="margin-bottom:12px;display:flex;align-items:center;gap:16px">
+      <div class="broker-icon" style="background:${iconBg};flex-shrink:0">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="broker-title" style="margin:0">${esc(a.nickname || (isLp ? 'LongPort' : 'IBKR'))}</span>
+          ${typeBadge}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted)">${detail}</div>
+        <div style="font-size:12px;margin-top:4px;display:flex;align-items:center" id="acct-status-${a.id}">${statusDot}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-outline btn-sm" onclick="testBrokerAccount(${a.id})">Test</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="deleteBrokerAccount(${a.id},'${esc(a.nickname || '')}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+  // Update home counter
+  document.getElementById('home-brokers').textContent = BROKER_ACCOUNTS.length;
+}
+
+function openAddAccountModal() {
   if (!EMAIL) { showToast('Set up your account on the Home page first', 'error'); navigate('home'); return; }
+  document.getElementById('aa-nickname').value = '';
+  document.getElementById('aa-appkey') && (document.getElementById('aa-appkey').value = '');
+  document.getElementById('aa-appsecret') && (document.getElementById('aa-appsecret').value = '');
+  document.getElementById('aa-token') && (document.getElementById('aa-token').value = '');
+  document.getElementById('aa-host') && (document.getElementById('aa-host').value = '127.0.0.1');
+  document.getElementById('aa-port') && (document.getElementById('aa-port').value = '7497');
+  document.getElementById('aa-error').textContent = '';
+  document.getElementById('aa-confirm') && (document.getElementById('aa-confirm').value = '');
+  document.getElementById('aa-live-warn').style.display = 'none';
+  const paperRadio = document.querySelector('input[name="aa-type"][value="paper"]');
+  if (paperRadio) paperRadio.checked = true;
+  setAcctBroker('longport');
+  openModal('add-acct-modal');
+  // Watch account type radios for live warning
+  document.querySelectorAll('input[name="aa-type"]').forEach(r => {
+    r.onchange = () => {
+      document.getElementById('aa-live-warn').style.display = r.value === 'live' && r.checked ? '' : 'none';
+    };
+  });
+}
+
+function setAcctBroker(broker) {
+  document.getElementById('aa-broker').value = broker;
+  document.getElementById('aa-lp').classList.toggle('active', broker === 'longport');
+  document.getElementById('aa-ib').classList.toggle('active', broker === 'ibkr');
+  document.getElementById('aa-lp-fields').style.display = broker === 'longport' ? '' : 'none';
+  document.getElementById('aa-ibkr-fields').style.display = broker === 'ibkr' ? '' : 'none';
+}
+
+async function saveNewAccount() {
+  const broker = document.getElementById('aa-broker').value;
+  const acctType = (document.querySelector('input[name="aa-type"]:checked') || {}).value || 'paper';
+  const nickname = document.getElementById('aa-nickname').value.trim();
+  const errEl = document.getElementById('aa-error');
+  errEl.textContent = '';
+
+  if (acctType === 'live') {
+    const confirm = (document.getElementById('aa-confirm') || {}).value || '';
+    if (confirm !== 'CONFIRM') { errEl.textContent = 'Type CONFIRM to add a live account.'; return; }
+  }
+
+  const payload = { email: EMAIL, broker, account_type: acctType, nickname };
+
+  if (broker === 'longport') {
+    const ak = document.getElementById('aa-appkey').value.trim();
+    const as = document.getElementById('aa-appsecret').value.trim();
+    const at = document.getElementById('aa-token').value.trim();
+    if (!ak || !as || !at) { errEl.textContent = 'All LongPort fields are required.'; return; }
+    payload.app_key = ak;
+    payload.app_secret = as;
+    payload.access_token = at;
+  } else {
+    payload.ibkr_host = document.getElementById('aa-host').value.trim() || '127.0.0.1';
+    payload.ibkr_port = parseInt(document.getElementById('aa-port').value) || 7497;
+  }
+
   try {
-    const r = await fetch(API + '/api/register', {
+    const r = await fetch(API + '/api/broker-accounts', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: EMAIL, name: UNAME, app_key: appkey, app_secret: appsecret, access_token: token, central_api_url: '' })
+      body: JSON.stringify(payload)
     });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || 'Failed');
-    checkBrokerStatus();
-    showToast('LongPort connected!', 'success');
-  } catch (e) { showToast('Connection failed: ' + e.message, 'error'); }
+    if (!r.ok) throw new Error(d.detail || 'Failed to save');
+    closeModal('add-acct-modal');
+    showToast('Account added!', 'success');
+    loadBrokerAccounts();
+  } catch (e) { errEl.textContent = e.message; }
 }
 
-async function saveIbkrConfig() {
-  const host = document.getElementById('ibkr-host').value.trim() || '127.0.0.1';
-  const port = parseInt(document.getElementById('ibkr-port').value) || 7497;
-  const clientId = parseInt(document.getElementById('ibkr-clientid').value) || 1;
-  localStorage.setItem('ibkr_config', JSON.stringify({ host, port, client_id: clientId }));
-  // Save to server if logged in
-  if (EMAIL) {
-    try {
-      await fetch(API + '/api/ibkr-config', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: EMAIL, host, port, client_id: clientId })
-      });
-    } catch (e) { console.warn('IBKR config save to server failed:', e); }
-  }
-  document.getElementById('ibkr-connected').style.display = '';
-  document.getElementById('ibkr-info').textContent = host + ':' + port;
-  document.getElementById('ibkr-form').style.display = 'none';
-  document.getElementById('ibkr-test-result').textContent = '';
-  showToast('IBKR config saved', 'success');
-}
-
-function editIbkrConfig() {
-  const cfg = JSON.parse(localStorage.getItem('ibkr_config') || '{}');
-  document.getElementById('ibkr-host').value = cfg.host || '127.0.0.1';
-  document.getElementById('ibkr-port').value = cfg.port || 7497;
-  document.getElementById('ibkr-clientid').value = cfg.client_id || 1;
-  document.getElementById('ibkr-connected').style.display = 'none';
-  document.getElementById('ibkr-form').style.display = '';
-}
-
-async function testIbkrConnection() {
-  const el = document.getElementById('ibkr-test-result');
-  el.textContent = 'Testing...'; el.style.color = 'var(--text-muted)';
-  const cfg = JSON.parse(localStorage.getItem('ibkr_config') || '{}');
+async function testBrokerAccount(id) {
+  const el = document.getElementById('acct-status-' + id);
+  if (el) el.innerHTML = '<span style="color:var(--text-muted)">Testing...</span>';
   try {
-    const r = await fetch(API + '/api/test-ibkr-connection', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: EMAIL, host: cfg.host || '127.0.0.1', port: cfg.port || 7497, client_id: cfg.client_id || 1 })
+    const r = await fetch(API + '/api/broker-accounts/' + id + '/test', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }
     });
     const d = await r.json();
     if (d.ok) {
-      const acct = d.account ? ' (Account: ' + d.account + ')' : '';
-      el.innerHTML = '<span style="color:var(--green)">✓ ' + esc(d.message || 'Connected') + acct + '</span>';
+      const extra = d.account ? ' (' + esc(d.account) + ')' : '';
+      if (el) el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px"></span><span style="color:var(--green)">' + esc(d.message || 'Connected') + extra + '</span>';
+      showToast('Connection successful!', 'success');
+      loadBrokerAccounts();
     } else {
-      el.innerHTML = '<span style="color:var(--red)">✗ ' + esc(d.message || 'Connection failed') + '</span>';
+      if (el) el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:6px"></span><span style="color:var(--red)">' + esc(d.message || 'Failed') + '</span>';
+      showToast('Connection failed: ' + (d.message || 'Unknown error'), 'error');
     }
-  } catch (e) { el.innerHTML = '<span style="color:var(--red)">✗ ' + esc(e.message) + '</span>'; }
+  } catch (e) {
+    if (el) el.innerHTML = '<span style="color:var(--red)">' + esc(e.message) + '</span>';
+    showToast('Test failed: ' + e.message, 'error');
+  }
 }
 
-async function checkIbkrStatus() {
-  // Check localStorage first
-  const cfg = JSON.parse(localStorage.getItem('ibkr_config') || 'null');
-  if (cfg) {
-    document.getElementById('ibkr-connected').style.display = '';
-    document.getElementById('ibkr-info').textContent = cfg.host + ':' + cfg.port;
-    document.getElementById('ibkr-form').style.display = 'none';
-    return;
-  }
-  // Check server
-  if (EMAIL) {
-    try {
-      const r = await fetch(API + '/api/ibkr-config?email=' + encodeURIComponent(EMAIL));
-      const d = await r.json();
-      if (d.configured) {
-        document.getElementById('ibkr-connected').style.display = '';
-        document.getElementById('ibkr-info').textContent = d.host + ':' + d.port;
-        document.getElementById('ibkr-form').style.display = 'none';
-        localStorage.setItem('ibkr_config', JSON.stringify({ host: d.host, port: d.port, client_id: d.client_id }));
-      }
-    } catch (_) {}
-  }
+async function deleteBrokerAccount(id, name) {
+  if (!confirm('Delete account "' + (name || 'this account') + '"? This cannot be undone.')) return;
+  try {
+    const r = await fetch(API + '/api/broker-accounts/' + id, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Failed to delete');
+    showToast('Account deleted', 'info');
+    loadBrokerAccounts();
+  } catch (e) { showToast('Delete failed: ' + e.message, 'error'); }
 }
 
 function setNbBroker(broker) {
@@ -2045,6 +2690,65 @@ function nbRenderQuicktags(broker) {
     : [{s:'700.HK',n:'Tencent'},{s:'D05.SI',n:'DBS'},{s:'TQQQ.US',n:'3x Nasdaq'},{s:'SPY.US',n:'S&P 500'}];
   qt.innerHTML = tags.map(t => `<span class="qtag" onclick="nbSelectSymbol('${t.s}','${t.n}')">${t.s}</span>`).join('');
 }
+
+/* ═══════════════════ TICKER SEARCH (API-backed) ═══════════════════ */
+let _tickerDebounce = null;
+
+async function searchTickers(input, context) {
+  const q = input.value.trim();
+  const dropId = context === 'bt' ? 'ticker-dropdown-bt' : 'ticker-dropdown-bot';
+  const drop = document.getElementById(dropId);
+  if (!drop) return;
+  if (q.length < 1) { drop.style.display = 'none'; return; }
+
+  clearTimeout(_tickerDebounce);
+  _tickerDebounce = setTimeout(async () => {
+    try {
+      const r = await fetch(API + '/api/ticker/search?q=' + encodeURIComponent(q) + '&email=' + encodeURIComponent(EMAIL || ''));
+      const data = await r.json();
+      if (!data.results || data.results.length === 0) { drop.style.display = 'none'; return; }
+      drop.innerHTML = data.results.map(t => {
+        const sym = esc(t.symbol);
+        const name = esc(t.name || '');
+        const mkt = esc(t.market || '');
+        const lot = t.lot || 1;
+        return '<div class="ticker-item" onclick="selectTicker(\'' + sym + '\',\'' + name.replace(/'/g, '') + '\',' + lot + ',\'' + context + '\')">'
+          + '<span class="ticker-symbol">' + sym.replace('.HK','').replace('.US','').replace('.SI','') + '</span>'
+          + '<span class="ticker-name">' + name + '</span>'
+          + '<span class="ticker-badge ' + mkt + '">' + mkt + '</span>'
+          + '<span class="ticker-lot">Lot: ' + lot + '</span>'
+          + '</div>';
+      }).join('');
+      drop.style.display = 'block';
+    } catch(e) { drop.style.display = 'none'; }
+  }, 250);
+}
+
+function selectTicker(symbol, name, lot, context) {
+  if (context === 'bt') {
+    const inp = document.getElementById('bt-symbol');
+    if (inp) inp.value = symbol;
+    const drop = document.getElementById('ticker-dropdown-bt');
+    if (drop) drop.style.display = 'none';
+  } else {
+    const inp = document.getElementById('nb-symbol');
+    if (inp) inp.value = symbol;
+    const drop = document.getElementById('ticker-dropdown-bot');
+    if (drop) drop.style.display = 'none';
+    // Also hide the old nb-sym-dropdown
+    const oldDrop = document.getElementById('nb-sym-dropdown');
+    if (oldDrop) oldDrop.style.display = 'none';
+    // Update validation
+    const val = document.getElementById('nb-sym-validation');
+    if (val) val.innerHTML = '<span style="color:var(--green)">' + esc(name) + ' (Lot: ' + lot + ')</span>';
+  }
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.ticker-dropdown') && !e.target.closest('#bt-symbol') && !e.target.closest('#nb-symbol') && !e.target.closest('#studio-symbol')) {
+    document.querySelectorAll('.ticker-dropdown').forEach(d => d.style.display = 'none');
+  }
+});
 
 function nbSearchSymbol(query) {
   const dd = document.getElementById('nb-sym-dropdown');
@@ -2094,36 +2798,1071 @@ document.addEventListener('click', e => {
   }
 });
 
-async function testConnection() {
-  const el = document.getElementById('lp-test-result');
-  el.textContent = 'Testing...'; el.style.color = 'var(--text-muted)';
-  try {
-    const r = await fetch(API + '/api/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
-    const d = await r.json();
-    if (d.ok) {
-      const quote = d.test_quote ? ' — ' + d.test_quote.symbol + ': $' + d.test_quote.price : '';
-      el.innerHTML = '<span style="color:var(--green)">✓ ' + esc(d.message || 'Connected') + quote + '</span>';
-    } else {
-      el.innerHTML = '<span style="color:var(--red)">✗ ' + esc(d.message || 'Connection failed') + '</span>';
-    }
-  } catch (e) { el.innerHTML = '<span style="color:var(--red)">✗ ' + esc(e.message) + '</span>'; }
+
+
+/* ═══════════════════ STRATEGY STUDIO ═══════════════════ */
+const STUDIO = {
+  name:'My Strategy', symbol:'', timeframe:'1day', direction:'long',
+  entry_long:{conditions:[],logic:'AND'}, exit_long:{conditions:[],logic:'OR'},
+  entry_short:{conditions:[],logic:'AND'}, exit_short:{conditions:[],logic:'OR'},
+  risk:{stop_loss_pct:3, take_profit_pct:8, capital:10000, trailing_stop_enabled:false, trailing_stop_pct:2},
+  commission_pct:0.1, slippage_pct:0.05, commission_mode:'pct', commission_flat:0,
+  last_backtest:null, _readOnly:false, _sharedBy:'',
+};
+// ── Rule editor state ──
+let _studioEditorSection = '';
+let _studioEditorIdx = -1;
+let _studioEditorDraft = null;
+const STUDIO_TEMPLATES = {
+  ema_cross:{name:'EMA Crossover',tag:'Trend',
+    entry:[{left:{id:'ema',p:{period:20}},cond:'crosses_above',right:{type:'indicator',id:'ema',p:{period:50}}}],
+    exit:[{left:{id:'ema',p:{period:20}},cond:'crosses_below',right:{type:'indicator',id:'ema',p:{period:50}}}]},
+  rsi_reversal:{name:'RSI Reversal',tag:'Mean reversion',
+    entry:[{left:{id:'rsi',p:{period:14}},cond:'is_less_than',right:{type:'value',value:30}}],
+    exit:[{left:{id:'rsi',p:{period:14}},cond:'is_greater_than',right:{type:'value',value:70}}]},
+  macd_signal:{name:'MACD Signal',tag:'Momentum',
+    entry:[{left:{id:'macd_line',p:{fast:12,slow:26,signal:9}},cond:'crosses_above',right:{type:'indicator',id:'macd_signal',p:{fast:12,slow:26,signal:9}}}],
+    exit:[{left:{id:'macd_line',p:{fast:12,slow:26,signal:9}},cond:'crosses_below',right:{type:'indicator',id:'macd_signal',p:{fast:12,slow:26,signal:9}}}]},
+  bb_bounce:{name:'BB Bounce',tag:'Volatility',
+    entry:[{left:{id:'close'},cond:'is_below',right:{type:'indicator',id:'bb_lower',p:{period:20,std:2}}}],
+    exit:[{left:{id:'close'},cond:'is_above',right:{type:'indicator',id:'bb_upper',p:{period:20,std:2}}}]},
+  momentum:{name:'Momentum Break',tag:'Breakout',
+    entry:[{left:{id:'roc',p:{period:10}},cond:'is_greater_than',right:{type:'value',value:5}}],
+    exit:[{left:{id:'roc',p:{period:10}},cond:'is_less_than',right:{type:'value',value:-5}}]},
+};
+let _studioOpenCards = {setup:true, templates:true, entry:true, exit:true, risk:false, custom_ind:false};
+let _studioCustomInds = []; // cached list of custom indicators
+let _studioPickerTarget = null; // {section, idx, side}
+let _studioLimit = 1260;
+
+function _sCard(id, icon, iconBg, title, summary, bodyHtml, open) {
+  const arrow = open ? '&#9662;' : '&#9656;';
+  return `<div class="studio-card" id="sc-${id}">
+    <div class="studio-card-head" onclick="studioToggleCard('${id}')">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;background:${iconBg};flex-shrink:0">${icon}</span>
+        <div><div style="font-size:14px;font-weight:600">${title}</div><div style="font-size:11px;color:var(--text-muted)">${summary}</div></div>
+      </div>
+      <span style="font-size:14px;color:var(--text-muted)" id="sc-arrow-${id}">${arrow}</span>
+    </div>
+    <div class="studio-card-body" id="sc-body-${id}" ${open?'':'hidden'}>${bodyHtml}</div>
+  </div>`;
 }
 
-function disconnectBroker() {
-  if (!confirm('Disconnect LongPort? You will need to re-enter credentials to reconnect.')) return;
-  // Clear LP state — keep EMAIL/UNAME
-  localStorage.removeItem('lp_connected');
-  localStorage.removeItem('lp_app_key');
-  localStorage.removeItem('lp_app_secret');
-  localStorage.removeItem('lp_access_token');
-  document.getElementById('lp-connected').style.display = 'none';
-  document.getElementById('lp-form').style.display = '';
-  document.getElementById('lp-appkey').value = '';
-  document.getElementById('lp-appsecret').value = '';
-  document.getElementById('lp-token').value = '';
-  document.getElementById('lp-test-result').textContent = '';
-  showToast('LongPort disconnected', 'info');
+function studioToggleCard(id) {
+  const body = document.getElementById('sc-body-'+id);
+  const arrow = document.getElementById('sc-arrow-'+id);
+  if (!body) return;
+  const open = body.hasAttribute('hidden');
+  if (open) { body.removeAttribute('hidden'); if(arrow) arrow.innerHTML='&#9662;'; }
+  else { body.setAttribute('hidden',''); if(arrow) arrow.innerHTML='&#9656;'; }
+  _studioOpenCards[id] = open;
 }
+
+function _sIndName(id, p) {
+  if (!id) return '?';
+  const name = (id||'').toUpperCase();
+  const pv = Object.values(p||{});
+  return pv.length ? name+'('+pv.join(',')+')' : name;
+}
+
+function _sRuleSummary(c) {
+  const lbl = BLDR_COND_LABELS[c.cond] || c.cond;
+  const left = _sIndName(c.left?.id, c.left?.p);
+  const right = c.right?.type==='value' ? String(c.right.value) : _sIndName(c.right?.id, c.right?.p);
+  return left + ' ' + lbl + ' ' + right;
+}
+
+function _sSectionSummary(section) {
+  const conds = STUDIO[section]?.conditions || [];
+  if (!conds.length) return 'No rules yet';
+  return conds.map(c => _sRuleSummary(c)).join(STUDIO[section].logic==='AND'?' AND ':' OR ');
+}
+
+function studioPlainEnglish() {
+  const sym = STUDIO.symbol || '[select symbol]';
+  const tf = STUDIO.timeframe || '1day';
+  const entry = _sSectionSummary('entry_long');
+  const exit = _sSectionSummary('exit_long');
+  const sl = STUDIO.risk.stop_loss_pct;
+  const tp = STUDIO.risk.take_profit_pct;
+  return `<strong>Buy</strong> ${esc(sym)} on the <strong>${tf}</strong> chart when ${esc(entry)}.<br>`
+    + `<strong>Sell</strong> when ${esc(exit)}.<br>`
+    + `Stop loss at <strong>${sl}%</strong>, take profit at <strong>${tp}%</strong>, `
+    + `starting with <strong>$${(STUDIO.risk.capital||10000).toLocaleString()}</strong>.`;
+}
+
+function _sRuleRows(section) {
+  const conds = STUDIO[section]?.conditions || [];
+  const ro = STUDIO._readOnly;
+  if (!conds.length) return '<div style="padding:12px 0;text-align:center;color:var(--text-muted);font-size:12px">No rules yet</div>';
+  return conds.map((c,i) => {
+    const click = ro ? '' : ' onclick="_studioOpenRuleEditor(\''+section+'\','+i+')"';
+    const badge = i===0 ? '<span class="studio-chip studio-chip-gray">IF</span>' : '<span class="studio-chip studio-chip-gray">' + (STUDIO[section].logic) + '</span>';
+    const left = '<span class="studio-chip studio-chip-blue"' + click + ' title="Click to edit">' + esc(_sIndName(c.left?.id, c.left?.p)) + '</span>';
+    const cond = '<span class="studio-chip studio-chip-orange"' + click + '>' + esc(BLDR_COND_LABELS[c.cond]||c.cond) + '</span>';
+    const right = c.right?.type==='value'
+      ? '<span class="studio-chip studio-chip-green"' + click + '>' + c.right.value + '</span>'
+      : '<span class="studio-chip studio-chip-blue"' + click + '>' + esc(_sIndName(c.right?.id, c.right?.p)) + '</span>';
+    const del = ro ? '' : '<span onclick="event.stopPropagation();studioDeleteRule(\''+section+'\','+i+')" style="cursor:pointer;color:var(--text-muted);font-size:14px;margin-left:auto" title="Remove">&times;</span>';
+    return '<div class="studio-rule-row">' + badge + left + cond + right + del + '</div>';
+  }).join('');
+}
+
+function _sSetupBody() {
+  return `<div class="form-group"><label>Strategy Name</label><input type="text" value="${esc(STUDIO.name)}" onchange="STUDIO.name=this.value" style="max-width:280px"></div>
+    <div class="form-group"><label>Symbol</label><div style="position:relative;max-width:280px"><input type="text" id="studio-symbol" value="${esc(STUDIO.symbol)}" placeholder="Search: AAPL, Tencent, 700..." autocomplete="off" oninput="searchTickers(this,'studio')" onfocus="searchTickers(this,'studio')" onchange="STUDIO.symbol=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();studioValidateSymbol(this.value)}" onblur="studioValidateSymbol(this.value)"><div id="ticker-dropdown-studio" class="ticker-dropdown"></div></div><div id="studio-symbol-confirm" style="display:${STUDIO._symbolInfo?'flex':'none'};margin-top:6px;padding:6px 10px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:6px;font-size:12px;color:#166534;align-items:center;gap:8px"><span>&#10003;</span><span id="studio-symbol-confirm-text">${STUDIO._symbolInfo||''}</span><span onclick="studioSymbolClear()" style="margin-left:auto;cursor:pointer;color:#6B7280">&#10005;</span></div></div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr;max-width:280px">
+      <div class="form-group"><label>Timeframe</label><select onchange="STUDIO.timeframe=this.value;studioUpdatePills()">${['1min','5min','15min','30min','1hour','1day','1week'].map(t=>'<option value="'+t+'"'+(STUDIO.timeframe===t?' selected':'')+'>'+t.replace('min','m').replace('hour','h').replace('day','d').replace('week','W')+'</option>').join('')}</select></div>
+      <div class="form-group"><label>Direction</label><select onchange="STUDIO.direction=this.value;studioRender()"><option value="long"${STUDIO.direction==='long'?' selected':''}>Long only</option><option value="short"${STUDIO.direction==='short'?' selected':''}>Short only</option><option value="both"${STUDIO.direction==='both'?' selected':''}>Long + Short</option></select></div>
+    </div>`;
+}
+
+function _sTemplateBody() {
+  const ro = STUDIO._readOnly;
+  if (ro) return '<div style="font-size:12px;color:var(--text-muted)">Templates not available in read-only view</div>';
+  return '<div style="display:flex;flex-wrap:wrap;gap:6px">' + Object.entries(STUDIO_TEMPLATES).map(([k,t]) =>
+    `<button onclick="studioSelectTemplate('${k}')" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:12px;cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='#3B82F6'" onmouseout="this.style.borderColor='var(--border)'">`
+    + `<div style="font-weight:600">${esc(t.name)}</div><div style="font-size:10px;color:var(--text-muted)">${esc(t.tag)}</div></button>`
+  ).join('') + '</div>';
+}
+
+function _sCustomIndBody() {
+  const catColors = {trend:'#1D4ED8',momentum:'#7C3AED',volatility:'#C2410C',volume:'#15803D',custom:'#6B7280'};
+  let html = '';
+  if (_studioCustomInds.length) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">';
+    _studioCustomInds.forEach(ind => {
+      const col = catColors[ind.category] || catColors.custom;
+      html += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;background:' + col + '10;color:' + col + ';border:1px solid ' + col + '30">'
+        + '<span style="width:6px;height:6px;border-radius:50%;background:' + col + '"></span>'
+        + esc(ind.display_name || ind.name)
+        + '<span onclick="event.stopPropagation();studioDeleteCustomInd(\'' + esc(ind.indicator_id) + '\')" style="cursor:pointer;margin-left:2px;opacity:.5" title="Remove">&times;</span>'
+        + '</span>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">No custom indicators loaded. Upload a .quantx file to add one.</div>';
+  }
+  html += '<div id="studio-ind-upload-msg" style="display:none;margin-bottom:8px;padding:8px 12px;border-radius:6px;font-size:12px"></div>';
+  html += '<div style="display:flex;gap:6px">';
+  html += '<label class="btn btn-primary btn-sm" style="cursor:pointer;flex:1;justify-content:center"><input type="file" accept=".quantx,.json" onchange="studioUploadQuantx(this)" style="display:none"> Upload .quantx</label>';
+  html += '<button class="btn btn-outline btn-sm" onclick="openRegisterIndicatorModal()" style="flex:1">+ Code</button>';
+  html += '</div>';
+  return html;
+}
+
+function _sRiskBody() {
+  const r = STUDIO.risk;
+  const useTrail = r.trailing_stop_enabled;
+  return `<div class="form-row" style="grid-template-columns:1fr 1fr 1fr;max-width:400px;margin-bottom:10px">
+    <div class="form-group"><label style="font-size:11px">Take Profit %</label><input type="number" value="${r.take_profit_pct}" step="0.5" onchange="STUDIO.risk.take_profit_pct=parseFloat(this.value);studioRenderRight()"></div>
+    <div class="form-group"><label style="font-size:11px">Capital $</label><input type="number" value="${r.capital}" step="1000" onchange="STUDIO.risk.capital=parseFloat(this.value);studioRenderRight()"></div>
+  </div>
+  <div style="margin-bottom:10px">
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:500">Stop Loss Type</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button onclick="STUDIO.risk.trailing_stop_enabled=false;studioRender()" style="font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid ${!useTrail?'#1E40AF':'var(--border)'};background:${!useTrail?'#1E40AF':'var(--surface-2)'};color:${!useTrail?'white':'var(--text-muted)'};cursor:pointer;font-family:inherit">Fixed stop loss</button>
+      <button onclick="STUDIO.risk.trailing_stop_enabled=true;studioRender()" style="font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid ${useTrail?'#1E40AF':'var(--border)'};background:${useTrail?'#1E40AF':'var(--surface-2)'};color:${useTrail?'white':'var(--text-muted)'};cursor:pointer;font-family:inherit">Trailing stop</button>
+    </div>
+    ${!useTrail ? `<div style="display:flex;align-items:center;gap:6px"><input type="number" value="${r.stop_loss_pct}" step="0.5" min="0.1" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px" onchange="STUDIO.risk.stop_loss_pct=parseFloat(this.value);studioRenderRight()"><span style="font-size:12px;color:var(--text-muted)">% below entry</span></div>` : `<div style="display:flex;align-items:center;gap:6px"><input type="number" value="${r.trailing_stop_pct||2}" step="0.5" min="0.1" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px" onchange="STUDIO.risk.trailing_stop_pct=parseFloat(this.value);studioRenderRight()"><span style="font-size:12px;color:var(--text-muted)">% trail from peak</span></div>`}
+  </div>`;
+}
+
+function _sRulesBody(section) {
+  const ro = STUDIO._readOnly;
+  let html = _sRuleRows(section);
+  html += (ro ? '' : '<button class="studio-add-rule" onclick="_studioOpenRuleEditor(\''+section+'\',-1)">+ Add rule</button>');
+  html += '<div id="studio-editor-'+section+'"></div>';
+  return html;
+}
+
+function studioRenderRight() {
+  const right = document.getElementById('studio-right');
+  if (!right) return;
+  // Summary
+  let html = '<div class="studio-card"><div style="padding:12px 16px"><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">STRATEGY SUMMARY</div><div class="studio-summary-box">' + studioPlainEnglish() + '</div></div></div>';
+  // Period pills
+  html += '<div class="studio-card"><div style="padding:12px 16px"><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">BACKTEST PERIOD</div><div id="studio-period-pills" style="display:flex;flex-wrap:wrap;gap:6px"></div></div></div>';
+  // Realism settings
+  const commLabel = STUDIO.commission_mode === 'flat' ? '$'+STUDIO.commission_flat+' flat' : STUDIO.commission_pct+'%';
+  const isPct = STUDIO.commission_mode === 'pct';
+  const trailLabel = ''; // trailing stop shown in Risk Management card
+  html += '<details open style="margin-bottom:10px"><summary id="studio-realism-summary" style="font-size:12px;color:var(--text-muted);cursor:pointer;padding:6px 0">Realism: Commission ' + commLabel + ' / Slippage ' + STUDIO.slippage_pct + '%' + trailLabel + '</summary>'
+    + '<div style="display:flex;gap:12px;margin-top:6px;padding:4px 0;align-items:flex-end">'
+    + '<div><div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">Commission</div>'
+    + '<div style="display:flex;gap:4px;margin-bottom:6px">'
+    + '<button id="comm-mode-pct" onclick="setCommMode(\'pct\')" style="font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid '+(isPct?'#1E40AF':'var(--border)')+';background:'+(isPct?'#1E40AF':'var(--surface-2)')+';color:'+(isPct?'#fff':'var(--text-muted)')+';cursor:pointer;font-family:inherit">%</button>'
+    + '<button id="comm-mode-flat" onclick="setCommMode(\'flat\')" style="font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid '+(!isPct?'#1E40AF':'var(--border)')+';background:'+(!isPct?'#1E40AF':'var(--surface-2)')+';color:'+(!isPct?'#fff':'var(--text-muted)')+';cursor:pointer;font-family:inherit">$ flat</button>'
+    + '</div>'
+    + '<div style="display:flex;align-items:center;gap:4px"><input type="number" id="studio-commission" value="'+(isPct?STUDIO.commission_pct:STUDIO.commission_flat)+'" step="'+(isPct?'0.01':'1')+'" min="0" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="_studioCommChange(this.value)"><span id="comm-unit" style="font-size:12px;color:var(--text-muted)">'+(isPct?'%':'$')+'</span></div></div>'
+    + '<div><div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">Slippage %</div><input type="number" id="studio-slippage" value="'+STUDIO.slippage_pct+'" step="0.01" min="0" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="STUDIO.slippage_pct=parseFloat(this.value)||0"></div>'
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text-muted);margin-top:6px">HK ~0.13% \u00B7 US ~$0 \u00B7 <span style="color:#3B82F6;cursor:pointer" onclick="studioSetPreset(\'hk\')">HK preset</span> \u00B7 <span style="color:#3B82F6;cursor:pointer" onclick="studioSetPreset(\'us\')">US preset</span></div>'
+    + '</details>';
+  // Run button
+  html += '<button class="btn btn-primary" onclick="studioRunBacktest()" style="width:100%;margin-bottom:10px" id="studio-run-btn">Run Backtest</button>';
+  // Results
+  if (STUDIO.last_backtest) {
+    const m = STUDIO.last_backtest.metrics || {};
+    const mf = v => v!==undefined&&v!==null ? (typeof v==='number'?v.toFixed(1):v) : '--';
+    const cagrVal = m.cagr_pct !== undefined ? m.cagr_pct : m.total_return_pct;
+    const cagrCls = (cagrVal||0) >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+    const cagrSign = (cagrVal||0) >= 0 ? '+' : '';
+    html += `<div class="studio-card"><div style="padding:12px 16px">
+      <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">RESULTS</div>
+      <div class="studio-metric-grid">
+        <div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">CAGR</div><div style="font-size:18px;font-weight:700;${cagrCls}">${cagrSign}${mf(cagrVal)}%</div></div>
+        <div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Sharpe</div><div style="font-size:18px;font-weight:700">${mf(m.sharpe_ratio)}</div></div>
+        <div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Win Rate</div><div style="font-size:18px;font-weight:700">${mf(m.win_rate_pct)}%</div></div>
+        <div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Drawdown</div><div style="font-size:18px;font-weight:700;color:var(--red)">${mf(m.max_drawdown_pct)}%</div></div>
+      </div>
+      <div style="text-align:center;margin-top:8px"><a href="#" onclick="event.preventDefault();studioShowFullResults()" style="font-size:12px;color:var(--blue-primary)">View full results &#8599;</a></div>
+      ${((m.cagr_pct||m.total_return_pct||0) < 10 || (m.sharpe_ratio||0) < 1) ? '<div style="font-size:11px;color:#7C3AED;margin-top:8px;text-align:center">&#128161; Try optimizing to find better parameters &#8594;</div>' : ''}
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+        <button onclick="studioDeployFromResults()" style="width:100%;padding:11px;background:#15803D;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit">Deploy Live</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div style="display:flex;flex-direction:column;gap:2px"><button onclick="studioOpenOptimize()" style="width:100%;padding:9px;background:#5B21B6;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Optimize &#8599;</button><div style="font-size:10px;color:var(--text-muted);text-align:center">Find best parameters</div></div>
+          <div style="display:flex;flex-direction:column;gap:2px"><button onclick="studioShareLink()" style="width:100%;padding:9px;background:var(--surface-2);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">Share &#8599;</button><div style="font-size:10px;color:var(--text-muted);text-align:center">Copy shareable link</div></div>
+        </div>
+      </div>
+    </div></div>`;
+  }
+  right.innerHTML = html;
+  studioUpdatePills();
+}
+
+function studioRender() {
+  const left = document.getElementById('studio-left');
+  const banner = document.getElementById('studio-banner');
+  if (!left) return;
+  // Read-only banner
+  if (banner) {
+    banner.innerHTML = STUDIO._readOnly
+      ? '<div class="studio-read-only-banner"><span>Viewing shared strategy: <strong>' + esc(STUDIO._sharedBy||STUDIO.name) + '</strong></span><button class="btn btn-primary btn-sm" onclick="STUDIO._readOnly=false;studioRender()">Clone to my account</button></div>'
+      : '';
+  }
+  // Left column cards
+  let html = '';
+  html += _sCard('setup','&#9881;&#65039;','#EFF6FF','Setup', esc(STUDIO.symbol||'Select symbol') + ' / ' + STUDIO.timeframe, _sSetupBody(), _studioOpenCards.setup);
+  html += _sCard('templates','&#10024;','#FEF3C7','Templates', 'Start from a proven strategy', _sTemplateBody(), _studioOpenCards.templates);
+  const custCount = _studioCustomInds.length;
+  html += _sCard('custom_ind','&#128300;','#F5F3FF','Custom Indicators', custCount ? custCount + ' loaded' : 'None loaded', _sCustomIndBody(), _studioOpenCards.custom_ind || false);
+  if (STUDIO.direction !== 'short') {
+    html += _sCard('entry','&#9989;','#F0FDF4','Long Entry Rules', _sSectionSummary('entry_long'), _sRulesBody('entry_long'), _studioOpenCards.entry);
+    html += _sCard('exit','&#10060;','#FEF2F2','Long Exit Rules', _sSectionSummary('exit_long'), _sRulesBody('exit_long'), _studioOpenCards.exit);
+  }
+  if (STUDIO.direction === 'both' || STUDIO.direction === 'short') {
+    html += _sCard('entry_short','&#128309;','#FEF2F2','Short Entry Rules', _sSectionSummary('entry_short'), _sRulesBody('entry_short'), _studioOpenCards.entry_short || true);
+    html += _sCard('exit_short','&#128994;','#FFF7ED','Short Exit Rules', _sSectionSummary('exit_short'), _sRulesBody('exit_short'), _studioOpenCards.exit_short || true);
+  }
+  html += _sCard('risk','&#128737;','#F5F3FF','Risk Management', 'SL '+STUDIO.risk.stop_loss_pct+'% / TP '+STUDIO.risk.take_profit_pct+'%', _sRiskBody(), _studioOpenCards.risk);
+  left.innerHTML = html;
+  studioRenderRight();
+  // Re-render editor if one is open
+  if (_studioEditorDraft && _studioEditorSection) {
+    _studioRenderEditor();
+  }
+}
+
+function studioSelectTemplate(key) {
+  const t = STUDIO_TEMPLATES[key];
+  if (!t) return;
+  STUDIO.name = t.name;
+  STUDIO.entry_long.conditions = JSON.parse(JSON.stringify(t.entry));
+  STUDIO.exit_long.conditions = JSON.parse(JSON.stringify(t.exit));
+  _studioOpenCards.templates = false;
+  _studioOpenCards.entry = true;
+  studioRender();
+  showToast('Template loaded: ' + t.name, 'success');
+}
+
+function studioDeleteRule(section, idx) {
+  STUDIO[section].conditions.splice(idx, 1);
+  studioRender();
+}
+
+// ── Inline rule editor ────────────────────────────────────────────────────
+function _studioFindInd(id) {
+  // Handle output-indexed ids like "vortex_out0" -> find "vortex" with _outputIdx=0
+  const outMatch = id.match(/^(.+)_out(\d+)$/);
+  const baseId = outMatch ? outMatch[1] : id;
+  const outIdx = outMatch ? parseInt(outMatch[2]) : null;
+  for (const g of BLDR_INDICATORS) {
+    const f = g.items.find(i => i.id === baseId);
+    if (f) {
+      if (outIdx !== null) {
+        return {...f, id: id, _outputIdx: outIdx,
+          name: f.name + ' [' + ((f._outputLabels||[])[outIdx]||outIdx) + ']'};
+      }
+      return f;
+    }
+  }
+  if (['close','open','high','low','volume'].includes(id)) return {id, name:id.charAt(0).toUpperCase()+id.slice(1), p:[]};
+  return null;
+}
+
+function _studioIndOptions(selectedId) {
+  let html = ['close','open','high','low'].map(p =>
+    '<option value="'+p+'"'+(p===selectedId?' selected':'')+'>'+p.charAt(0).toUpperCase()+p.slice(1)+'</option>'
+  ).join('');
+  BLDR_INDICATORS.forEach(g => {
+    html += '<optgroup label="'+esc(g.group)+'">';
+    g.items.forEach(i => {
+      // For dual/triple/multi output indicators, show separate options per output line
+      if (i._outputType && i._outputType !== 'single' && i._outputLabels && i._outputLabels.length > 1) {
+        i._outputLabels.forEach((label, idx) => {
+          const optId = i.id + '_out' + idx;
+          html += '<option value="'+optId+'"'+(optId===selectedId?' selected':'')+'>'+esc(i.name)+' ['+esc(label)+']</option>';
+        });
+      } else {
+        html += '<option value="'+i.id+'"'+(i.id===selectedId?' selected':'')+'>'+esc(i.name)+'</option>';
+      }
+    });
+    html += '</optgroup>';
+  });
+  return html;
+}
+
+function _studioOpenRuleEditor(section, idx) {
+  _studioEditorSection = section;
+  _studioEditorIdx = idx;
+  if (idx === -1) {
+    _studioEditorDraft = {left:{id:'ema',p:{period:20}}, cond:'crosses_above', right:{type:'indicator',id:'ema',p:{period:50}}};
+  } else {
+    _studioEditorDraft = JSON.parse(JSON.stringify(STUDIO[section].conditions[idx]));
+  }
+  _studioRenderEditor();
+}
+
+function _studioRenderEditor() {
+  const container = document.getElementById('studio-editor-' + _studioEditorSection);
+  if (!container || !_studioEditorDraft) return;
+  const d = _studioEditorDraft;
+  const rightIsValue = d.right?.type === 'value';
+  container.innerHTML = `<div class="studio-rule-editor">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px">${_studioEditorIdx===-1?'Add':'Edit'} rule</div>
+    <div style="margin-bottom:10px"><div class="lbl">Indicator</div>
+      <select id="sre-left-ind" onchange="_studioEditorUpdateLeft(this.value)">${_studioIndOptions(d.left?.id||'ema')}</select>
+      <div id="sre-left-params"></div>
+    </div>
+    <div style="margin-bottom:10px"><div class="lbl">Condition</div>
+      <select id="sre-cond" onchange="_studioEditorDraft.cond=this.value">
+        ${BLDR_CONDITIONS.map(c => '<option value="'+c+'"'+(c===d.cond?' selected':'')+'>'+(BLDR_COND_LABELS[c]||c)+'</option>').join('')}
+      </select>
+    </div>
+    <div style="margin-bottom:12px"><div class="lbl">Compare to</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button class="sre-toggle${rightIsValue?'':' active'}" id="sre-right-ind-btn" onclick="_studioEditorSetRightType('indicator')">Indicator</button>
+        <button class="sre-toggle${rightIsValue?' active':''}" id="sre-right-val-btn" onclick="_studioEditorSetRightType('value')">Fixed value</button>
+      </div>
+      <div id="sre-right-ind-section" style="${rightIsValue?'display:none':''}">
+        <select id="sre-right-ind" onchange="_studioEditorUpdateRight(this.value)">${_studioIndOptions(d.right?.id||'ema')}</select>
+        <div id="sre-right-params"></div>
+      </div>
+      <div id="sre-right-val-section" style="${rightIsValue?'':'display:none'}">
+        <input type="number" id="sre-right-val" value="${d.right?.value||0}" onchange="_studioEditorDraft.right.value=parseFloat(this.value)" style="width:120px">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="_studioEditorCancel()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="_studioEditorSave()">Save rule</button>
+    </div>
+  </div>`;
+  _studioRenderParams('sre-left-params', d.left?.id, d.left?.p, 'left');
+  if (!rightIsValue) _studioRenderParams('sre-right-params', d.right?.id, d.right?.p, 'right');
+}
+
+function _studioRenderParams(containerId, indId, currentParams, draftKey) {
+  const ind = _studioFindInd(indId);
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!ind || !ind.p || !ind.p.length) { el.innerHTML = ''; return; }
+  el.innerHTML = ind.p.map(param => {
+    const val = (currentParams||{})[param.k] ?? param.d;
+    return '<div style="display:inline-flex;align-items:center;gap:6px;margin-right:12px;margin-top:6px">'
+      + '<label style="font-size:11px;color:var(--text-muted)">'+esc(param.k)+'</label>'
+      + '<input type="number" value="'+val+'" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px"'
+      + ' onchange="_studioEditorDraft.'+draftKey+'.p=_studioEditorDraft.'+draftKey+'.p||{};_studioEditorDraft.'+draftKey+'.p[\''+param.k+'\']=parseFloat(this.value)">'
+      + '</div>';
+  }).join('');
+}
+
+function _studioEditorUpdateLeft(indId) {
+  _studioEditorDraft.left.id = indId;
+  const ind = _studioFindInd(indId);
+  _studioEditorDraft.left.p = {};
+  if (ind && ind.p) ind.p.forEach(p => _studioEditorDraft.left.p[p.k] = p.d);
+  _studioRenderParams('sre-left-params', indId, _studioEditorDraft.left.p, 'left');
+}
+
+function _studioEditorUpdateRight(indId) {
+  _studioEditorDraft.right.id = indId;
+  _studioEditorDraft.right.type = 'indicator';
+  const ind = _studioFindInd(indId);
+  _studioEditorDraft.right.p = {};
+  if (ind && ind.p) ind.p.forEach(p => _studioEditorDraft.right.p[p.k] = p.d);
+  _studioRenderParams('sre-right-params', indId, _studioEditorDraft.right.p, 'right');
+}
+
+function _studioEditorSetRightType(type) {
+  if (type === 'value') {
+    _studioEditorDraft.right = {type:'value', value:_studioEditorDraft.right?.value||0};
+  } else {
+    _studioEditorDraft.right = {type:'indicator', id:'ema', p:{period:50}};
+  }
+  document.getElementById('sre-right-ind-section').style.display = type==='indicator'?'':'none';
+  document.getElementById('sre-right-val-section').style.display = type==='value'?'':'none';
+  document.getElementById('sre-right-ind-btn').classList.toggle('active', type==='indicator');
+  document.getElementById('sre-right-val-btn').classList.toggle('active', type==='value');
+}
+
+function _studioEditorSave() {
+  if (!_studioEditorDraft) return;
+  if (_studioEditorIdx === -1) {
+    STUDIO[_studioEditorSection].conditions.push(JSON.parse(JSON.stringify(_studioEditorDraft)));
+  } else {
+    STUDIO[_studioEditorSection].conditions[_studioEditorIdx] = JSON.parse(JSON.stringify(_studioEditorDraft));
+  }
+  _studioEditorSection = ''; _studioEditorIdx = -1; _studioEditorDraft = null;
+  studioRender();
+}
+
+function _studioEditorCancel() {
+  _studioEditorSection = ''; _studioEditorIdx = -1; _studioEditorDraft = null;
+  studioRender();
+}
+
+function studioUpdateSummary() { studioRenderRight(); }
+
+function _studioCommChange(val) {
+  const v = parseFloat(val) || 0;
+  if (STUDIO.commission_mode === 'flat') STUDIO.commission_flat = v;
+  else STUDIO.commission_pct = v;
+}
+
+function setCommMode(mode) {
+  STUDIO.commission_mode = mode;
+  studioRenderRight();
+}
+
+function studioSetPreset(market) {
+  if (market === 'hk') { STUDIO.commission_mode='pct'; STUDIO.commission_pct=0.13; STUDIO.slippage_pct=0.1; }
+  else { STUDIO.commission_mode='pct'; STUDIO.commission_pct=0.01; STUDIO.slippage_pct=0.05; }
+  studioRenderRight();
+  showToast(market==='hk'?'HK preset applied':'US preset applied','success');
+}
+
+function _studioShowSymbolConfirm(symbol, name, lot) {
+  const info = (name ? esc(name) + ' \u00B7 ' : '') + esc(symbol) + (lot ? ' \u00B7 Lot: ' + lot : '');
+  STUDIO._symbolInfo = info;
+  const el = document.getElementById('studio-symbol-confirm');
+  const txt = document.getElementById('studio-symbol-confirm-text');
+  if (el) el.style.display = 'flex';
+  if (txt) txt.innerHTML = info;
+}
+
+function studioSymbolClear() {
+  STUDIO.symbol = '';
+  STUDIO._symbolInfo = '';
+  const inp = document.getElementById('studio-symbol');
+  if (inp) inp.value = '';
+  const el = document.getElementById('studio-symbol-confirm');
+  if (el) el.style.display = 'none';
+  studioRenderRight();
+}
+
+async function studioValidateSymbol(val) {
+  const v = (val||'').trim().toUpperCase();
+  if (!v || !EMAIL) return;
+  if (v === STUDIO.symbol) return; // already set
+  // If valid format, accept directly
+  if (v.endsWith('.US') || v.endsWith('.HK') || v.endsWith('.SI')) {
+    STUDIO.symbol = v; studioRenderRight(); return;
+  }
+  // Try LP validation
+  try {
+    const r = await fetch(API + '/api/ticker/validate?symbol=' + encodeURIComponent(v) + '&email=' + encodeURIComponent(EMAIL));
+    const d = await r.json();
+    if (d.valid && d.result) {
+      STUDIO.symbol = d.result.symbol;
+      const inp = document.getElementById('studio-symbol');
+      if (inp) inp.value = d.result.symbol;
+      _studioShowSymbolConfirm(d.result.symbol, d.result.name||'', d.result.lot||1);
+      studioRenderRight();
+      showToast('Found: ' + (d.result.name||'') + ' (' + d.result.symbol + ')', 'success');
+    }
+  } catch(e) { /* validation failed, keep as-is */ }
+}
+
+function studioNew() {
+  STUDIO.name = 'My Strategy';
+  STUDIO.symbol = '';
+  STUDIO.timeframe = '1day';
+  STUDIO.entry_long = {conditions:[],logic:'AND'};
+  STUDIO.exit_long = {conditions:[],logic:'OR'};
+  STUDIO.entry_short = {conditions:[],logic:'AND'};
+  STUDIO.exit_short = {conditions:[],logic:'OR'};
+  STUDIO.risk = {stop_loss_pct:3, take_profit_pct:8, capital:10000, trailing_stop_enabled:false, trailing_stop_pct:2};
+  STUDIO.commission_pct = 0.1; STUDIO.slippage_pct = 0.05;
+  STUDIO.commission_mode = 'pct'; STUDIO.commission_flat = 0;
+  STUDIO._symbolInfo = '';
+  STUDIO.last_backtest = null;
+  STUDIO._readOnly = false;
+  STUDIO._sharedBy = '';
+  _studioOpenCards = {setup:true, templates:true, entry:true, exit:true, risk:false};
+  studioRender();
+}
+
+function studioUpdatePills() {
+  const container = document.getElementById('studio-period-pills');
+  if (!container) return;
+  const tf = STUDIO.timeframe || '1day';
+  const src = DATA_DEPTH.longport[tf] || DATA_DEPTH.longport['1day'];
+  const pills = PERIOD_DEFS.map(p => {
+    const enabled = p.months === 0 || src.months >= p.months;
+    const label = p.key === 'Max' ? 'Max (' + _monthsLabel(src.months) + ')' : p.key;
+    const limit = p.key === 'Max' ? src.bars : p.bars;
+    const cls = enabled ? 'filter-pill has-data' : 'filter-pill disabled';
+    return '<span class="' + cls + '"'
+      + (enabled ? ' onclick="studioSetPeriod('+limit+',this)"' : ' title="Only '+src.label+' available"')
+      + (limit === _studioLimit ? ' style="background:#166534;color:#fff;border-color:#166534"' : '')
+      + '>' + label + '</span>';
+  });
+  container.innerHTML = pills.join('');
+}
+
+function studioSetPeriod(limit, el) {
+  _studioLimit = limit;
+  studioUpdatePills();
+}
+
+function _studioGenerateScript(mode) {
+  // Unified script generator.
+  // mode='standalone': includes param declarations (for single backtest)
+  // mode='sweep': NO declarations — server prepends combo values before the script
+  //
+  // KEY INSIGHT: var names like "rsi_14" are always based on ORIGINAL literal params.
+  // In sweep mode the CALC call uses the variable key name (e.g. rsi_0_period)
+  // so that when server prepends "rsi_0_period = 7", the calc reads the right value.
+  const isSweep = mode === 'sweep';
+  const allParams = _studioExtractParams();
+
+  // Build lookup: "ind_param_value" -> paramKey (e.g. "rsi_period_14" -> "rsi_0_period")
+  const paramKeyByValue = {};
+  allParams.forEach(p => {
+    if (!p.isRisk) paramKeyByValue[p.ind + '_' + p.param + '_' + p.current] = p.key;
+  });
+
+  // In sweep mode, ALL indicator params get substituted with their variable key name.
+  // (The server prepends the combo values, so every tunable param must be a variable.)
+  // In standalone mode, params are declared at top so also use variable names.
+  // Result: calc_rsi(close, rsi_0_period) in both modes.
+  // Declarations are only emitted in standalone mode.
+
+  // Param declarations for standalone mode
+  let declLines = [];
+  if (!isSweep) {
+    allParams.forEach(p => {
+      if (!p.isRisk) declLines.push(p.key + ' = ' + p.current);
+    });
+    declLines.push('stop_loss_pct = ' + (STUDIO.risk.stop_loss_pct || 3));
+    declLines.push('take_profit_pct = ' + (STUDIO.risk.take_profit_pct || 8));
+    declLines.push('trail_pct = ' + (STUDIO.risk.trailing_stop_enabled ? (STUDIO.risk.trailing_stop_pct || 2) : 0));
+  }
+
+  // Walk all conditions. For each indicator, build:
+  //   varName  = _bldrGenVar with ORIGINAL literal params (e.g. "rsi_14")
+  //   calcCall = _bldrGenCalc with SUBSTITUTED param keys (e.g. calc_rsi(close, rsi_0_period))
+  const vars = new Map(); // varName -> calcCall
+  const allConds = [
+    ...(STUDIO.entry_long.conditions||[]),
+    ...(STUDIO.exit_long.conditions||[]),
+    ...(STUDIO.entry_short.conditions||[]),
+    ...(STUDIO.exit_short.conditions||[]),
+  ];
+
+  allConds.forEach(c => {
+    [c.left, c.right].forEach(side => {
+      if (!side || !side.id || side.type === 'value') return;
+      if (['close','open','high','low','volume'].includes(side.id)) return;
+      // Variable name uses ORIGINAL params (literal values) — this is the key fix.
+      const vn = _bldrGenVar(side.id, side.p);
+      if (vars.has(vn)) return;
+      // Calc call uses SUBSTITUTED params (variable key names where available)
+      const calcP = {};
+      for (const [pk, pv] of Object.entries(side.p || {})) {
+        const pKey = paramKeyByValue[side.id + '_' + pk + '_' + pv];
+        // Use variable name if we have a mapping (both sweep and standalone)
+        calcP[pk] = pKey ? pKey : pv;
+      }
+      vars.set(vn, _bldrGenCalc(side.id, calcP));
+    });
+  });
+
+  // Build the Python script
+  let code = '';
+  if (declLines.length) code += declLines.join('\n') + '\n\n';
+  code += 'def generate_signals(df):\n';
+  code += '    close = list(df["close"])\n';
+  code += '    high = list(df["high"])\n';
+  code += '    low = list(df["low"])\n';
+  code += '    vol = list(df["volume"])\n';
+  code += '    open_ = list(df["open"])\n';
+  code += '    n = len(close)\n    signals = [0] * n\n\n';
+  vars.forEach((calc, vn) => { code += '    ' + vn + ' = ' + calc + '\n'; });
+  code += '\n    in_position = False\n';
+  code += '    for i in range(1, n):\n';
+  const allVars = [...vars.keys()];
+  if (allVars.length) {
+    code += '        if any(v is None for v in [' + allVars.map(v => v + '[i]').join(', ') + ']): continue\n';
+    code += '        if any(v is None for v in [' + allVars.map(v => v + '[i-1]').join(', ') + ']): continue\n\n';
+  }
+  const varMap = {};
+  vars.forEach((_, vn) => { varMap[vn] = vn; });
+  if (STUDIO.entry_long.conditions.length) {
+    const j = STUDIO.entry_long.logic === 'OR' ? ' or ' : ' and ';
+    code += '        entry = ' + STUDIO.entry_long.conditions.map(c => _bldrGenCond(c, varMap)).join(j) + '\n';
+  } else {
+    code += '        entry = False\n';
+  }
+  if (STUDIO.exit_long.conditions.length) {
+    const j = STUDIO.exit_long.logic === 'OR' ? ' or ' : ' and ';
+    code += '        exit_l = ' + STUDIO.exit_long.conditions.map(c => _bldrGenCond(c, varMap)).join(j) + '\n';
+  } else {
+    code += '        exit_l = False\n';
+  }
+  code += '\n        if not in_position and entry:\n';
+  code += '            signals[i] = 1\n            in_position = True\n';
+  code += '        elif in_position and exit_l:\n';
+  code += '            signals[i] = -1\n            in_position = False\n';
+  code += '\n    return signals\n';
+  return code;
+}
+
+async function studioRunBacktest() {
+  if (!STUDIO.symbol) { showToast('Select a symbol first', 'error'); return; }
+  if (!STUDIO.entry_long.conditions.length) { showToast('Add at least one entry rule', 'error'); return; }
+  const btn = document.getElementById('studio-run-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
+  const script = _studioGenerateScript('standalone');
+  console.log('[STUDIO BT] Script:\n', script);
+  try {
+    const r = await fetch(API + '/api/backtest/run-script', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({symbol:STUDIO.symbol, script:script, initial_capital:STUDIO.risk.capital||10000,
+        timeframe:STUDIO.timeframe, limit:_studioLimit, email:EMAIL||'', use_ibkr:false, broker_hint:'longport', skip_cache:false,
+        commission_pct:STUDIO.commission_mode==='flat'?(STUDIO.commission_flat||0)/100:(STUDIO.commission_pct||0.1), slippage_pct:STUDIO.slippage_pct||0.05})
+    });
+    const d = await r.json();
+    if (d.status === 'error') throw new Error(d.message || 'Failed');
+    STUDIO.last_backtest = d;
+    studioRenderRight();
+    showToast('Backtest complete!', 'success');
+  } catch (e) { showToast('Backtest error: ' + e.message, 'error'); }
+  if (btn) { btn.disabled = false; btn.textContent = 'Run Backtest'; }
+}
+
+function studioShareLink() {
+  const data = {name:STUDIO.name, symbol:STUDIO.symbol, timeframe:STUDIO.timeframe,
+    entry_long:STUDIO.entry_long, exit_long:STUDIO.exit_long, risk:STUDIO.risk,
+    results:STUDIO.last_backtest ? {metrics:STUDIO.last_backtest.metrics} : null};
+  const url = window.location.origin + window.location.pathname + '?share=' + btoa(JSON.stringify(data));
+  navigator.clipboard.writeText(url).then(() => showToast('Share link copied!', 'success'))
+    .catch(() => { prompt('Copy this link:', url); });
+}
+
+function studioShowFullResults() {
+  const d = STUDIO.last_backtest;
+  if (!d) return;
+  const m = d.metrics || {};
+  const mf = (v,s='') => v!==undefined&&v!==null ? (typeof v==='number'?v.toFixed(2):v)+s : '--';
+  const el = document.getElementById('studio-results-full');
+  if (!el) return;
+  let html = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Total Return</div><div style="font-size:16px;font-weight:700;color:'+((m.total_return_pct||0)>=0?'var(--green)':'var(--red)')+'">'+ mf(m.total_return_pct,'%')+'</div></div>';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">CAGR</div><div style="font-size:16px;font-weight:700">'+ mf(m.cagr_pct,'%')+'</div></div>';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Sharpe</div><div style="font-size:16px;font-weight:700">'+ mf(m.sharpe_ratio)+'</div></div>';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Win Rate</div><div style="font-size:16px;font-weight:700">'+ mf(m.win_rate_pct,'%')+'</div></div>';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Max DD</div><div style="font-size:16px;font-weight:700;color:var(--red)">'+ mf(m.max_drawdown_pct,'%')+'</div></div>';
+  html += '</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Trades</div><div style="font-size:14px;font-weight:600">'+(m.total_trades||0)+'</div></div>';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Profit Factor</div><div style="font-size:14px;font-weight:600">'+ mf(m.profit_factor)+'</div></div>';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Avg Win</div><div style="font-size:14px;font-weight:600;color:var(--green)">$'+ mf(m.avg_win)+'</div></div>';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Avg Loss</div><div style="font-size:14px;font-weight:600;color:var(--red)">$'+ mf(m.avg_loss)+'</div></div>';
+  html += '<div class="studio-metric-card"><div style="font-size:10px;color:var(--text-muted)">Bars</div><div style="font-size:14px;font-weight:600">'+(d.bar_count||m.bars_tested||'--')+'</div></div>';
+  html += '</div>';
+  // Equity curve
+  if (d.equity_curve && d.equity_curve.length) {
+    html += '<div style="margin-bottom:16px"><canvas id="studio-eq-chart" height="200"></canvas></div>';
+  }
+  // Trade log
+  const trades = d.trades || [];
+  if (trades.length) {
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px">Trade Log (last 30)</div>';
+    html += '<div style="max-height:250px;overflow-y:auto"><table style="font-size:12px;width:100%"><thead><tr><th>Date</th><th>Side</th><th>Price</th><th>Shares</th><th>P&L</th></tr></thead><tbody>';
+    trades.slice(-30).forEach(t => {
+      const pCls = (t.pnl||0) > 0 ? 'color:var(--green)' : (t.pnl||0) < 0 ? 'color:var(--red)' : '';
+      html += '<tr><td>'+(t.date||'')+'</td><td>'+(t.side||'')+'</td><td>$'+(t.price||0).toFixed(2)+'</td><td>'+(t.shares||'')+'</td><td style="'+pCls+'">$'+(t.pnl||0).toFixed(2)+'</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  el.innerHTML = html;
+  openModal('studio-results-modal');
+  // Render chart after modal opens
+  if (d.equity_curve && d.equity_curve.length) {
+    setTimeout(() => {
+      const canvas = document.getElementById('studio-eq-chart');
+      if (canvas) {
+        new Chart(canvas.getContext('2d'), {
+          type:'line',
+          data:{labels:d.equity_curve.map(p=>p.date), datasets:[{data:d.equity_curve.map(p=>p.value), borderColor:'#1565C0', borderWidth:2, pointRadius:0, fill:true, backgroundColor:'rgba(21,101,192,0.06)', tension:0.1}]},
+          options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{maxTicksLimit:8,font:{size:10}},grid:{color:'rgba(0,0,0,0.04)'}},y:{ticks:{callback:v=>'$'+v.toLocaleString(),font:{size:10}},grid:{color:'rgba(0,0,0,0.04)'}}}}
+        });
+      }
+    }, 100);
+  }
+}
+
+async function studioDeployFromResults() {
+  if (!STUDIO.symbol || !EMAIL) { showToast('Set symbol and login first', 'error'); return; }
+  const sid = (STUDIO.name||'CUSTOM').replace(/[^A-Za-z0-9_]/g,'_').toUpperCase() + '_' + Date.now().toString(36).toUpperCase();
+  try {
+    await fetch(API + '/api/strategy', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:EMAIL, strategy_id:sid, strategy_name:STUDIO.name, symbol:STUDIO.symbol,
+        arena:STUDIO.symbol.endsWith('.HK')?'HK':(STUDIO.symbol.endsWith('.SI')?'SG':'US'),
+        timeframe:STUDIO.timeframe, conditions:{entry_long:STUDIO.entry_long.conditions, exit_long:STUDIO.exit_long.conditions,
+          entry_long_logic:STUDIO.entry_long.logic, exit_long_logic:STUDIO.exit_long.logic},
+        exit_rules:{}, risk:{lots:1, sl_pct:STUDIO.risk.stop_loss_pct, tp_pct:STUDIO.risk.take_profit_pct},
+        is_active:true, mode:'builder', library_id:'', broker:'longport'})
+    });
+    showToast('Strategy saved! Go to Bots to deploy.', 'success');
+    navigate('bots');
+  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+}
+
+async function studioLoadMySaved() {
+  if (!EMAIL) { showToast('Login first', 'error'); return; }
+  try {
+    const r = await fetch(API + '/api/strategies/' + encodeURIComponent(EMAIL));
+    const d = await r.json();
+    const strats = (d.strategies||[]).filter(s => s.mode==='builder' || (s.conditions && s.conditions.entry_long));
+    if (!strats.length) { showToast('No builder strategies found', 'info'); return; }
+    const pick = prompt('Enter strategy name to load:\n' + strats.map(s => '  - ' + s.strategy_name).join('\n'));
+    if (!pick) return;
+    const found = strats.find(s => s.strategy_name.toLowerCase().includes(pick.toLowerCase()));
+    if (!found) { showToast('Strategy not found', 'error'); return; }
+    STUDIO.name = found.strategy_name;
+    STUDIO.symbol = found.symbol;
+    STUDIO.timeframe = found.timeframe;
+    const c = found.conditions || {};
+    STUDIO.entry_long = {conditions:c.entry_long||[], logic:c.entry_long_logic||'AND'};
+    STUDIO.exit_long = {conditions:c.exit_long||[], logic:c.exit_long_logic||'OR'};
+    const rk = found.risk || {};
+    STUDIO.risk = {stop_loss_pct:rk.sl_pct||3, take_profit_pct:rk.tp_pct||8, capital:10000};
+    STUDIO._readOnly = false;
+    STUDIO.last_backtest = null;
+    studioRender();
+    showToast('Loaded: ' + found.strategy_name, 'success');
+  } catch (e) { showToast('Load failed: ' + e.message, 'error'); }
+}
+
+/* ═══════════════════ OPTIMIZE ═══════��═══════════ */
+let _optParams = []; // [{ind, param, current, min, max, step, include}]
+
+function _studioExtractParams() {
+  // Dedup by (ind_id + param_name + value) — same indicator+param+value = ONE row
+  // regardless of how many times it appears across all conditions.
+  // Different values (EMA(20) vs EMA(50)) = separate rows with unique keys.
+  const seen = {};  // "ind_param_value" -> param key (full dedup including value)
+  const params = [];
+  const sections = ['entry_long','exit_long','entry_short','exit_short'];
+  for (const sec of sections) {
+    for (const c of (STUDIO[sec]?.conditions || [])) {
+      for (const side of [c.left, c.right]) {
+        if (!side || !side.id || !side.p || side.type === 'value') continue;
+        if (['close','open','high','low','volume'].includes(side.id)) continue;
+        for (const [pk, pv] of Object.entries(side.p || {})) {
+          const v = typeof pv === 'number' ? pv : parseFloat(pv) || 0;
+          // Full dedup: same indicator + same param + same value = skip
+          const fullDedupKey = side.id + '_' + pk + '_' + v;
+          if (seen[fullDedupKey]) continue;
+          // Count how many DIFFERENT values exist for this indicator+param
+          const occ = params.filter(p => p.ind === side.id && p.param === pk).length;
+          const key = side.id + '_' + occ + '_' + pk;
+          const obj = {
+            key: key, ind: side.id, param: pk, current: v,
+            min: Math.max(1, Math.round(v * 0.5)),
+            max: Math.round(v * 2.5),
+            step: Math.max(1, Math.round(v * 0.25)),
+            include: true,
+          };
+          seen[fullDedupKey] = key;
+          params.push(obj);
+        }
+      }
+    }
+  }
+  // Risk management params (unchecked by default)
+  params.push({
+    key: 'stop_loss_pct', ind: 'risk', param: 'stop_loss_pct',
+    current: STUDIO.risk.stop_loss_pct || 3,
+    min: 0.5, max: 10, step: 0.5, include: false, isRisk: true,
+  });
+  params.push({
+    key: 'take_profit_pct', ind: 'risk', param: 'take_profit_pct',
+    current: STUDIO.risk.take_profit_pct || 8,
+    min: 1, max: 30, step: 1, include: false, isRisk: true,
+  });
+  return params;
+}
+
+function studioInitOptimize() {
+  document.getElementById('opt-title').textContent = 'Optimize: ' + (STUDIO.name || 'Strategy');
+  _optParams = _studioExtractParams();
+  _renderOptParams();
+  // Pre-populate trailing stop from Studio state
+  const trailCb = document.getElementById('opt-trailing-enabled');
+  const trailFields = document.getElementById('opt-trailing-fields');
+  if (trailCb && STUDIO.risk.trailing_stop_enabled) {
+    trailCb.checked = true;
+    if (trailFields) trailFields.style.display = 'flex';
+    const tp = STUDIO.risk.trailing_stop_pct || 2;
+    const minEl = document.getElementById('opt-trail-min');
+    const maxEl = document.getElementById('opt-trail-max');
+    if (minEl) minEl.value = Math.max(0.5, tp - 2);
+    if (maxEl) maxEl.value = tp + 3;
+  }
+}
+
+function _optParamRow(p, i) {
+  const label = p.isRisk ? p.param.replace(/_/g,' ').replace(/pct$/,'%') : p.ind.toUpperCase();
+  return '<tr><td><input type="checkbox" ' + (p.include?'checked':'') + ' onchange="_optParams['+i+'].include=this.checked;_optUpdateComboCount()"></td>'
+    + '<td>' + esc(label) + '</td><td>' + esc(p.param) + '</td><td style="font-weight:600">' + p.current + '</td>'
+    + '<td><input type="number" value="'+p.min+'" style="width:55px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px" onchange="_optParams['+i+'].min=parseFloat(this.value);_optUpdateComboCount()"></td>'
+    + '<td><input type="number" value="'+p.max+'" style="width:55px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px" onchange="_optParams['+i+'].max=parseFloat(this.value);_optUpdateComboCount()"></td>'
+    + '<td><input type="number" value="'+p.step+'" style="width:55px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px" onchange="_optParams['+i+'].step=parseFloat(this.value);_optUpdateComboCount()"></td></tr>';
+}
+
+function _renderOptParams() {
+  const el = document.getElementById('opt-params');
+  if (!el) return;
+  if (!_optParams.length) {
+    el.innerHTML = '<div style="color:var(--text-muted)">No tunable parameters found. Add indicator rules in Studio first.</div>';
+    document.getElementById('opt-combo-count').textContent = '';
+    return;
+  }
+  const indParams = _optParams.filter(p => !p.isRisk);
+  const riskParams = _optParams.filter(p => p.isRisk);
+  el.innerHTML = '<table style="font-size:12px;width:100%"><thead><tr><th></th><th>Indicator</th><th>Param</th><th>Current</th><th>Min</th><th>Max</th><th>Step</th></tr></thead><tbody>'
+    + (indParams.length ? indParams.map((p, i) => _optParamRow(p, _optParams.indexOf(p))).join('') : '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:8px">No indicator params</td></tr>')
+    + '<tr><td colspan="7" style="padding:4px 0;border-top:2px solid var(--border)"><span style="font-size:11px;font-weight:600;color:var(--text-muted)">Risk Management</span></td></tr>'
+    + riskParams.map((p, i) => _optParamRow(p, _optParams.indexOf(p))).join('')
+    + '</tbody></table>';
+  _optUpdateComboCount();
+}
+
+function _optUpdateComboCount() {
+  const combos = _optBuildCombos();
+  const el = document.getElementById('opt-combo-count');
+  if (el) el.textContent = combos.length + ' combinations to test' + (combos.length > 500 ? ' (capped at 500)' : '');
+}
+
+function _optBuildCombos() {
+  const included = _optParams.filter(p => p.include);
+  // Build value arrays per param
+  const ranges = included.map(p => {
+    const vals = [];
+    for (let v = p.min; v <= p.max && vals.length < 50; v += Math.max(0.01, p.step)) {
+      vals.push(Math.round(v * 100) / 100);
+    }
+    if (!vals.length) vals.push(p.current);
+    return {key: p.key, vals};
+  });
+  // Add trailing stop range if enabled
+  const trailEnabled = document.getElementById('opt-trailing-enabled')?.checked;
+  if (trailEnabled) {
+    const tMin = parseFloat(document.getElementById('opt-trail-min')?.value || 1);
+    const tMax = parseFloat(document.getElementById('opt-trail-max')?.value || 5);
+    const tStep = parseFloat(document.getElementById('opt-trail-step')?.value || 1);
+    const vals = [];
+    for (let v = tMin; v <= tMax && vals.length < 20; v += Math.max(0.1, tStep)) vals.push(Math.round(v*100)/100);
+    if (vals.length) ranges.push({key: 'trail_pct', vals});
+  }
+  if (!ranges.length) return [{}];
+  // Cartesian product, capped at 500
+  let combos = [{}];
+  for (const r of ranges) {
+    const next = [];
+    for (const c of combos) {
+      for (const v of r.vals) {
+        next.push({...c, [r.key]: v});
+        if (next.length >= 500) break;
+      }
+      if (next.length >= 500) break;
+    }
+    combos = next;
+    if (combos.length >= 500) break;
+  }
+  return combos;
+}
+
+// _studioGenerateParamScript removed — use _studioGenerateScript('sweep') instead
+
+async function studioRunOptimize() {
+  const combos = _optBuildCombos();
+  if (!combos.length) { showToast('No parameter combinations configured', 'error'); return; }
+  const btn = document.getElementById('opt-run-btn');
+  const prog = document.getElementById('opt-progress');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running ' + combos.length + ' combinations...'; }
+  if (prog) { prog.style.display = ''; prog.textContent = 'Testing ' + combos.length + ' parameter combinations...'; }
+  try {
+    const script = _studioGenerateScript('sweep');
+    console.log('[OPT] Script:\n', script);
+    console.log('[OPT] Total combos:', combos.length);
+    console.log('[OPT] First combo:', combos[0]);
+    const r = await fetch(API + '/api/backtest/sweep-script', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        symbol: STUDIO.symbol, timeframe: STUDIO.timeframe,
+        script: script, combos: combos,
+        initial_capital: STUDIO.risk.capital || 10000,
+        limit: _studioLimit || 1260,
+        stop_loss_pct: STUDIO.risk.stop_loss_pct || 0,
+        take_profit_pct: STUDIO.risk.take_profit_pct || 0,
+        email: EMAIL || '',
+      })
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    _renderOptResults(d.results || []);
+    showToast('Optimization complete: ' + (d.results||[]).length + ' results', 'success');
+  } catch (e) { showToast('Optimization error: ' + e.message, 'error'); }
+  if (btn) { btn.disabled = false; btn.textContent = 'Run Optimization'; }
+  if (prog) prog.style.display = 'none';
+}
+
+function _renderOptResults(results) {
+  const el = document.getElementById('opt-results');
+  if (!el) return;
+  const metric = document.getElementById('opt-metric')?.value || 'sharpe_ratio';
+  const sorted = results.filter(r => r.metrics).sort((a, b) =>
+    (b.metrics[metric] || -999) - (a.metrics[metric] || -999));
+  if (!sorted.length) {
+    // Show error from first result if available
+    const firstErr = results[0]?.error || 'All combinations failed to run.';
+    el.innerHTML = '<div style="color:var(--text-muted)">No valid results. Error: ' + esc(String(firstErr).slice(0,200)) + '</div>';
+    return;
+  }
+  const mf = v => v !== undefined && v !== null ? (typeof v === 'number' ? v.toFixed(2) : v) : '--';
+  const paramKeys = Object.keys(sorted[0].params || {});
+  el.innerHTML = '<div style="max-height:400px;overflow-y:auto"><table style="font-size:11px;width:100%"><thead><tr><th>#</th>'
+    + '<th>Parameters</th>'
+    + '<th>CAGR</th><th>Sharpe</th><th>WR%</th><th>DD%</th><th>Trades</th><th></th></tr></thead><tbody>'
+    + sorted.slice(0, 50).map((r, i) => {
+      const m = r.metrics || {};
+      const bg = i === 0 ? 'background:#F0FDF4' : '';
+      const pStr = paramKeys.map(k => {
+        const short = k.replace('risk_','').replace('_pct','%').replace('_period','').replace('stop_loss','SL').replace('take_profit','TP');
+        return short + ':' + (r.params[k] ?? '--');
+      }).join(' ');
+      return '<tr style="' + bg + '"><td>' + (i+1) + '</td>'
+        + '<td style="font-size:10px;max-width:180px;word-break:break-all">' + esc(pStr) + '</td>'
+        + '<td>' + mf(m.cagr_pct) + '%</td><td>' + mf(m.sharpe_ratio) + '</td>'
+        + '<td>' + mf(m.win_rate_pct) + '</td><td>' + mf(m.max_drawdown_pct) + '</td>'
+        + '<td>' + (m.total_trades||0) + '</td>'
+        + '<td><button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:10px" onclick="_optLoadResult(' + i + ')">Load</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
+  el._sortedResults = sorted;
+}
+
+function _optLoadResult(idx) {
+  const el = document.getElementById('opt-results');
+  const sorted = el?._sortedResults;
+  if (!sorted || !sorted[idx]) return;
+  const params = sorted[idx].params || {};
+  // Apply params back to STUDIO
+  // Keys are: "ema_0_period", "rsi_0_period", "stop_loss_pct", "take_profit_pct", "trail_pct"
+  for (const [key, val] of Object.entries(params)) {
+    if (key === 'stop_loss_pct') { STUDIO.risk.stop_loss_pct = val; continue; }
+    if (key === 'take_profit_pct') { STUDIO.risk.take_profit_pct = val; continue; }
+    if (key === 'trail_pct') { STUDIO.risk.trailing_stop_pct = val; continue; }
+    // Parse "ind_idx_param" format: e.g. "ema_0_period" -> ind=ema, idx=0, param=period
+    const match = key.match(/^(.+?)_(\d+)_(.+)$/);
+    if (!match) continue;
+    const [, indId, idxStr, paramName] = match;
+    const targetIdx = parseInt(idxStr);
+    // Walk conditions and find the Nth occurrence of this indicator
+    let occurrence = 0;
+    for (const sec of ['entry_long','exit_long','entry_short','exit_short']) {
+      for (const c of (STUDIO[sec]?.conditions || [])) {
+        for (const side of [c.left, c.right]) {
+          if (side && side.id === indId && side.p && Object.keys(side.p).length) {
+            if (occurrence === targetIdx && paramName in side.p) {
+              side.p[paramName] = val;
+            }
+            occurrence++;
+          }
+        }
+      }
+    }
+  }
+  showToast('Parameters loaded! Returning to Studio.', 'success');
+  navigate('studio');
+}
+
+function studioOpenOptimize() {
+  navigate('optimize');
+  studioInitOptimize();
+}
+
+// ticker dropdown needs to handle 'studio' context
+(function(){
+  const origSelect = window.selectTicker;
+  window.selectTicker = function(symbol, name, lot, context) {
+    if (context === 'studio') {
+      const inp = document.getElementById('studio-symbol');
+      if (inp) inp.value = symbol;
+      STUDIO.symbol = symbol;
+      const drop = document.getElementById('ticker-dropdown-studio');
+      if (drop) drop.style.display = 'none';
+      _studioShowSymbolConfirm(symbol, name, lot);
+      studioRenderRight();
+      return;
+    }
+    origSelect(symbol, name, lot, context);
+  };
+  // Extend searchTickers dropdown ID mapping
+  const origSearch = window.searchTickers;
+  window.searchTickers = async function(input, context) {
+    if (context === 'studio') {
+      const q = input.value.trim();
+      const drop = document.getElementById('ticker-dropdown-studio');
+      if (!drop) return;
+      if (q.length < 1) { drop.style.display = 'none'; return; }
+      clearTimeout(_tickerDebounce);
+      _tickerDebounce = setTimeout(async () => {
+        try {
+          const r = await fetch(API + '/api/ticker/search?q=' + encodeURIComponent(q) + '&email=' + encodeURIComponent(EMAIL || ''));
+          const data = await r.json();
+          if (!data.results || !data.results.length) { drop.style.display = 'none'; return; }
+          drop.innerHTML = data.results.map(t => {
+            const sym = esc(t.symbol); const name = esc(t.name||''); const mkt = esc(t.market||'');
+            return '<div class="ticker-item" onclick="selectTicker(\'' + sym + '\',\'' + name.replace(/'/g,'') + '\',' + (t.lot||1) + ',\'studio\')">'
+              + '<span class="ticker-symbol">' + sym.replace('.HK','').replace('.US','').replace('.SI','') + '</span>'
+              + '<span class="ticker-name">' + name + '</span>'
+              + '<span class="ticker-badge ' + mkt + '">' + mkt + '</span></div>';
+          }).join('');
+          drop.style.display = 'block';
+        } catch(e) { drop.style.display = 'none'; }
+      }, 250);
+      return;
+    }
+    origSearch(input, context);
+  };
+})();
 
 /* ═══════════════════ STATUS POLLING ═══════════════════ */
 async function refreshStatus() {
@@ -2131,10 +3870,221 @@ async function refreshStatus() {
 }
 
 /* ═══════════════════ SETTINGS ═══════════════════ */
+function useLocalOnly() {
+  CENTRAL = '';
+  localStorage.removeItem('qx_central_url');
+  localStorage.removeItem('qx_central');
+  document.getElementById('set-central').value = '(local only)';
+  updateBacktestBadge();
+  showToast('Switched to local data (Yahoo Finance). Backtests will run on this machine.', 'info');
+}
+
 function clearAndLogout() {
   if (!confirm('Clear all local data and logout?')) return;
   localStorage.clear();
   location.reload();
+}
+
+/* ═══════════════════ CUSTOM INDICATORS (Studio-integrated) ═══════════════════ */
+async function studioLoadCustomInds() {
+  try {
+    const r = await fetch(API + '/api/indicators/custom?email=' + encodeURIComponent(EMAIL||''));
+    const d = await r.json();
+    _studioCustomInds = d.indicators || [];
+    console.log('[STUDIO] Loaded custom indicators:', _studioCustomInds.length, _studioCustomInds.map(i => i.indicator_id));
+  } catch(e) { console.warn('[STUDIO] Failed to load custom indicators:', e); _studioCustomInds = []; }
+}
+
+function _studioMsg(text, type) {
+  const el = document.getElementById('studio-ind-upload-msg');
+  if (!el) return;
+  const styles = {
+    info: 'background:#EFF6FF;border:1px solid #93C5FD;color:#1E40AF',
+    success: 'background:#F0FDF4;border:1px solid #86EFAC;color:#166534',
+    error: 'background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C',
+    warn: 'background:#FEF3C7;border:1px solid #FCD34D;color:#92400E',
+  };
+  el.style.cssText = (styles[type]||styles.info) + ';display:block;padding:8px 12px;border-radius:6px;font-size:12px';
+  el.innerHTML = text;
+}
+
+async function studioUploadQuantx(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  _studioMsg('Validating ' + esc(file.name) + '...', 'info');
+  const fd = new FormData();
+  fd.append('file', file); fd.append('email', EMAIL||'');
+  try {
+    // Single-click: validate + import in one call
+    const r = await fetch(API + '/api/indicators/import', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.status === 'registered') {
+      _studioMsg('&#10003; <strong>' + esc(d.name||d.indicator_id) + '</strong> loaded', 'success');
+      showToast((d.name||d.indicator_id) + ' registered!', 'success');
+      await studioLoadCustomInds();
+      _studioRebuildIndDropdowns();
+      studioRender();
+      setTimeout(() => { const el = document.getElementById('studio-ind-upload-msg'); if(el) el.style.display='none'; }, 3000);
+      return;
+    }
+    if (d.status === 'exists') {
+      _studioMsg(esc(d.message) + '<br><button class="btn btn-sm" style="margin-top:4px;background:#92400E;color:#fff;border:none;font-family:inherit" onclick="studioOverwriteQuantx()">Yes, overwrite</button> <button class="btn btn-outline btn-sm" style="margin-top:4px;font-family:inherit" onclick="document.getElementById(\'studio-ind-upload-msg\').style.display=\'none\'">No</button>', 'warn');
+      window._pendingQuantxFile = file;
+      return;
+    }
+    if (d.status === 'error') {
+      _studioMsg('<strong>' + esc(d.stage||'error') + ':</strong> ' + esc(d.message), 'error');
+      return;
+    }
+  } catch(e) { _studioMsg('Upload failed: ' + esc(e.message), 'error'); }
+}
+
+async function studioOverwriteQuantx() {
+  const file = window._pendingQuantxFile;
+  if (!file) return;
+  _studioMsg('Overwriting...', 'info');
+  const fd = new FormData();
+  fd.append('file', file); fd.append('email', EMAIL||''); fd.append('overwrite', 'true');
+  try {
+    const r = await fetch(API + '/api/indicators/import', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.status === 'registered') {
+      _studioMsg('&#10003; <strong>' + esc(d.name||d.indicator_id) + '</strong> updated', 'success');
+      await studioLoadCustomInds();
+      _studioRebuildIndDropdowns();
+      studioRender();
+      setTimeout(() => { const el = document.getElementById('studio-ind-upload-msg'); if(el) el.style.display='none'; }, 3000);
+    } else {
+      _studioMsg(esc(d.message || 'Failed'), 'error');
+    }
+  } catch(e) { _studioMsg('Overwrite failed: ' + esc(e.message), 'error'); }
+  window._pendingQuantxFile = null;
+}
+
+async function studioDeleteCustomInd(id) {
+  if (!confirm('Delete indicator ' + id + '?')) return;
+  try {
+    await fetch(API + '/api/indicators/' + id, {method:'DELETE'});
+    showToast(id + ' deleted', 'info');
+    await studioLoadCustomInds();
+    _studioRebuildIndDropdowns();
+    studioRender();
+  } catch(e) { showToast('Delete failed', 'error'); }
+}
+
+function _studioRebuildIndDropdowns() {
+  console.log('[STUDIO] Rebuilding dropdowns. Custom indicators:', _studioCustomInds.length,
+    _studioCustomInds.map(i => i.indicator_id || i.name));
+  // Remove any existing "Custom" group first
+  const idx = BLDR_INDICATORS.findIndex(g => g.group === 'Custom');
+  if (idx !== -1) BLDR_INDICATORS.splice(idx, 1);
+  if (_studioCustomInds.length) {
+    const items = _studioCustomInds.map(ind => {
+      const params = (ind.params || []).map(p => ({k: p.k || p.name, d: p.default || p.d || 14}));
+      return {
+        id: ind.indicator_id.toLowerCase(),
+        name: ind.display_name || ind.name,
+        p: params,
+        _outputType: ind.output_type || 'single',
+        _outputLabels: ind.output_labels || ['main'],
+        _inputs: ind.inputs || ['closes'],
+      };
+    });
+    BLDR_INDICATORS.push({group: 'Custom', items: items});
+  }
+}
+
+function openRegisterIndicatorModal() {
+  document.getElementById('ri-id').value = '';
+  document.getElementById('ri-name').value = '';
+  document.getElementById('ri-desc').value = '';
+  document.getElementById('ri-code').value = '';
+  document.getElementById('ri-output-type').value = 'single';
+  document.getElementById('ri-output-labels').value = '';
+  document.getElementById('ri-labels-row').style.display = 'none';
+  document.getElementById('ri-feedback').innerHTML = '';
+  openModal('register-ind-modal');
+}
+
+function _riGetOutputFields() {
+  const ot = document.getElementById('ri-output-type').value || 'single';
+  const labelsStr = (document.getElementById('ri-output-labels').value || '').trim();
+  const labels = ot === 'single' ? ['main'] : labelsStr.split(',').map(s => s.trim()).filter(Boolean);
+  return {output_type: ot, output_labels: labels.length ? labels : ['main']};
+}
+
+async function validateIndicator() {
+  const fb = document.getElementById('ri-feedback');
+  fb.innerHTML = '<span style="color:var(--text-muted)">Validating...</span>';
+  const outFields = _riGetOutputFields();
+  const payload = {
+    id: document.getElementById('ri-id').value.trim(),
+    name: document.getElementById('ri-name').value.trim(),
+    description: document.getElementById('ri-desc').value.trim(),
+    calc_code: document.getElementById('ri-code').value,
+    ...outFields,
+  };
+  if (!payload.id || !payload.name || !payload.calc_code) {
+    fb.innerHTML = '<span style="color:var(--red)">ID, Name, and Code are required.</span>';
+    return;
+  }
+  try {
+    const r = await fetch(API + '/api/indicators?validate_only=true', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.status === 'valid') {
+      fb.innerHTML = '<span style="color:var(--green)">Valid! ID: ' + esc(d.indicator_id) + '. Ready to register.</span>';
+    } else {
+      fb.innerHTML = '<span style="color:var(--red)">' + (d.errors||[]).map(esc).join('<br>') + '</span>';
+    }
+  } catch (e) { fb.innerHTML = '<span style="color:var(--red)">Validation failed: ' + esc(e.message) + '</span>'; }
+}
+
+async function registerIndicator() {
+  const fb = document.getElementById('ri-feedback');
+  fb.innerHTML = '<span style="color:var(--text-muted)">Registering...</span>';
+  const outFields = _riGetOutputFields();
+  const payload = {
+    id: document.getElementById('ri-id').value.trim(),
+    name: document.getElementById('ri-name').value.trim(),
+    description: document.getElementById('ri-desc').value.trim(),
+    calc_code: document.getElementById('ri-code').value,
+    created_by: EMAIL || 'unknown',
+    ...outFields,
+  };
+  if (!payload.id || !payload.name || !payload.calc_code) {
+    fb.innerHTML = '<span style="color:var(--red)">ID, Name, and Code are required.</span>';
+    return;
+  }
+  try {
+    const r = await fetch(API + '/api/indicators', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.status === 'registered') {
+      fb.innerHTML = '<span style="color:var(--green)">' + esc(d.message) + '</span>';
+      showToast('Indicator registered!', 'success');
+      await studioLoadCustomInds();
+      _studioRebuildIndDropdowns();
+      studioRender();
+      setTimeout(() => { closeModal('register-ind-modal'); }, 1500);
+    } else {
+      fb.innerHTML = '<span style="color:var(--red)">' + (d.errors||[]).map(esc).join('<br>') + '</span>';
+    }
+  } catch (e) { fb.innerHTML = '<span style="color:var(--red)">Registration failed: ' + esc(e.message) + '</span>'; }
+}
+
+async function deleteIndicator(id) {
+  if (!confirm('Delete indicator ' + id + '?')) return;
+  try {
+    await fetch(API + '/api/indicators/' + id, { method: 'DELETE' });
+    showToast('Indicator deleted', 'info');
+    await studioLoadCustomInds();
+    _studioRebuildIndDropdowns();
+    studioRender();
+  } catch (e) { showToast('Delete failed: ' + e.message, 'error'); }
 }
 
 </script>

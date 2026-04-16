@@ -58,7 +58,33 @@ HOSTING = os.environ.get("HOSTING", "vps")  # "vps" or "railway"
 FMP_API_KEY = os.environ.get("FMP_API_KEY", "")
 
 # Version
-VERSION = "1.1.0"
+VERSION = "1.2.0"
+
+# Dev mode (enables --reload in run.py)
+DEV_MODE = os.environ.get("DEV_MODE", "0") == "1"
+
+
+# ── Timeframe normalization ────────────────────────────────────────────────
+# DB stores "1m", "5m", "1h", "1d" but data APIs need "1min", "5min", "1hour", "1day"
+
+_TF_MAP = {
+    "1m": "1min", "5m": "5min", "15m": "15min", "30m": "30min",
+    "1h": "1hour", "4h": "4hour", "1d": "1day", "1w": "1week",
+    # Already canonical — pass through
+    "1min": "1min", "5min": "5min", "15min": "15min", "30min": "30min",
+    "1hour": "1hour", "4hour": "4hour", "1day": "1day", "1week": "1week",
+    # Extra variants
+    "60m": "1hour", "60min": "1hour", "240m": "4hour", "daily": "1day",
+    "weekly": "1week", "d": "1day", "w": "1week",
+}
+
+
+def normalize_timeframe(tf: str) -> str:
+    """Map any timeframe string to the canonical format used by data APIs.
+
+    Examples: "1m" -> "1min", "1h" -> "1hour", "1d" -> "1day"
+    """
+    return _TF_MAP.get(tf.lower().strip(), tf)
 
 # Python executable
 PYTHON_EXE = sys.executable

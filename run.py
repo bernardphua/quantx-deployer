@@ -31,7 +31,7 @@ def main():
     central = os.environ.get("CENTRAL_API_URL", "")
 
     print("=" * 50)
-    print("  QuantX Deployer v1.1")
+    print("  QuantX Deployer v1.2")
     print(f"  App: http://localhost:{port}")
     if central:
         print(f"  Backtest server: {central}")
@@ -40,15 +40,19 @@ def main():
     print("  Trading: local (your IBKR / LongPort)")
     print("=" * 50)
 
+    dev_mode = os.environ.get("DEV_MODE", "0") == "1"
     python = sys.executable
-    proc = subprocess.Popen(
-        [python, "-m", "uvicorn", "api.main:app",
-         "--host", "127.0.0.1", f"--port={port}",
-         "--reload",
-         "--reload-exclude=bots/*", "--reload-exclude=logs/*",
-         "--reload-exclude=*.db", "--reload-exclude=*.log"],
-        cwd=str(BASE),
-    )
+    cmd = [python, "-m", "uvicorn", "api.main:app",
+           "--host", "127.0.0.1", f"--port={port}"]
+    if dev_mode:
+        cmd += ["--reload",
+                "--reload-exclude=bots/*", "--reload-exclude=logs/*",
+                "--reload-exclude=*.db", "--reload-exclude=*.log"]
+        print("  Mode: DEVELOPMENT (auto-reload ON)")
+    else:
+        print("  Mode: PRODUCTION (auto-reload OFF)")
+
+    proc = subprocess.Popen(cmd, cwd=str(BASE))
 
     time.sleep(2)
     webbrowser.open(f"http://localhost:{port}")

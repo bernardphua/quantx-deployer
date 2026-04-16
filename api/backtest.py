@@ -281,6 +281,8 @@ def _aggregate_weekly(daily_bars):
 
 def fetch_ohlcv(symbol, timeframe="1day", limit=1260):
     """Public entry point — uses lock to prevent stampede."""
+    from .config import normalize_timeframe
+    timeframe = normalize_timeframe(timeframe)
     if timeframe == "1week":
         daily_bars, _ = fetch_ohlcv(symbol, "1day", limit * 5)
         bars = _aggregate_weekly(daily_bars)
@@ -1169,7 +1171,40 @@ def _extract_script_globals(script_code):
     return result
 
 
-def run_backtest_script(bars, script, initial_capital=10000, params_override=None):
+def _load_custom_indicators_for_sandbox(email, conn):
+    """Load custom indicators from DB and return dict of calc_ functions."""
+    from .database import get_custom_indicators
+    fns = {}
+    try:
+        customs = get_custom_indicators(conn, email)
+        for ind in customs:
+            try:
+                code = ind.get("calc_code", "")
+                if not code:
+                    continue
+                ns = {"math": __import__("math"), "__builtins__": {
+                    "len": len, "range": range, "list": list, "min": min, "max": max,
+                    "abs": abs, "sum": sum, "round": round, "zip": zip, "enumerate": enumerate,
+                    "int": int, "float": float, "True": True, "False": False, "None": None,
+                    "bool": bool, "isinstance": isinstance, "sorted": sorted,
+                }}
+                try:
+                    ns["np"] = __import__("numpy")
+                except ImportError:
+                    pass
+                exec(code, ns)
+                fn_name = f"calc_{ind['indicator_id'].lower()}"
+                if fn_name in ns:
+                    fns[fn_name] = ns[fn_name]
+            except Exception as e:
+                print(f"[CUSTOM_IND] Failed to load {ind.get('indicator_id','?')}: {e}")
+    except Exception as e:
+        print(f"[CUSTOM_IND] Failed to query custom indicators: {e}")
+    return fns
+
+
+def run_backtest_script(bars, script, initial_capital=10000, params_override=None,
+                        email=None, db_conn=None):
     """Run a custom user script against bar data in a sandboxed exec()."""
     if not script or not script.strip():
         raise ValueError("Script is empty")
@@ -1251,6 +1286,11 @@ def run_backtest_script(bars, script, initial_capital=10000, params_override=Non
         # Script-level variables (fast_period, slow_period etc.)
         **script_globals,
     }
+
+    # Inject custom indicators from DB
+    if email and db_conn:
+        custom_fns = _load_custom_indicators_for_sandbox(email, db_conn)
+        sandbox.update(custom_fns)
 
     try:
         exec(script, sandbox)

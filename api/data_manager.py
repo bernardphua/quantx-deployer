@@ -1,5 +1,5 @@
 """QuantX Data Manager — Waterfall data fetcher for backtests.
-Priority: Local SQLite → IBKR → LongPort → Cloudflare R2 → Yahoo → FMP
+Priority: 1. Local SQLite cache → 2. LongPort → 3. IBKR → 4. R2 → 5. Yahoo → 6. FMP
 """
 
 import os
@@ -14,7 +14,7 @@ log = logging.getLogger("quantx-data")
 SOURCE_MESSAGES = {
     "local_cache": "Loading from local cache...",
     "ibkr": "Fetching from your IBKR account...",
-    "longport": "Fetching from your LongPort account...",
+    "longport": "Fetched from LongPort API (paginated history)",
     "r2": "Loading from QuantX data library...",
     "yahoo": "Fetching from Yahoo Finance...",
     "fmp": "Fetching from QuantX data server...",
@@ -185,26 +185,126 @@ def fetch_from_yahoo(symbol, timeframe, limit):
         return None
 
 
+# ── LongPort data fetch ──────────────────────────────────────────────────────
+
+def fetch_from_longport(symbol, timeframe, limit, lp_credentials):
+    """Fetch OHLCV bars from LongPort using paginated history_candlesticks_by_offset.
+
+    Uses del ctx (not .close()) to release the connection -- QuoteContext has no close().
+    Max 1000 bars per page, up to 20 pages = 20,000 bars max.
+    """
+    try:
+        from longport.openapi import Config, QuoteContext, Period, AdjustType
+        from .config import normalize_timeframe
+
+        tf = normalize_timeframe(timeframe)
+        period_map = {
+            "1min": Period.Min_1, "5min": Period.Min_5,
+            "15min": Period.Min_15, "30min": Period.Min_30,
+            "1hour": Period.Min_60, "1day": Period.Day, "1week": Period.Week,
+        }
+        period = period_map.get(tf)
+        if period is None:
+            log.warning("LongPort: unsupported timeframe %s (normalized: %s)", timeframe, tf)
+            return None
+
+        cfg = Config(
+            app_key=lp_credentials["app_key"],
+            app_secret=lp_credentials["app_secret"],
+            access_token=lp_credentials["access_token"],
+        )
+        ctx = QuoteContext(cfg)
+
+        try:
+            all_candles = []
+            anchor_time = None
+            max_pages = 20
+
+            for page in range(max_pages):
+                batch = ctx.history_candlesticks_by_offset(
+                    symbol, period, AdjustType.ForwardAdjust,
+                    forward=False, count=1000, time=anchor_time,
+                )
+                if not batch:
+                    break
+
+                all_candles = list(batch) + all_candles  # prepend older data
+
+                if len(batch) < 1000:
+                    break  # reached beginning of available data
+
+                anchor_time = batch[0].timestamp
+
+                if len(all_candles) >= limit:
+                    break
+        finally:
+            del ctx  # correct way to release QuoteContext -- no .close() method
+
+        if not all_candles:
+            return None
+
+        bars = []
+        for c in all_candles:
+            ts = c.timestamp
+            date_str = ts.strftime("%Y-%m-%d %H:%M:%S") if hasattr(ts, "strftime") else str(ts)[:19]
+            bars.append({
+                "date": date_str,
+                "open": round(float(c.open), 4),
+                "high": round(float(c.high), 4),
+                "low": round(float(c.low), 4),
+                "close": round(float(c.close), 4),
+                "volume": float(c.volume) if hasattr(c, "volume") else 0.0,
+            })
+
+        if len(bars) > limit:
+            bars = bars[-limit:]
+
+        log.info("LongPort: %d bars for %s/%s | %s -> %s",
+                 len(bars), symbol, timeframe,
+                 bars[0]["date"][:10] if bars else "?",
+                 bars[-1]["date"][:10] if bars else "?")
+        return bars
+
+    except Exception as e:
+        log.warning("LongPort fetch failed %s/%s: %s", symbol, timeframe, e)
+        return None
+
+
 # ── Main waterfall ────────────────────────────────────────────────────────────
 
 def fetch_bars_waterfall_sync(symbol, timeframe, limit, db_path,
                                ibkr_config=None, lp_credentials=None,
                                skip_cache=False):
     """Synchronous waterfall fetch — call from executor thread."""
+    from .config import normalize_timeframe
     symbol = symbol.upper().strip()
+    timeframe = normalize_timeframe(timeframe)
     base = {"symbol": symbol, "timeframe": timeframe, "bars": [],
             "source": None, "source_message": "", "bar_count": 0, "error": None}
 
-    # 1. Local cache
+    # 1. Local cache — only use if it has enough bars for what was requested
     if not skip_cache:
         cached = load_from_local_cache(db_path, symbol, timeframe)
         if cached:
             bars, src = cached
-            if len(bars) >= min(limit, 50):
+            if len(bars) >= limit:
                 return {**base, "bars": bars[-limit:], "source": src,
                         "source_message": SOURCE_MESSAGES["local_cache"], "bar_count": len(bars)}
+            elif len(bars) >= 50:
+                log.info("Cache has %d bars but %d requested -- re-fetching for more data",
+                         len(bars), limit)
 
-    # 2. IBKR
+    # 2. LongPort (if credentials provided)
+    if lp_credentials and lp_credentials.get("app_key"):
+        log.info("Trying LongPort for %s/%s...", symbol, timeframe)
+        bars = fetch_from_longport(symbol, timeframe, limit, lp_credentials)
+        if bars and len(bars) >= 20:
+            save_to_local_cache(db_path, symbol, timeframe, bars, "longport")
+            return {**base, "bars": bars, "source": "longport",
+                    "source_message": SOURCE_MESSAGES["longport"], "bar_count": len(bars)}
+        log.warning("LongPort fetch returned insufficient data for %s/%s -- falling through", symbol, timeframe)
+
+    # 3. IBKR
     if ibkr_config and ibkr_config.get("host"):
         log.info("Trying IBKR for %s/%s...", symbol, timeframe)
         bars = fetch_from_ibkr(symbol, timeframe, limit,
@@ -216,7 +316,7 @@ def fetch_bars_waterfall_sync(symbol, timeframe, limit, db_path,
             return {**base, "bars": bars, "source": "ibkr",
                     "source_message": SOURCE_MESSAGES["ibkr"], "bar_count": len(bars)}
 
-    # 3. R2
+    # 4. R2
     log.info("Trying R2 for %s/%s...", symbol, timeframe)
     try:
         from .backtest import load_from_r2
@@ -231,7 +331,7 @@ def fetch_bars_waterfall_sync(symbol, timeframe, limit, db_path,
     except Exception as e:
         log.warning("R2 failed: %s", e)
 
-    # 4. Yahoo Finance
+    # 5. Yahoo Finance
     log.info("Trying Yahoo for %s/%s...", symbol, timeframe)
     bars = fetch_from_yahoo(symbol, timeframe, limit)
     if bars and len(bars) >= 20:
@@ -239,7 +339,7 @@ def fetch_bars_waterfall_sync(symbol, timeframe, limit, db_path,
         return {**base, "bars": bars, "source": "yahoo",
                 "source_message": SOURCE_MESSAGES["yahoo"], "bar_count": len(bars)}
 
-    # 5. FMP
+    # 6. FMP
     log.info("Trying FMP for %s/%s...", symbol, timeframe)
     try:
         from .backtest import _fetch_from_fmp
