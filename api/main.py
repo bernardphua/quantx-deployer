@@ -973,13 +973,17 @@ _PRECOMPUTE_RESULTS_BUCKET = os.environ.get("R2_RESULTS_BUCKET", "quantx-results
 
 
 def _precompute_s3_client():
-    """Shared lazily-created R2 client for the precomputed-results routes."""
+    """Shared lazily-created R2 client for the precomputed-results routes.
+    Uses R2_RESULTS_* env vars when set (quantx-results bucket needs write
+    creds), otherwise falls back to the read-path credentials used elsewhere."""
     import boto3 as _boto3
     from api.options_data import R2_ENDPOINT, R2_ACCESS_KEY, R2_SECRET_KEY
+    access = os.environ.get("R2_RESULTS_ACCESS_KEY") or R2_ACCESS_KEY
+    secret = os.environ.get("R2_RESULTS_SECRET_KEY") or R2_SECRET_KEY
     return _boto3.client(
         "s3", endpoint_url=R2_ENDPOINT,
-        aws_access_key_id=R2_ACCESS_KEY,
-        aws_secret_access_key=R2_SECRET_KEY,
+        aws_access_key_id=access,
+        aws_secret_access_key=secret,
         region_name="auto",
     )
 
