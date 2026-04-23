@@ -6205,6 +6205,10 @@ function optsToggleSymmetric() {
    ══════════════════════════════════════════════════════ */
 let _optsCustomLegs = [];
 let _optsMode = 'template';
+// Tracks which template pill is currently loaded in custom-mode. Set to the
+// template name on optsLoadTemplate; flipped to 'CUSTOM' if the user manually
+// edits legs. Used only to label the results-view header.
+let _optsActiveTemplate = 'CUSTOM';
 
 const OPTS_LEG_TEMPLATES = {
   SHORT_PUT_SPREAD: [
@@ -6263,6 +6267,7 @@ function optsLoadTemplate(name) {
   const tmpl = OPTS_LEG_TEMPLATES[name];
   if (!tmpl) return;
   _optsCustomLegs = tmpl.map(l => ({ ...l }));
+  _optsActiveTemplate = name;
   optsRenderLegs();
   optsUpdateCustomDiagram();
   if (name === 'MEIC') {
@@ -6303,18 +6308,21 @@ function optsRenderLegs() {
 
 function optsToggleLegAction(i) {
   _optsCustomLegs[i].action = _optsCustomLegs[i].action === 'SELL' ? 'BUY' : 'SELL';
+  _optsActiveTemplate = 'CUSTOM';
   optsRenderLegs();
   optsUpdateCustomDiagram();
 }
 
 function optsToggleLegRight(i) {
   _optsCustomLegs[i].right = _optsCustomLegs[i].right === 'PUT' ? 'CALL' : 'PUT';
+  _optsActiveTemplate = 'CUSTOM';
   optsRenderLegs();
   optsUpdateCustomDiagram();
 }
 
 function optsUpdateLeg(i, field, value) {
   _optsCustomLegs[i][field] = value;
+  _optsActiveTemplate = 'CUSTOM';
   optsUpdateCustomDiagram();
 }
 
@@ -6324,12 +6332,14 @@ function optsAddLeg() {
     method: 'DELTA', value: -0.30,
     dte_offset: 0, qty: 1,
   });
+  _optsActiveTemplate = 'CUSTOM';
   optsRenderLegs();
   optsUpdateCustomDiagram();
 }
 
 function optsRemoveLeg(i) {
   _optsCustomLegs.splice(i, 1);
+  _optsActiveTemplate = 'CUSTOM';
   optsRenderLegs();
   optsUpdateCustomDiagram();
 }
@@ -6582,8 +6592,16 @@ async function optsRunBacktest() {
   if (_optsMode === 'custom' && _optsCustomLegs.length > 0) {
     config.strategy_type = 'CUSTOM';
     config.custom_legs = _optsCustomLegs.map(l => ({ ...l }));
+    config.strategy_display_name = _optsActiveTemplate || 'CUSTOM';
+    // Mirror onto OPTS so the results header reads the right label
+    OPTS.strategy_type = 'CUSTOM';
+    OPTS.strategy_display_name = config.strategy_display_name;
     const firstDte = _optsCustomLegs[0].dte_override;
     if (firstDte !== undefined) config.target_dte = firstDte;
+  } else {
+    // Template mode: clear any stale display name so next render picks up
+    // strategy_type directly
+    delete OPTS.strategy_display_name;
   }
 
   // Reset UI
@@ -6790,8 +6808,18 @@ function _optsRenderSummary() {
   const pill = (txt, bg, fg) =>
     '<span style="font-size:11px;padding:3px 8px;border-radius:6px;background:' + bg + ';color:' + fg + ';font-weight:600">' + esc(txt) + '</span>';
   const sharpeTxt = (m.sharpe_ratio || 0).toFixed(2);
+  // For CUSTOM runs show "CUSTOM / <TEMPLATE>" (or CUSTOM LEGS if user edited
+  // away from a template). Template-mode runs and shared-link loads still
+  // show strategy_type directly.
+  let stratLabel;
+  if (OPTS.strategy_type === 'CUSTOM') {
+    const name = OPTS.strategy_display_name || _optsActiveTemplate || 'CUSTOM LEGS';
+    stratLabel = ('CUSTOM \u00B7 ' + name).replace(/_/g, ' ');
+  } else {
+    stratLabel = (OPTS.strategy_type || '').replace(/_/g, ' ');
+  }
   el.innerHTML =
-    pill(OPTS.symbol + ' \u00B7 ' + OPTS.strategy_type.replace(/_/g,' '), 'var(--surface-2)', 'var(--text-secondary)') +
+    pill(OPTS.symbol + ' \u00B7 ' + stratLabel, 'var(--surface-2)', 'var(--text-secondary)') +
     pill(OPTS.target_dte + ' DTE', 'var(--blue-pale)', 'var(--blue-primary)') +
     pill(m.total_trades + ' trades', 'var(--surface-2)', 'var(--text-secondary)') +
     pill('Sharpe ' + sharpeTxt, 'var(--surface-2)', 'var(--text-secondary)');
