@@ -291,6 +291,38 @@ def _select_legs(config: dict, chain_df: pd.DataFrame, expiry: str) -> Optional[
                                config["short_strike_method"], config["short_strike_value"])
         return [_make_leg(row, "BUY", slip_pct)] if row is not None else None
 
+    if strategy == "CUSTOM":
+        # User-defined leg list from the multi-leg builder. Each leg dict has:
+        #   {action, right, method, value, qty, dte_override (optional)}
+        # Per-leg DTE overrides are accepted in the config but currently all
+        # legs share the top-level `expiry` chosen for the trade. Mixed-expiry
+        # legs would require re-running expiry selection per leg -- follow-up.
+        custom_legs_cfg = config.get("custom_legs") or []
+        if not custom_legs_cfg:
+            return None
+        legs = []
+        for leg_cfg in custom_legs_cfg:
+            right = str(leg_cfg.get("right", "PUT")).upper()
+            action = str(leg_cfg.get("action", "SELL")).upper()
+            method = str(leg_cfg.get("method", "DELTA")).upper()
+            try:
+                value = float(leg_cfg.get("value", -0.30))
+            except (TypeError, ValueError):
+                return None
+            try:
+                qty = max(1, int(leg_cfg.get("qty", 1)))
+            except (TypeError, ValueError):
+                qty = 1
+            row = _pick_strike_row(exp_chain, right, method, value)
+            if row is None:
+                log.warning("CUSTOM: no strike for %s %s %s=%s", action, right, method, value)
+                return None
+            # Duplicate the leg `qty` times -- the engine sums per-leg P&L so
+            # N identical legs behave like qty=N on a single leg.
+            for _ in range(qty):
+                legs.append(_make_leg(row, action, slip_pct))
+        return legs or None
+
     raise ValueError(f"Unknown strategy_type: {strategy}")
 
 

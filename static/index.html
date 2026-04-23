@@ -310,6 +310,21 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 .opts-strike-row{display:grid;grid-template-columns:140px 100px 1fr;gap:8px;align-items:center;margin-bottom:10px}
 .opts-strike-label{font-size:12px;font-weight:600;color:var(--text-secondary)}
 
+/* Multi-leg builder */
+.opts-mode-tab{padding:6px 16px;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);cursor:pointer;font-size:12px;font-weight:600;transition:all .15s}
+.opts-mode-tab:first-child{border-radius:6px 0 0 6px}
+.opts-mode-tab:last-child{border-radius:0 6px 6px 0;border-left:none}
+.opts-mode-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.opts-leg-builder-row{display:grid;grid-template-columns:72px 60px 110px 90px 60px 50px 28px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+.opts-leg-builder-row:last-child{border-bottom:none}
+.opts-leg-action-btn{padding:4px 8px;border-radius:4px;border:2px solid transparent;font-size:11px;font-weight:700;cursor:pointer;width:100%}
+.opts-leg-sell{background:#FFEBEE;color:#C62828;border-color:#FFCDD2}
+.opts-leg-buy{background:#E8F5E9;color:#2E7D32;border-color:#C8E6C9}
+.opts-leg-call-btn{background:#E3F2FD;color:#1565C0;border-color:#BBDEFB}
+.opts-leg-put-btn{background:#FFF3E0;color:#E65100;border-color:#FFE0B2}
+.opts-leg-template-pill{padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);cursor:pointer;white-space:nowrap;transition:all .15s}
+.opts-leg-template-pill:hover{border-color:var(--blue-primary);color:var(--blue-primary)}
+
 /* ── Onboarding ────────────────────────────── */
 .onboard-sym-card{border:2px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;text-align:center;transition:all .15s;background:var(--surface)}
 .onboard-sym-card:hover{border-color:var(--blue-primary)}
@@ -943,6 +958,18 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
         <div id="opts-data-range-note" style="font-size:11px;color:var(--text-muted);margin-top:6px"></div>
       </div>
 
+      <!-- Mode toggle -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <span style="font-size:12px;font-weight:600;color:var(--text-secondary)">Mode:</span>
+        <div style="display:flex">
+          <button class="opts-mode-tab active" id="opts-mode-template"
+                  onclick="optsSetMode('template')">&#9679; Templates</button>
+          <button class="opts-mode-tab" id="opts-mode-custom"
+                  onclick="optsSetMode('custom')">&#8853; Custom Legs</button>
+        </div>
+      </div>
+
+      <div id="opts-template-section">
       <div class="form-row" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
         <div class="form-group">
           <label>Strategy Template</label>
@@ -1019,6 +1046,55 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
         </div>
 
       </div>
+      </div><!-- /opts-template-section -->
+
+      <div id="opts-custom-section" style="display:none;margin-bottom:12px">
+        <!-- Template quick-load pills -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px">QUICK TEMPLATES:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <span class="opts-leg-template-pill" onclick="optsLoadTemplate('SHORT_PUT_SPREAD')">Short Put Spread</span>
+            <span class="opts-leg-template-pill" onclick="optsLoadTemplate('SHORT_CALL_SPREAD')">Short Call Spread</span>
+            <span class="opts-leg-template-pill" onclick="optsLoadTemplate('IRON_CONDOR')">Iron Condor</span>
+            <span class="opts-leg-template-pill" onclick="optsLoadTemplate('SHORT_STRANGLE')">Short Strangle</span>
+            <span class="opts-leg-template-pill" onclick="optsLoadTemplate('BUTTERFLY')">Butterfly</span>
+            <span class="opts-leg-template-pill" onclick="optsLoadTemplate('JADE_LIZARD')">Jade Lizard</span>
+            <span class="opts-leg-template-pill" onclick="optsLoadTemplate('MEIC')" title="Multi-Entry Iron Condor -- re-enters after underlying move">MEIC &#9432;</span>
+          </div>
+        </div>
+
+        <!-- Column headers -->
+        <div style="display:grid;grid-template-columns:72px 60px 110px 90px 60px 50px 28px;gap:6px;padding:0 0 4px;border-bottom:2px solid var(--border);margin-bottom:4px">
+          <span style="font-size:10px;font-weight:600;color:var(--text-muted)">ACTION</span>
+          <span style="font-size:10px;font-weight:600;color:var(--text-muted)">TYPE</span>
+          <span style="font-size:10px;font-weight:600;color:var(--text-muted)">METHOD</span>
+          <span style="font-size:10px;font-weight:600;color:var(--text-muted)">VALUE</span>
+          <span style="font-size:10px;font-weight:600;color:var(--text-muted)">DTE</span>
+          <span style="font-size:10px;font-weight:600;color:var(--text-muted)">QTY</span>
+          <span></span>
+        </div>
+
+        <!-- Legs container -->
+        <div id="opts-legs-container"></div>
+
+        <button class="btn btn-outline btn-sm" onclick="optsAddLeg()" style="margin-top:8px;width:100%">+ Add Leg</button>
+
+        <!-- Underlying position -->
+        <div style="margin-top:10px;padding:10px;background:var(--surface-2);border-radius:6px;border:1px solid var(--border)">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text-secondary)">
+            <input type="checkbox" id="opts-underlying-cb" onchange="optsToggleUnderlying()">
+            Add underlying shares (for covered strategies)
+          </label>
+          <div id="opts-underlying-row" style="display:none;margin-top:8px;align-items:center;gap:8px">
+            <select id="opts-underlying-action" style="width:80px">
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+            <input type="number" id="opts-underlying-shares" value="100" min="1" style="width:80px">
+            <span style="font-size:12px;color:var(--text-muted)">shares at market</span>
+          </div>
+        </div>
+      </div><!-- /opts-custom-section -->
 
       <div class="form-group" style="margin-top:8px">
         <label>Target DTE (Days to Expiration)</label>
@@ -6124,6 +6200,160 @@ function optsToggleSymmetric() {
   optsUpdateDiagram();
 }
 
+/* ══════════════════════════════════════════════════════
+   MULTI-LEG CUSTOM BUILDER
+   ══════════════════════════════════════════════════════ */
+let _optsCustomLegs = [];
+let _optsMode = 'template';
+
+const OPTS_LEG_TEMPLATES = {
+  SHORT_PUT_SPREAD: [
+    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.30, dte_offset:0, qty:1},
+    {action:'BUY', right:'PUT', method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+  ],
+  SHORT_CALL_SPREAD: [
+    {action:'SELL',right:'CALL',method:'DELTA',     value:0.30,  dte_offset:0, qty:1},
+    {action:'BUY', right:'CALL',method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+  ],
+  IRON_CONDOR: [
+    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.20, dte_offset:0, qty:1},
+    {action:'BUY', right:'PUT', method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',     value:0.20,  dte_offset:0, qty:1},
+    {action:'BUY', right:'CALL',method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+  ],
+  SHORT_STRANGLE: [
+    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.20, dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',     value:0.20,  dte_offset:0, qty:1},
+  ],
+  BUTTERFLY: [
+    {action:'BUY', right:'PUT', method:'DELTA',     value:-0.40, dte_offset:0, qty:1},
+    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.25, dte_offset:0, qty:2},
+    {action:'BUY', right:'PUT', method:'DELTA',     value:-0.10, dte_offset:0, qty:1},
+  ],
+  JADE_LIZARD: [
+    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.30, dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',     value:0.20,  dte_offset:0, qty:1},
+    {action:'BUY', right:'CALL',method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+  ],
+  MEIC: [
+    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.20, dte_offset:0, qty:1},
+    {action:'BUY', right:'PUT', method:'POINTS_OTM',value:10,   dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',     value:0.20,  dte_offset:0, qty:1},
+    {action:'BUY', right:'CALL',method:'POINTS_OTM',value:10,   dte_offset:0, qty:1},
+  ],
+};
+
+function optsSetMode(mode) {
+  _optsMode = mode;
+  const isCustom = mode === 'custom';
+  document.getElementById('opts-mode-template').classList.toggle('active', !isCustom);
+  document.getElementById('opts-mode-custom').classList.toggle('active', isCustom);
+  document.getElementById('opts-template-section').style.display = isCustom ? 'none' : '';
+  document.getElementById('opts-custom-section').style.display = isCustom ? '' : 'none';
+  // Load a sensible default the first time the user flips to custom
+  if (isCustom && _optsCustomLegs.length === 0) {
+    optsLoadTemplate('SHORT_PUT_SPREAD');
+  } else if (isCustom) {
+    optsUpdateCustomDiagram();
+  }
+  optsCheckRunButton();
+}
+
+function optsLoadTemplate(name) {
+  const tmpl = OPTS_LEG_TEMPLATES[name];
+  if (!tmpl) return;
+  _optsCustomLegs = tmpl.map(l => ({ ...l }));
+  optsRenderLegs();
+  optsUpdateCustomDiagram();
+  if (name === 'MEIC') {
+    showToast('MEIC: engine re-enters when underlying moves. Set max entries in Advanced Options.', 'info');
+  }
+}
+
+function optsRenderLegs() {
+  const container = document.getElementById('opts-legs-container');
+  if (!container) return;
+  container.innerHTML = _optsCustomLegs.map((leg, i) => {
+    const actionCls = leg.action === 'SELL' ? 'opts-leg-sell' : 'opts-leg-buy';
+    const rightCls = leg.right === 'CALL' ? 'opts-leg-call-btn' : 'opts-leg-put-btn';
+    const dteDisplay = leg.dte_override !== undefined
+      ? leg.dte_override
+      : (OPTS.target_dte || 7) + (leg.dte_offset || 0);
+    return (
+      '<div class="opts-leg-builder-row">'
+      + '<button class="opts-leg-action-btn ' + actionCls + '" onclick="optsToggleLegAction(' + i + ')">' + leg.action + '</button>'
+      + '<button class="opts-leg-action-btn ' + rightCls + '" onclick="optsToggleLegRight(' + i + ')">' + leg.right + '</button>'
+      + '<select onchange="optsUpdateLeg(' + i + ',\'method\',this.value)" style="font-size:11px;padding:3px">'
+      +   '<option value="DELTA"' + (leg.method === 'DELTA' ? ' selected' : '') + '>Δ Delta</option>'
+      +   '<option value="PCT_OTM"' + (leg.method === 'PCT_OTM' ? ' selected' : '') + '>% OTM</option>'
+      +   '<option value="POINTS_OTM"' + (leg.method === 'POINTS_OTM' ? ' selected' : '') + '>$ Points</option>'
+      + '</select>'
+      + '<input type="number" value="' + leg.value + '" step="0.01" style="font-size:11px;padding:3px" '
+      +   'onchange="optsUpdateLeg(' + i + ',\'value\',parseFloat(this.value)||0)">'
+      + '<input type="number" value="' + dteDisplay + '" min="0" max="90" step="1" style="font-size:11px;padding:3px" title="DTE for this leg" '
+      +   'onchange="optsUpdateLeg(' + i + ',\'dte_override\',parseInt(this.value)||OPTS.target_dte)">'
+      + '<input type="number" value="' + (leg.qty || 1) + '" min="1" max="10" style="font-size:11px;padding:3px" '
+      +   'onchange="optsUpdateLeg(' + i + ',\'qty\',parseInt(this.value)||1)">'
+      + '<button onclick="optsRemoveLeg(' + i + ')" style="border:none;background:none;color:var(--red);font-size:18px;cursor:pointer;padding:0;line-height:1">×</button>'
+      + '</div>'
+    );
+  }).join('');
+}
+
+function optsToggleLegAction(i) {
+  _optsCustomLegs[i].action = _optsCustomLegs[i].action === 'SELL' ? 'BUY' : 'SELL';
+  optsRenderLegs();
+  optsUpdateCustomDiagram();
+}
+
+function optsToggleLegRight(i) {
+  _optsCustomLegs[i].right = _optsCustomLegs[i].right === 'PUT' ? 'CALL' : 'PUT';
+  optsRenderLegs();
+  optsUpdateCustomDiagram();
+}
+
+function optsUpdateLeg(i, field, value) {
+  _optsCustomLegs[i][field] = value;
+  optsUpdateCustomDiagram();
+}
+
+function optsAddLeg() {
+  _optsCustomLegs.push({
+    action: 'SELL', right: 'PUT',
+    method: 'DELTA', value: -0.30,
+    dte_offset: 0, qty: 1,
+  });
+  optsRenderLegs();
+  optsUpdateCustomDiagram();
+}
+
+function optsRemoveLeg(i) {
+  _optsCustomLegs.splice(i, 1);
+  optsRenderLegs();
+  optsUpdateCustomDiagram();
+}
+
+function optsToggleUnderlying() {
+  const on = document.getElementById('opts-underlying-cb').checked;
+  const row = document.getElementById('opts-underlying-row');
+  if (row) row.style.display = on ? 'flex' : 'none';
+}
+
+function optsUpdateCustomDiagram() {
+  const el = document.getElementById('opts-position-diagram');
+  if (!el || _optsMode !== 'custom') return;
+  const sep = '<span style="color:var(--text-muted);padding:0 2px">·</span>';
+  el.innerHTML = _optsCustomLegs.map(l => {
+    const ac = l.action === 'SELL' ? 'opts-chip-sell' : 'opts-chip-buy';
+    const rc = l.right === 'CALL' ? 'opts-chip-call' : 'opts-chip-put';
+    const val = l.method === 'DELTA' ? l.value + 'Δ'
+              : l.method === 'PCT_OTM' ? (l.value * 100).toFixed(0) + '%'
+              : '$' + l.value;
+    const qty = l.qty > 1 ? ' ×' + l.qty : '';
+    return '<span class="opts-leg-chip ' + ac + ' ' + rc + '">' + l.action + ' ' + l.right + ' ' + val + qty + '</span>';
+  }).join(sep);
+}
+
 function optsUpdateDiagram() {
   const el = document.getElementById('opts-position-diagram');
   if (!el) return;
@@ -6343,6 +6573,16 @@ async function optsRunBacktest() {
   OPTS.fill_method             = document.getElementById('opts-fill-method')?.value || 'conservative';
 
   const config = { ...OPTS };
+
+  // Custom-legs mode: replace strategy_type + attach leg specs. The backend
+  // recognizes strategy_type='CUSTOM' and passes config.custom_legs through
+  // _select_legs unchanged.
+  if (_optsMode === 'custom' && _optsCustomLegs.length > 0) {
+    config.strategy_type = 'CUSTOM';
+    config.custom_legs = _optsCustomLegs.map(l => ({ ...l }));
+    const firstDte = _optsCustomLegs[0].dte_override;
+    if (firstDte !== undefined) config.target_dte = firstDte;
+  }
 
   // Reset UI
   _optsTradeLog = [];
