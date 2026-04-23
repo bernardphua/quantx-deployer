@@ -301,6 +301,11 @@ def _select_legs(config: dict, chain_df: pd.DataFrame, expiry: str) -> Optional[
         if not custom_legs_cfg:
             return None
         legs = []
+        # For WING_POINTS: each long leg anchors off the most-recent SELL
+        # strike of the same right. Put wings go N points BELOW the short,
+        # call wings go N points ABOVE the short.
+        last_short_strike = {"PUT": None, "CALL": None}
+
         for leg_cfg in custom_legs_cfg:
             right = str(leg_cfg.get("right", "PUT")).upper()
             action = str(leg_cfg.get("action", "SELL")).upper()
@@ -313,10 +318,31 @@ def _select_legs(config: dict, chain_df: pd.DataFrame, expiry: str) -> Optional[
                 qty = max(1, int(leg_cfg.get("qty", 1)))
             except (TypeError, ValueError):
                 qty = 1
-            row = _pick_strike_row(exp_chain, right, method, value)
+
+            if method == "WING_POINTS":
+                anchor = last_short_strike.get(right)
+                if anchor is None:
+                    log.warning("CUSTOM WING_POINTS: no prior SELL %s leg to anchor to", right)
+                    return None
+                offset = abs(value)
+                target = anchor - offset if right == "PUT" else anchor + offset
+                df = exp_chain[exp_chain["right"].str.upper() == right]
+                if df.empty:
+                    return None
+                idx = (df["strike"] - target).abs().idxmin()
+                row = df.loc[idx]
+            else:
+                row = _pick_strike_row(exp_chain, right, method, value)
+
             if row is None:
                 log.warning("CUSTOM: no strike for %s %s %s=%s", action, right, method, value)
                 return None
+
+            # Remember the short strike so a following WING_POINTS leg can
+            # anchor to it. Only SELLs count as anchors.
+            if action == "SELL":
+                last_short_strike[right] = float(row["strike"])
+
             # Duplicate the leg `qty` times -- the engine sums per-leg P&L so
             # N identical legs behave like qty=N on a single leg.
             for _ in range(qty):

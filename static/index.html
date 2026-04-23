@@ -6208,38 +6208,38 @@ let _optsMode = 'template';
 
 const OPTS_LEG_TEMPLATES = {
   SHORT_PUT_SPREAD: [
-    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.30, dte_offset:0, qty:1},
-    {action:'BUY', right:'PUT', method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+    {action:'SELL',right:'PUT', method:'DELTA',       value:-0.30, dte_offset:0, qty:1},
+    {action:'BUY', right:'PUT', method:'WING_POINTS', value:5,     dte_offset:0, qty:1},
   ],
   SHORT_CALL_SPREAD: [
-    {action:'SELL',right:'CALL',method:'DELTA',     value:0.30,  dte_offset:0, qty:1},
-    {action:'BUY', right:'CALL',method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',       value:0.30,  dte_offset:0, qty:1},
+    {action:'BUY', right:'CALL',method:'WING_POINTS', value:5,     dte_offset:0, qty:1},
   ],
   IRON_CONDOR: [
-    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.20, dte_offset:0, qty:1},
-    {action:'BUY', right:'PUT', method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
-    {action:'SELL',right:'CALL',method:'DELTA',     value:0.20,  dte_offset:0, qty:1},
-    {action:'BUY', right:'CALL',method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+    {action:'SELL',right:'PUT', method:'DELTA',       value:-0.20, dte_offset:0, qty:1},
+    {action:'BUY', right:'PUT', method:'WING_POINTS', value:5,     dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',       value:0.20,  dte_offset:0, qty:1},
+    {action:'BUY', right:'CALL',method:'WING_POINTS', value:5,     dte_offset:0, qty:1},
   ],
   SHORT_STRANGLE: [
-    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.20, dte_offset:0, qty:1},
-    {action:'SELL',right:'CALL',method:'DELTA',     value:0.20,  dte_offset:0, qty:1},
+    {action:'SELL',right:'PUT', method:'DELTA',       value:-0.20, dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',       value:0.20,  dte_offset:0, qty:1},
   ],
   BUTTERFLY: [
-    {action:'BUY', right:'PUT', method:'DELTA',     value:-0.40, dte_offset:0, qty:1},
-    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.25, dte_offset:0, qty:2},
-    {action:'BUY', right:'PUT', method:'DELTA',     value:-0.10, dte_offset:0, qty:1},
+    {action:'BUY', right:'PUT', method:'DELTA',       value:-0.40, dte_offset:0, qty:1},
+    {action:'SELL',right:'PUT', method:'DELTA',       value:-0.25, dte_offset:0, qty:2},
+    {action:'BUY', right:'PUT', method:'WING_POINTS', value:5,     dte_offset:0, qty:1},
   ],
   JADE_LIZARD: [
-    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.30, dte_offset:0, qty:1},
-    {action:'SELL',right:'CALL',method:'DELTA',     value:0.20,  dte_offset:0, qty:1},
-    {action:'BUY', right:'CALL',method:'POINTS_OTM',value:5,    dte_offset:0, qty:1},
+    {action:'SELL',right:'PUT', method:'DELTA',       value:-0.30, dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',       value:0.20,  dte_offset:0, qty:1},
+    {action:'BUY', right:'CALL',method:'WING_POINTS', value:5,     dte_offset:0, qty:1},
   ],
   MEIC: [
-    {action:'SELL',right:'PUT', method:'DELTA',     value:-0.20, dte_offset:0, qty:1},
-    {action:'BUY', right:'PUT', method:'POINTS_OTM',value:10,   dte_offset:0, qty:1},
-    {action:'SELL',right:'CALL',method:'DELTA',     value:0.20,  dte_offset:0, qty:1},
-    {action:'BUY', right:'CALL',method:'POINTS_OTM',value:10,   dte_offset:0, qty:1},
+    {action:'SELL',right:'PUT', method:'DELTA',       value:-0.20, dte_offset:0, qty:1},
+    {action:'BUY', right:'PUT', method:'WING_POINTS', value:10,    dte_offset:0, qty:1},
+    {action:'SELL',right:'CALL',method:'DELTA',       value:0.20,  dte_offset:0, qty:1},
+    {action:'BUY', right:'CALL',method:'WING_POINTS', value:10,    dte_offset:0, qty:1},
   ],
 };
 
@@ -6287,6 +6287,7 @@ function optsRenderLegs() {
       +   '<option value="DELTA"' + (leg.method === 'DELTA' ? ' selected' : '') + '>Δ Delta</option>'
       +   '<option value="PCT_OTM"' + (leg.method === 'PCT_OTM' ? ' selected' : '') + '>% OTM</option>'
       +   '<option value="POINTS_OTM"' + (leg.method === 'POINTS_OTM' ? ' selected' : '') + '>$ Points</option>'
+      +   '<option value="WING_POINTS"' + (leg.method === 'WING_POINTS' ? ' selected' : '') + '>Wing $pts</option>'
       + '</select>'
       + '<input type="number" value="' + leg.value + '" step="0.01" style="font-size:11px;padding:3px" '
       +   'onchange="optsUpdateLeg(' + i + ',\'value\',parseFloat(this.value)||0)">'
@@ -6348,6 +6349,7 @@ function optsUpdateCustomDiagram() {
     const rc = l.right === 'CALL' ? 'opts-chip-call' : 'opts-chip-put';
     const val = l.method === 'DELTA' ? l.value + 'Δ'
               : l.method === 'PCT_OTM' ? (l.value * 100).toFixed(0) + '%'
+              : l.method === 'WING_POINTS' ? '$' + l.value + ' wing'
               : '$' + l.value;
     const qty = l.qty > 1 ? ' ×' + l.qty : '';
     return '<span class="opts-leg-chip ' + ac + ' ' + rc + '">' + l.action + ' ' + l.right + ' ' + val + qty + '</span>';
