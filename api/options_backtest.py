@@ -661,9 +661,13 @@ def run_options_backtest_stream(config: dict):
 
     # On cold cache the fire-and-forget prewarm hasn't finished for the first
     # trade date yet, so get_chain_for_date would return empty and the engine
-    # would mark the day as no_chain. Wait up to 30s for the first entry
-    # date's parquet to land on disk, surfacing a "downloading" progress
-    # event so the UI doesn't look frozen.
+    # would mark the day as no_chain. Wait for the first entry date's parquet
+    # to land on disk, surfacing a "downloading" progress event so the UI
+    # doesn't look frozen. Railway adds cross-region R2 latency so we wait
+    # longer there (2 min vs 30s local).
+    import os as _os
+    is_railway = bool(_os.environ.get("RAILWAY_ENVIRONMENT"))
+    max_wait_iters = 240 if is_railway else 60  # iter * 0.5s: 120s / 30s
     first_date = dates[0] if dates else None
     if first_date:
         first_cf = options_data._cache_path(symbol.upper(), first_date)
@@ -671,10 +675,18 @@ def run_options_backtest_stream(config: dict):
             yield {"type": "progress", "done": 0, "total": total,
                    "date": first_date, "skipped": None,
                    "message": "Downloading data for first trade date..."}
-            for _ in range(60):  # 60 * 0.5s = 30s max
+            waited = 0
+            for _ in range(max_wait_iters):
                 if first_cf.exists():
                     break
                 time.sleep(0.5)
+                waited += 1
+                # Heartbeat every 10s so the frontend knows we're not dead
+                if waited % 20 == 0:
+                    secs = waited // 2
+                    yield {"type": "progress", "done": 0, "total": total,
+                           "date": first_date, "skipped": None,
+                           "message": f"Downloading data... ({secs}s elapsed)"}
 
     trades = []
     capital = float(config.get("starting_capital", 10000))
@@ -697,7 +709,10 @@ def run_options_backtest_stream(config: dict):
         try:
             chain = options_data.get_chain_for_date(symbol, entry_date, entry_time)
         except Exception as e:
-            log.debug("entry chain fetch failed %s %s: %s", symbol, entry_date, e)
+            # Elevated from debug -> warning so Railway operators can see why
+            # "no trades found" actually happens when the cold cache struggles.
+            log.warning("[backtest] Chain fetch failed %s %s: %s: %s",
+                        symbol, entry_date, type(e).__name__, e)
             skipped["no_chain"] += 1
             yield {"type": "progress", "done": i + 1, "total": total,
                    "date": entry_date, "skipped": "no_chain",

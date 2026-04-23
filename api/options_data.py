@@ -128,13 +128,18 @@ def _ensure_day_cached(symbol: str, date_str: str) -> Path:
     cf.parent.mkdir(parents=True, exist_ok=True)
     tmp = cf.with_suffix(".part")
     s3 = get_r2_client()
+    log.info("[cache] Downloading %s %s from R2 to %s", symbol, date_str, cf)
     try:
         _download_day(s3, symbol, date_str, tmp)
         df = pd.read_parquet(tmp, columns=_KEEP_COLS + ["iv_error"])
         df = df[(df["iv_error"] != -1) & (df["underlying_price"] > 0)]
         df = df[_KEEP_COLS].copy()
         df.to_parquet(cf, index=False, compression="zstd")
-    except Exception:
+        log.info("[cache] Saved %s %s (%.1fMB)", symbol, date_str,
+                 cf.stat().st_size / 1024 / 1024)
+    except Exception as e:
+        log.error("[cache] FAILED to cache %s %s: %s: %s",
+                  symbol, date_str, type(e).__name__, e)
         if cf.exists():
             cf.unlink(missing_ok=True)
         raise
