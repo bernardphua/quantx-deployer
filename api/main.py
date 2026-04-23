@@ -319,7 +319,8 @@ async def health():
 #   Local/SQLite (no DATABASE_URL): middleware is a no-op; existing flows unchanged
 #   PostgreSQL/Railway: /api/* (except /api/auth/* and /api/health) requires JWT
 
-_PUBLIC_API_PREFIXES = ("/api/auth/", "/api/health", "/api/debug")
+_PUBLIC_API_PREFIXES = ("/api/auth/", "/api/health", "/api/debug",
+                        "/api/options/share")  # share links viewable without auth
 
 
 @app.middleware("http")
@@ -966,6 +967,162 @@ async def options_cache_stats():
     """Disk-cache inventory: file counts + sizes per symbol."""
     from api.options_data import get_cache_stats
     return get_cache_stats()
+
+
+_PRECOMPUTE_RESULTS_BUCKET = os.environ.get("R2_RESULTS_BUCKET", "quantx-results")
+
+
+def _precompute_s3_client():
+    """Shared lazily-created R2 client for the precomputed-results routes."""
+    import boto3 as _boto3
+    from api.options_data import R2_ENDPOINT, R2_ACCESS_KEY, R2_SECRET_KEY
+    return _boto3.client(
+        "s3", endpoint_url=R2_ENDPOINT,
+        aws_access_key_id=R2_ACCESS_KEY,
+        aws_secret_access_key=R2_SECRET_KEY,
+        region_name="auto",
+    )
+
+
+@app.get("/api/options/precomputed")
+async def get_precomputed_result(symbol: str, strategy: str, dte: int, period: str):
+    """Return a cached backtest result computed by scripts/precompute_spxw.py.
+    404 if the (symbol, strategy, dte, period) combo hasn't been precomputed --
+    frontend should fall back to live compute in that case."""
+    from fastapi.responses import JSONResponse
+    try:
+        s3 = _precompute_s3_client()
+        key = f"results/{symbol}/{strategy}/{dte}DTE/{period}/default.json"
+        obj = s3.get_object(Bucket=_PRECOMPUTE_RESULTS_BUCKET, Key=key)
+        data = json.loads(obj["Body"].read().decode())
+        return JSONResponse(content=data, headers={"X-Result-Source": "precomputed"})
+    except Exception:
+        raise HTTPException(404, "No pre-computed result available")
+
+
+@app.get("/api/options/results/index")
+async def get_results_index():
+    """Master index of precomputed results. Powers the instructor dashboard."""
+    try:
+        s3 = _precompute_s3_client()
+        obj = s3.get_object(Bucket=_PRECOMPUTE_RESULTS_BUCKET, Key="results/index.json")
+        return json.loads(obj["Body"].read().decode())
+    except Exception:
+        raise HTTPException(404, "Results index not found")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# OPTIONS STUDIO SHARE LINKS
+# ══════════════════════════════════════════════════════════════════════════════
+# Saves a backtest result under a short random ID so it can be viewed by
+# anyone with the link (read-only). Dual-mode: PostgreSQL when DATABASE_URL is
+# set, SQLite otherwise. Both routes are whitelisted from the auth middleware
+# so share links remain usable without login.
+
+def _ensure_options_shares_table():
+    """Create the options_shares table on first use. Idempotent."""
+    if USE_POSTGRES:
+        from api.db_postgres import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS options_shares (
+                share_id      TEXT PRIMARY KEY,
+                email         TEXT,
+                config_json   TEXT,
+                metrics_json  TEXT,
+                trade_log_json TEXT,
+                created_at    TEXT
+            )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS options_shares (
+                share_id      TEXT PRIMARY KEY,
+                email         TEXT,
+                config_json   TEXT,
+                metrics_json  TEXT,
+                trade_log_json TEXT,
+                created_at    TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+
+@app.post("/api/options/share")
+async def options_share_create(request: Request):
+    """Save a backtest result under a short random ID. Returns {share_id, url}."""
+    body = await request.json()
+    _ensure_options_shares_table()
+
+    share_id = secrets.token_urlsafe(8)
+    config = json.dumps(body.get("config") or {}, default=str)
+    metrics = json.dumps(body.get("metrics") or {}, default=str)
+    # Defensive: cap trade log to 100 even if frontend forgot to slice
+    trades = (body.get("trade_log") or [])[:100]
+    trade_log = json.dumps(trades, default=str)
+    email = (body.get("email") or "").strip()
+    created = datetime.utcnow().isoformat()
+
+    if USE_POSTGRES:
+        from api.db_postgres import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO options_shares
+              (share_id, email, config_json, metrics_json, trade_log_json, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (share_id, email, config, metrics, trade_log, created))
+        conn.commit()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        conn.execute("""
+            INSERT INTO options_shares
+              (share_id, email, config_json, metrics_json, trade_log_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (share_id, email, config, metrics, trade_log, created))
+        conn.commit()
+        conn.close()
+
+    return {"share_id": share_id, "url": "/#options-share/" + share_id}
+
+
+@app.get("/api/options/share/{share_id}")
+async def options_share_get(share_id: str):
+    """Retrieve a shared backtest. Public -- no auth required."""
+    _ensure_options_shares_table()
+    if USE_POSTGRES:
+        from api.db_postgres import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT share_id, config_json, metrics_json, trade_log_json, created_at "
+            "FROM options_shares WHERE share_id = %s", (share_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        row = conn.execute(
+            "SELECT share_id, config_json, metrics_json, trade_log_json, created_at "
+            "FROM options_shares WHERE share_id = ?", (share_id,)).fetchone()
+        conn.close()
+    if not row:
+        raise HTTPException(404, "Share not found")
+    return {
+        "share_id": row["share_id"],
+        "config": json.loads(row["config_json"] or "{}"),
+        "metrics": json.loads(row["metrics_json"] or "{}"),
+        "trade_log": json.loads(row["trade_log_json"] or "[]"),
+        "created_at": row["created_at"],
+    }
 
 
 @app.get("/api/options/dates/{symbol}")

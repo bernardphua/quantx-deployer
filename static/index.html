@@ -1334,6 +1334,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <div id="opts-results-summary" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"></div>
     </div>
     <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" id="opts-share-btn" onclick="optsShare(event)">Share &#8599;</button>
       <button class="btn btn-sm" style="background:#7C3AED;color:#fff" onclick="showToast('Optimizer coming soon -- confirm backtest results first','info')">&#9881; Optimize</button>
       <button class="btn btn-sm" style="background:var(--green);color:#fff" onclick="optsOpenDeployModal()">&#128640; Deploy</button>
     </div>
@@ -6738,6 +6739,79 @@ function optsOpenDeployModal() {
   }
   document.getElementById('opts-deploy-modal').classList.add('open');
 }
+
+/* ── Share link (backend-stored, short-ID) ──────────── */
+async function optsShare(ev) {
+  if (!_optsResults || !_optsTradeLog.length) {
+    showToast('Run a backtest first', 'error');
+    return;
+  }
+  const btn = ev ? ev.currentTarget : document.getElementById('opts-share-btn');
+  const originalLabel = btn ? btn.textContent : 'Share ↗';
+  if (btn) { btn.disabled = true; btn.textContent = 'Sharing...'; }
+  try {
+    const r = await fetch(API + '/api/options/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: EMAIL || '',
+        config: OPTS,
+        // Pass only the metrics + equity to keep payload small
+        metrics: _optsResults.metrics || _optsResults,
+        trade_log: _optsTradeLog.slice(0, 100),
+      }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const url = window.location.origin + '/#options-share/' + d.share_id;
+    try { await navigator.clipboard.writeText(url); }
+    catch { prompt('Copy this link:', url); }
+    showToast('Link copied: ' + url, 'success');
+    if (btn) {
+      btn.textContent = '✅ Copied!';
+      setTimeout(() => {
+        btn.textContent = originalLabel;
+        btn.disabled = false;
+      }, 3000);
+    }
+  } catch (e) {
+    showToast('Share failed: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+  }
+}
+
+async function optsLoadShared(shareId) {
+  // Bring user to the Options Studio page, then load + render the saved results
+  navigate('options-studio');
+  try {
+    const r = await fetch(API + '/api/options/share/' + encodeURIComponent(shareId));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    // _optsRenderResults() reads from _optsResults.metrics, matching live-run shape
+    _optsResults = { metrics: d.metrics || {}, trade_log: d.trade_log || [] };
+    _optsTradeLog = d.trade_log || [];
+    _optsTradeLogPage = 1;
+    Object.assign(OPTS, d.config || {});
+    document.getElementById('opts-setup-view').style.display = 'none';
+    document.getElementById('opts-progress-section').style.display = 'none';
+    document.getElementById('opts-results-view').style.display = '';
+    _optsRenderResults();
+    showToast('Viewing shared backtest results', 'info');
+  } catch (e) {
+    showToast('Could not load shared results: ' + e.message, 'error');
+  }
+}
+
+/* Intercept #options-share/<id> in the URL hash and render the saved results.
+   Fires on initial page load and on hashchange. */
+function _optsHandleShareHash() {
+  const h = window.location.hash || '';
+  const m = h.match(/^#options-share\/([A-Za-z0-9_-]+)/);
+  if (m) optsLoadShared(m[1]);
+}
+window.addEventListener('hashchange', _optsHandleShareHash);
+// Defer initial check to after DOM + scripts are ready
+setTimeout(_optsHandleShareHash, 300);
 
 /* ── Cache Manager (Options Studio / Advanced) ──────── */
 async function optsCachePreload() {
