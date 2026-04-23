@@ -51,8 +51,11 @@ LOCAL_API_PORT = int(os.environ.get("PORT", 8080))
 # Admin
 ADMIN_PIN = os.environ.get("ADMIN_PIN", "quantx2025")
 
-# Hosting mode
-HOSTING = os.environ.get("HOSTING", "vps")  # "vps" or "railway"
+# Hosting mode. Explicit HOSTING env var wins; otherwise auto-detect Railway
+# via the RAILWAY_ENVIRONMENT var Railway injects automatically.
+HOSTING = os.environ.get("HOSTING") or (
+    "railway" if os.environ.get("RAILWAY_ENVIRONMENT") else "vps"
+)
 
 # FMP API
 FMP_API_KEY = os.environ.get("FMP_API_KEY", "")

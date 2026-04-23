@@ -3,6 +3,7 @@
 import os
 import sys
 import ast
+import secrets
 import subprocess
 import signal
 import json
@@ -31,13 +32,15 @@ from api.config import (
     CENTRAL_API_URL, HOSTING, VERSION, BOTS_DIR, LOGS_DIR, PYTHON_EXE, DB_PATH,
 )
 from api.database import (
-    init_db, get_db, save_student, get_student, save_strategy, get_strategies,
+    get_db, save_student, get_student, save_strategy, get_strategies,
     delete_strategy, toggle_strategy, save_process, update_process_status,
     get_latest_process, log_trade, get_trades, decrypt,
     save_ibkr_config, get_ibkr_config,
     get_broker_accounts, get_broker_account, save_broker_account,
     update_broker_account_status, delete_broker_account, get_broker_credentials,
 )
+# Dual-mode init: PostgreSQL when DATABASE_URL is set, SQLite otherwise.
+from api.db_postgres import init_db, USE_POSTGRES
 from api.generate import (generate_master_bot, generate_ibkr_bot, generate_simple_lp_bot,
                           generate_simple_ibkr_bot, generate_ibkr_bot_prod,
                           generate_lp_master_bot, library_id_to_conditions)
@@ -305,7 +308,195 @@ async def health():
             "backtest": "railway" if CENTRAL_API_URL else "local",
             "trading": "local",
         },
+        "auth_mode": "postgres" if USE_POSTGRES else "local",
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION
+# ══════════════════════════════════════════════════════════════════════════════
+# Two modes:
+#   Local/SQLite (no DATABASE_URL): middleware is a no-op; existing flows unchanged
+#   PostgreSQL/Railway: /api/* (except /api/auth/* and /api/health) requires JWT
+
+_PUBLIC_API_PREFIXES = ("/api/auth/", "/api/health", "/api/debug")
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Require JWT on /api/* routes when running in PostgreSQL mode."""
+    if not USE_POSTGRES:
+        return await call_next(request)
+    path = request.url.path
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    if any(path.startswith(p) for p in _PUBLIC_API_PREFIXES):
+        return await call_next(request)
+    from api.auth import get_current_user
+    user = get_current_user(request)
+    if not user:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    # Stash on request state so handlers can access without re-parsing
+    request.state.user = user
+    return await call_next(request)
+
+
+class _RegisterBody(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = None
+
+
+class _LoginBody(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+async def auth_register(body: _RegisterBody, response: Response):
+    """Create a user + return JWT. PostgreSQL only."""
+    if not USE_POSTGRES:
+        raise HTTPException(400, "Registration requires PostgreSQL (DATABASE_URL unset)")
+    if len(body.password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    from api.auth import hash_password, create_token, COOKIE_NAME
+    from api.db_postgres import get_conn
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO users (email, name, password_hash, role, last_login)
+            VALUES (%s, %s, %s, 'student', NOW())
+            RETURNING id, email, name, role
+        """, (body.email.lower().strip(), body.name, hash_password(body.password)))
+        row = cur.fetchone()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            raise HTTPException(409, "Email already registered")
+        raise HTTPException(500, f"Registration failed: {e}")
+    finally:
+        cur.close()
+        conn.close()
+    token = create_token(row["id"], row["email"], row["role"], row["name"])
+    response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax",
+                        max_age=7 * 24 * 3600, secure=bool(os.environ.get("RAILWAY_ENVIRONMENT")))
+    return {"token": token, "user": dict(row)}
+
+
+@app.post("/api/auth/login")
+async def auth_login(body: _LoginBody, response: Response):
+    if not USE_POSTGRES:
+        raise HTTPException(400, "Login requires PostgreSQL (DATABASE_URL unset)")
+    from api.auth import verify_password, create_token, COOKIE_NAME
+    from api.db_postgres import get_conn
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, email, name, role, password_hash FROM users WHERE email = %s
+    """, (body.email.lower().strip(),))
+    row = cur.fetchone()
+    if not row or not verify_password(body.password, row["password_hash"]):
+        cur.close()
+        conn.close()
+        raise HTTPException(401, "Invalid email or password")
+    cur.execute("UPDATE users SET last_login = NOW() WHERE id = %s", (row["id"],))
+    conn.commit()
+    cur.close()
+    conn.close()
+    token = create_token(row["id"], row["email"], row["role"], row["name"])
+    response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax",
+                        max_age=7 * 24 * 3600, secure=bool(os.environ.get("RAILWAY_ENVIRONMENT")))
+    user = {k: row[k] for k in ("id", "email", "name", "role")}
+    return {"token": token, "user": user}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(response: Response):
+    from api.auth import COOKIE_NAME
+    response.delete_cookie(COOKIE_NAME)
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    from api.auth import get_current_user
+    user = get_current_user(request)
+    if not user:
+        # In SQLite mode there's no user; return a synthetic "local" identity
+        if not USE_POSTGRES:
+            return {"user": None, "mode": "local"}
+        raise HTTPException(401, "Not authenticated")
+    return {"user": {k: user.get(k) for k in ("user_id", "email", "name", "role")},
+            "mode": "postgres"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LONGPORT OAUTH2
+# ══════════════════════════════════════════════════════════════════════════════
+@app.get("/api/auth/longport/start")
+async def longport_start(request: Request):
+    """Begin OAuth2 flow: return the LongPort authorize URL for the frontend to open."""
+    if not USE_POSTGRES:
+        raise HTTPException(400, "LongPort OAuth requires PostgreSQL")
+    from api.auth import get_current_user
+    from api.longport_oauth import generate_pkce, get_authorize_url, save_oauth_state
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    verifier, challenge = generate_pkce()
+    state = secrets.token_urlsafe(24)
+    save_oauth_state(user["user_id"], state, verifier)
+    return {"auth_url": get_authorize_url(state, challenge), "state": state}
+
+
+@app.get("/callback/longport")
+async def longport_callback(code: Optional[str] = None, state: Optional[str] = None,
+                            error: Optional[str] = None):
+    """Exchange the authorization code for tokens. No /api/ prefix -- LongPort's
+    registered redirect_uri points here directly."""
+    from fastapi.responses import RedirectResponse
+    if error:
+        return RedirectResponse(url=f"/#/brokers?oauth_error={error}")
+    if not code or not state:
+        return RedirectResponse(url="/#/brokers?oauth_error=missing_code_or_state")
+    if not USE_POSTGRES:
+        return RedirectResponse(url="/#/brokers?oauth_error=postgres_required")
+    from api.longport_oauth import consume_oauth_state, exchange_code_for_tokens, store_tokens
+    row = consume_oauth_state(state)
+    if not row:
+        return RedirectResponse(url="/#/brokers?oauth_error=invalid_or_expired_state")
+    try:
+        tokens = exchange_code_for_tokens(code, row["code_verifier"])
+        store_tokens(row["user_id"], tokens)
+    except Exception as e:
+        log = _logging.getLogger("quantx-oauth-callback")
+        log.exception("LongPort token exchange failed")
+        return RedirectResponse(url=f"/#/brokers?oauth_error=exchange_failed&msg={str(e)[:80]}")
+    return RedirectResponse(url="/#/brokers?connected=longport")
+
+
+@app.get("/api/auth/longport/status")
+async def longport_status(request: Request):
+    from api.auth import get_current_user
+    from api.longport_oauth import get_token_status
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    return get_token_status(user["user_id"])
+
+
+@app.delete("/api/auth/longport/disconnect")
+async def longport_disconnect(request: Request):
+    from api.auth import get_current_user
+    from api.longport_oauth import disconnect
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    disconnect(user["user_id"])
+    return {"ok": True}
 
 
 @app.get("/api/debug-fmp")
@@ -971,6 +1162,9 @@ async def get_config():
         "central_api_url": CENTRAL_API_URL,
         "version": VERSION,
         "hosting": HOSTING,
+        # Frontend uses these to render the status bar + cache messaging.
+        "backtest_source": "longport",
+        "trading_mode": "cloud" if HOSTING == "railway" else "local",
     }
 
 

@@ -377,15 +377,16 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 <div id="main">
 <!-- Status bar -->
 <div id="arch-status" style="display:flex;gap:12px;padding:8px 32px;background:var(--surface);border-bottom:1px solid var(--border);font-size:12px">
-  <span id="arch-bt" style="display:flex;align-items:center;gap:4px;color:var(--text-muted)">Backtest: <span id="arch-bt-badge" style="padding:1px 8px;border-radius:10px;font-size:11px;background:#F3F4F6;color:#6B7280">checking...</span></span>
+  <span id="arch-bt" style="display:flex;align-items:center;gap:4px;color:var(--text-muted)">Backtest: <span id="arch-bt-badge" style="padding:1px 8px;border-radius:10px;font-size:11px;background:#DCFCE7;color:#166534">LongPort</span></span>
   <span style="color:var(--border)">|</span>
-  <span style="display:flex;align-items:center;gap:4px;color:var(--text-muted)">Trading: <span style="padding:1px 8px;border-radius:10px;font-size:11px;background:#DCFCE7;color:#166534">Local</span></span>
+  <span style="display:flex;align-items:center;gap:4px;color:var(--text-muted)">Trading: <span id="trading-badge" style="padding:1px 8px;border-radius:10px;font-size:11px;background:#DCFCE7;color:#166534">Local</span></span>
 </div>
 
 <!-- ══════════════════════════════════════ HOME ══════════════════════════════════════ -->
 <div class="page active" id="page-home">
   <div class="page-header"><h1 class="page-title" id="home-title">Welcome back</h1></div>
   <!-- Inline login form (only if not logged in) -->
+  <!-- Local-mode quick-login (single-user, no password) -->
   <div id="home-login-form" class="card" style="display:none;margin-bottom:24px;max-width:500px">
     <h3 style="margin-bottom:12px;font-size:15px">Set up your account</h3>
     <div class="form-row" style="grid-template-columns:1fr 1fr">
@@ -394,6 +395,27 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
     </div>
     <button class="btn btn-primary" onclick="quickLogin()">Save & Continue</button>
     <div id="home-login-error" style="color:var(--red);font-size:12px;margin-top:6px;min-height:16px"></div>
+  </div>
+
+  <!-- Web-mode register/login (shown when IS_WEB && !EMAIL) -->
+  <div id="web-auth-form" class="card" style="display:none;margin-bottom:24px;max-width:500px">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-outline btn-sm" id="web-auth-tab-login" onclick="webAuthShowTab('login')">Log in</button>
+      <button class="btn btn-outline btn-sm" id="web-auth-tab-register" onclick="webAuthShowTab('register')">Register</button>
+    </div>
+    <h3 id="web-auth-title" style="margin-bottom:12px;font-size:15px">Log in to QuantX</h3>
+    <div class="form-group"><label>Email</label>
+      <input type="email" id="web-auth-email" placeholder="you@example.com" autocomplete="username"></div>
+    <div class="form-group" id="web-auth-name-row" style="display:none"><label>Name</label>
+      <input type="text" id="web-auth-name" placeholder="Your name"></div>
+    <div class="form-group"><label>Password</label>
+      <input type="password" id="web-auth-password" placeholder="At least 8 characters" autocomplete="current-password"></div>
+    <button class="btn btn-primary" id="web-auth-submit" onclick="webAuthSubmit('login')">Log in</button>
+    <div id="web-auth-error" style="color:var(--red);font-size:12px;margin-top:6px;min-height:16px"></div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">
+      By continuing you agree that this is a research platform. Orders placed via
+      connected brokers execute on your account.
+    </div>
   </div>
   <div class="stat-row" style="grid-template-columns:repeat(3,1fr)">
     <div class="stat-card"><div class="stat-label">Active Bots</div><div class="stat-value" id="home-active">0</div></div>
@@ -1591,6 +1613,99 @@ let EMAIL = localStorage.getItem('qx_email') || '';
 let UNAME = localStorage.getItem('qx_name') || '';
 let LICENSE = localStorage.getItem('qx_license') || '';
 
+// Web-mode detection. On Railway the hostname is something like
+// quantxdeployer.railway.app; locally it's 127.0.0.1 / localhost / file://.
+const IS_WEB = !['localhost','127.0.0.1',''].includes(window.location.hostname)
+               && window.location.protocol !== 'file:';
+
+// JWT for /api/* calls in web mode. Kept in-memory (not localStorage) to
+// reduce XSS exposure; the httpOnly qx_token cookie is the persistent path.
+window._authToken = null;
+
+/* Global fetch wrapper: adds Authorization: Bearer <jwt> when we have one.
+   Existing fetch(API + ...) calls still work -- they just won't carry a token
+   and will be rejected by the auth middleware in PostgreSQL mode. */
+async function apiFetch(url, options = {}) {
+  const headers = Object.assign(
+    { 'Content-Type': 'application/json' },
+    options.headers || {}
+  );
+  if (window._authToken) headers['Authorization'] = 'Bearer ' + window._authToken;
+  return fetch(url, Object.assign({}, options, { headers, credentials: 'include' }));
+}
+
+/* Restore session on boot: server's /api/auth/me checks the qx_token cookie.
+   If we're in local SQLite mode, the endpoint returns {mode:'local'} and we
+   do nothing. */
+async function _restoreSession() {
+  try {
+    const r = await fetch(API + '/api/auth/me', { credentials: 'include' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.user) {
+      EMAIL = d.user.email || EMAIL;
+      UNAME = d.user.name || UNAME;
+      localStorage.setItem('qx_email', EMAIL);
+      localStorage.setItem('qx_name', UNAME);
+    }
+  } catch (e) {}
+}
+_restoreSession();
+
+/* Minimal web-mode register/login form. Shown only when IS_WEB && !EMAIL.
+   Local-mode single-field email login is preserved below. */
+async function webAuthSubmit(mode) {
+  const emailEl = document.getElementById('web-auth-email');
+  const passEl = document.getElementById('web-auth-password');
+  const nameEl = document.getElementById('web-auth-name');
+  const errEl = document.getElementById('web-auth-error');
+  if (errEl) errEl.textContent = '';
+  const body = { email: (emailEl.value||'').trim().toLowerCase(), password: passEl.value };
+  if (mode === 'register') body.name = (nameEl.value||'').trim();
+  try {
+    const r = await fetch(API + '/api/auth/' + mode, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      if (errEl) errEl.textContent = d.detail || ('Failed: HTTP ' + r.status);
+      return;
+    }
+    window._authToken = d.token;
+    EMAIL = d.user.email;
+    UNAME = d.user.name || '';
+    localStorage.setItem('qx_email', EMAIL);
+    localStorage.setItem('qx_name', UNAME);
+    location.reload();
+  } catch (e) {
+    if (errEl) errEl.textContent = 'Network error: ' + e.message;
+  }
+}
+
+function webAuthLogout() {
+  fetch(API + '/api/auth/logout', { method: 'POST', credentials: 'include' })
+    .finally(() => {
+      window._authToken = null;
+      localStorage.removeItem('qx_email');
+      localStorage.removeItem('qx_name');
+      location.reload();
+    });
+}
+
+function webAuthShowTab(mode) {
+  const isReg = mode === 'register';
+  document.getElementById('web-auth-name-row').style.display = isReg ? '' : 'none';
+  document.getElementById('web-auth-title').textContent = isReg ? 'Create your account' : 'Log in to QuantX';
+  const btn = document.getElementById('web-auth-submit');
+  btn.textContent = isReg ? 'Register' : 'Log in';
+  btn.setAttribute('onclick', "webAuthSubmit('" + mode + "')");
+  const passEl = document.getElementById('web-auth-password');
+  if (passEl) passEl.setAttribute('autocomplete', isReg ? 'new-password' : 'current-password');
+}
+
 function getBacktestBaseUrl() {
   const c = CENTRAL || '';
   if (c && c.startsWith('http') && !c.includes('localhost')) return c.replace(/\/$/,'');
@@ -1634,19 +1749,27 @@ async function checkLpCredentials() {
 }
 
 function updateBacktestBadge() {
+  // LongPort is now the primary backtest data source across both local and
+  // Railway modes. Keep this simple and truthful.
   const badge = document.getElementById('arch-bt-badge');
   const btBadge = document.getElementById('bt-source-badge');
-  const base = getBacktestBaseUrl();
-  const isCloud = base !== window.location.origin;
-  const broker = _btBroker || 'yahoo';
-  const badges = {
-    longport: {text:'LongPort', icon:'\uD83D\uDCCA', bg:'#DCFCE7', fg:'#166534'},
-    ibkr:     {text:'IBKR',     icon:'\uD83D\uDCCA', bg:'#DBEAFE', fg:'#1E40AF'},
-    yahoo:    {text:'Yahoo',    icon:'\uD83D\uDCBB', bg:'#F3F4F6', fg:'#6B7280'},
-  };
-  const b = isCloud ? {text:'Railway', icon:'\uD83D\uDCE1', bg:'#DCFCE7', fg:'#166534'} : (badges[broker] || badges.yahoo);
+  const b = { text: 'LongPort', icon: '\uD83D\uDCCA', bg: '#DCFCE7', fg: '#166534' };
   if (badge) { badge.textContent = b.text; badge.style.cssText = 'padding:1px 8px;border-radius:10px;font-size:11px;background:' + b.bg + ';color:' + b.fg; }
   if (btBadge) { btBadge.textContent = b.icon + ' Using ' + b.text + ' data'; btBadge.style.cssText = 'font-size:11px;padding:3px 10px;border-radius:10px;background:' + b.bg + ';color:' + b.fg; }
+}
+
+function updateTradingBadge(hosting) {
+  const tb = document.getElementById('trading-badge');
+  if (!tb) return;
+  if (hosting === 'railway') {
+    tb.textContent = 'Cloud \u2601\uFE0F';
+    tb.style.background = '#DBEAFE';
+    tb.style.color = '#1D4ED8';
+  } else {
+    tb.textContent = 'Local';
+    tb.style.background = '#DCFCE7';
+    tb.style.color = '#166534';
+  }
 }
 
 async function fallbackToLocal(reason) {
@@ -1823,6 +1946,7 @@ async function loadConfig() {
       localStorage.removeItem('qx_central');
     }
     updateBacktestBadge();
+    updateTradingBadge(d.hosting || 'vps');
   } catch (e) { console.warn('Config load failed:', e); }
 }
 
@@ -1900,10 +2024,18 @@ async function quickLogin() {
 async function loadHome() {
   document.getElementById('home-title').textContent = UNAME ? 'Welcome back, ' + UNAME : (EMAIL ? 'Welcome back' : 'Welcome to QuantX');
   if (!EMAIL) {
-    document.getElementById('home-login-form').style.display = '';
+    // In web mode: show register/login. In local mode: keep single-field quick-login.
+    if (IS_WEB) {
+      const webForm = document.getElementById('web-auth-form');
+      if (webForm) webForm.style.display = '';
+    } else {
+      document.getElementById('home-login-form').style.display = '';
+    }
     document.getElementById('home-getstarted').style.display = 'block';
     return;
   }
+  const webForm = document.getElementById('web-auth-form');
+  if (webForm) webForm.style.display = 'none';
   document.getElementById('home-login-form').style.display = 'none';
   document.getElementById('home-brokers').textContent = BROKER_ACCOUNTS.length || '0';
   if (EMAIL && !BROKER_ACCOUNTS.length) {
@@ -6279,9 +6411,16 @@ function _optsHandleEvent(ev) {
       const cold = cacheBadge && cacheBadge.classList.contains('opts-cache-cold');
       if (cold && ev.entry_dates > 0) {
         const mins = Math.max(1, Math.round(ev.entry_dates * 2 / 60));
+        // In cloud/Railway mode the cache is shared across all students; locally
+        // it only benefits this machine. Phrase accordingly.
+        const isCloud = !['localhost', '127.0.0.1', ''].includes(window.location.hostname)
+                        && window.location.protocol !== 'file:';
+        const tail = isCloud
+          ? 'Once done, ALL students share this data instantly -- no one else needs to wait.'
+          : 'Subsequent runs will be instant.';
+        const where = isCloud ? 'shared server cache' : 'your local cache';
         document.getElementById('opts-progress-count').textContent =
-          '\u{1F4E5} First run: downloading ' + ev.entry_dates +
-          ' days of data (~' + mins + ' min). Subsequent runs will be instant.';
+          '\u{1F4E5} Downloading to ' + where + ' (~' + mins + ' min first time). ' + tail;
       }
       break;
     }
