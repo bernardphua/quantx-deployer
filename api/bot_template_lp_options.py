@@ -66,7 +66,16 @@ PROFIT_TARGET_PCT  = __PROFIT_TARGET_PCT__  # e.g. 0.50 = close at 50% max profi
 STOP_LOSS_MULT     = __STOP_LOSS_MULT__     # e.g. 2.0 = close when loss = 2x credit
 CONTRACTS          = __CONTRACTS__          # number of spreads
 MAX_DAILY_LOSS     = __MAX_DAILY_LOSS__     # dollar amount to halt trading
-DRY_RUN            = __DRY_RUN__            # True = log only, no real orders
+DRY_RUN            = __DRY_RUN__            # True = paper-trade only (uses live data, no real orders)
+
+# Paper-trading mode: when DRY_RUN is True the bot still pulls live quotes
+# from the connected LongPort account and runs the full entry/exit logic --
+# it just doesn't submit real orders. Logs are tagged with [PAPER] so it's
+# obvious which runs are simulated, and trades sent to QuantX central are
+# tagged 'paper_buy'/'paper_sell' so the dashboard can distinguish them.
+_PAPER = "[PAPER] " if DRY_RUN else ""
+_PAPER_CSV_PREFIX = "PAPER_" if DRY_RUN else ""
+_PAPER_SIDE_PREFIX = "paper_" if DRY_RUN else ""
 
 # Timing
 MONITOR_INTERVAL   = 60    # seconds between P&L checks
@@ -358,8 +367,8 @@ def get_mid_price(symbol):
 def place_order(symbol, action, qty, limit_price):
     """Place a single-leg limit order. Returns order_id or None."""
     if DRY_RUN:
-        logger.info(f'[DRY_RUN] Would {action} {qty}x {symbol} @ ${limit_price:.2f}')
-        return f'DRYRUN_{symbol}'
+        logger.info(f'[PAPER ORDER] {action} {qty}x {symbol} @ ${limit_price:.2f} (live mid)')
+        return f'PAPER_{symbol}_{int(time.time())}'
 
     try:
         ctx = get_trade_ctx()
@@ -383,7 +392,7 @@ def place_order(symbol, action, qty, limit_price):
 
 def wait_for_fill(order_id, timeout=ORDER_TIMEOUT):
     """Wait until order fills or timeout. Returns True if filled."""
-    if DRY_RUN or order_id.startswith('DRYRUN'):
+    if DRY_RUN or order_id.startswith('DRYRUN') or order_id.startswith('PAPER_'):
         return True
 
     start = time.time()
@@ -414,7 +423,7 @@ def enter_position(legs, spot):
     Place all legs. BUY legs must come first (already ordered by build_spread_legs).
     Returns net_credit (positive = credit received).
     """
-    logger.info(f'[ENTRY] Entering {STRATEGY_TYPE} | {len(legs)} legs | spot=${spot:.2f}')
+    logger.info(f'{_PAPER}[ENTRY] Entering {STRATEGY_TYPE} | {len(legs)} legs | spot=${spot:.2f}')
     order_ids = []
     prices    = []
 
@@ -427,11 +436,11 @@ def enter_position(legs, spot):
         if mid is None:
             abs_delta = abs(PUT_DELTA if leg['right'] == 'PUT' else CALL_DELTA)
             mid = max(round(spot * abs_delta * 0.01, 2), 0.05)
-            logger.warning(f'[ENTRY] No quote for {symbol}, using estimate ${mid:.2f}')
+            logger.warning(f'{_PAPER}[ENTRY] No quote for {symbol}, using estimate ${mid:.2f}')
 
         oid = place_order(symbol, action, qty, mid)
         if oid is None:
-            logger.error(f'[ENTRY] Failed to place {action} {symbol} -- aborting')
+            logger.error(f'{_PAPER}[ENTRY] Failed to place {action} {symbol} -- aborting')
             cancel_orders(order_ids)
             return None
 
@@ -442,20 +451,20 @@ def enter_position(legs, spot):
 
         filled = wait_for_fill(oid)
         if not filled:
-            logger.error(f'[ENTRY] {oid} did not fill -- aborting remaining legs')
+            logger.error(f'{_PAPER}[ENTRY] {oid} did not fill -- aborting remaining legs')
             cancel_orders(order_ids)
             return None
 
         time.sleep(1)
 
     net_credit = sum(prices)
-    logger.info(f'[ENTRY] All legs filled | net_credit=${net_credit:.2f}')
+    logger.info(f'{_PAPER}[ENTRY] All legs filled | net_credit=${net_credit:.2f}')
     return net_credit
 
 
 def close_position(legs, reason='EXIT'):
     """Close all legs by reversing actions."""
-    logger.info(f'[EXIT] Closing {len(legs)} legs | reason={reason}')
+    logger.info(f'{_PAPER}[EXIT] Closing {len(legs)} legs | reason={reason}')
     net_debit = 0.0
 
     for leg in reversed(legs):
@@ -466,7 +475,7 @@ def close_position(legs, reason='EXIT'):
         mid = get_mid_price(symbol)
         if mid is None:
             mid = 0.01
-            logger.warning(f'[EXIT] No quote for {symbol}, using ${mid:.2f}')
+            logger.warning(f'{_PAPER}[EXIT] No quote for {symbol}, using ${mid:.2f}')
 
         oid = place_order(symbol, close_action, qty, mid)
         if oid:
@@ -484,7 +493,7 @@ def cancel_orders(order_ids):
         return
     ctx = get_trade_ctx()
     for oid in order_ids:
-        if oid and not oid.startswith('DRYRUN'):
+        if oid and not oid.startswith('DRYRUN') and not oid.startswith('PAPER_'):
             try:
                 ctx.cancel_order(oid)
                 logger.info(f'[CANCEL] {oid}')
@@ -504,6 +513,7 @@ def load_state():
         'daily_pnl': 0.0,
         'daily_trades': 0,
         'last_reset_date': '',
+        'paper_equity': [],   # equity-curve snapshots, populated when DRY_RUN
     }
     try:
         if os.path.exists(POSITION_FILE):
@@ -587,8 +597,10 @@ def send_heartbeat(state):
             'strategy_id': STRATEGY_NAME,
             'symbol': UNDERLYING,
             'status': 'running',
+            'dry_run': DRY_RUN,
             'position_open': state.get('position_open', False),
             'daily_pnl': state.get('daily_pnl', 0),
+            'paper_equity_points': len(state.get('paper_equity', [])),
         }, timeout=5)
         last_heartbeat = time.time()
     except Exception:
@@ -596,6 +608,10 @@ def send_heartbeat(state):
 
 
 def log_trade_csv(action, symbol, qty, price, pnl=0.0, note=''):
+    # Tag rows + central reports with PAPER_/paper_ prefixes when DRY_RUN so
+    # the dashboard can filter simulated runs separately.
+    csv_action = _PAPER_CSV_PREFIX + action
+    central_side = _PAPER_SIDE_PREFIX + action.lower()
     fields = ['datetime','strategy','symbol','action','qty','price','pnl','note']
     write_header = not os.path.exists(TRADES_FILE)
     with open(TRADES_FILE, 'a', newline='') as f:
@@ -604,14 +620,14 @@ def log_trade_csv(action, symbol, qty, price, pnl=0.0, note=''):
             w.writeheader()
         w.writerow({
             'datetime': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-            'strategy': STRATEGY_NAME, 'symbol': symbol, 'action': action,
+            'strategy': STRATEGY_NAME, 'symbol': symbol, 'action': csv_action,
             'qty': qty, 'price': round(price, 4), 'pnl': round(pnl, 2), 'note': note,
         })
     try:
         requests.post(f'{CENTRAL_API_URL}/api/trade', json={
             'email': EMAIL, 'strategy_id': STRATEGY_NAME, 'symbol': UNDERLYING,
-            'side': action.lower(), 'price': float(price), 'qty': float(qty),
-            'pnl': float(pnl),
+            'side': central_side, 'price': float(price), 'qty': float(qty),
+            'pnl': float(pnl), 'dry_run': DRY_RUN,
         }, timeout=5)
     except Exception:
         pass
@@ -646,16 +662,23 @@ def main():
             if state['position_open']:
                 reason = check_exit_conditions(state)
                 if reason:
-                    logger.info(f'[SIGNAL] Exit: {reason}')
+                    logger.info(f'{_PAPER}[SIGNAL] Exit: {reason}')
                     net_debit = close_position(state['legs'], reason)
                     if net_debit is not None:
                         pnl = state['net_credit'] + net_debit
                         state['daily_pnl'] += pnl
                         state['position_open'] = False
                         state['legs'] = []
+                        # Snapshot equity curve after each closed trade -- useful
+                        # for paper-mode charting on the dashboard.
+                        state.setdefault('paper_equity', []).append({
+                            'date': now.isoformat(),
+                            'daily_pnl': state['daily_pnl'],
+                            'last_pnl': pnl,
+                        })
                         log_trade_csv('CLOSE', UNDERLYING, CONTRACTS,
                                       abs(net_debit), pnl, reason)
-                        logger.info(f'[EXIT] PnL: ${pnl:+.2f} | Daily: ${state["daily_pnl"]:+.2f}')
+                        logger.info(f'{_PAPER}[EXIT] PnL: ${pnl:+.2f} | Daily: ${state["daily_pnl"]:+.2f}')
                         save_state(state)
 
             elif (is_entry_day() and
@@ -669,7 +692,7 @@ def main():
                     chain  = get_chain(expiry)
                     legs   = build_spread_legs(chain, expiry, spot)
 
-                    logger.info(f'[SIGNAL] Entry | spot=${spot:.2f} | expiry={expiry}')
+                    logger.info(f'{_PAPER}[SIGNAL] Entry | spot=${spot:.2f} | expiry={expiry}')
                     for leg in legs:
                         logger.info(f'  {leg["action"]} {leg["qty"]}x {leg["symbol"]} (strike ${leg["strike"]:.1f})')
 
@@ -684,11 +707,11 @@ def main():
                         state['daily_trades'] += 1
                         log_trade_csv('OPEN', UNDERLYING, CONTRACTS,
                                       net_credit, 0.0, f'{STRATEGY_TYPE} {expiry}')
-                        logger.info(f'[ENTRY] Net credit: ${net_credit:.2f}')
+                        logger.info(f'{_PAPER}[ENTRY] Net credit: ${net_credit:.2f}')
                         save_state(state)
 
                 except Exception as e:
-                    logger.error(f'[ENTRY] Error: {e}')
+                    logger.error(f'{_PAPER}[ENTRY] Error: {e}')
                     logger.debug(traceback.format_exc())
                     reset_connections()
 
