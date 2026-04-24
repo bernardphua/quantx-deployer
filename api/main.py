@@ -342,6 +342,9 @@ async def lifespan(app: FastAPI):
     # Background prewarm (non-blocking)
     import threading
     threading.Thread(target=_startup_prewarm, daemon=True).start()
+    if HOSTING == "railway":
+        threading.Thread(target=_orchestrator_loop, daemon=True, name="orchestrator").start()
+        _log.info("[ORCH] Orchestrator thread started (Railway mode)")
     yield
     for email, proc in _running_processes.items():
         try:
@@ -3025,13 +3028,7 @@ def _orchestrator_loop():
             _log.warning("[ORCH] Scan error: %s", e)
         time.sleep(30)
 
-if HOSTING == "railway":
-    _orch_thread = threading.Thread(target=_orchestrator_loop, daemon=True, name="orchestrator")
-    _orch_thread.start()
-    _log.info("[ORCH] Orchestrator thread started (Railway mode)")
-
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8080"))
     uvicorn.run("api.main:app", host="0.0.0.0", port=port, app_dir=str(Path(__file__).parent.parent))
-# ── Orchestrator background thread ──────────────────────────────────────────
