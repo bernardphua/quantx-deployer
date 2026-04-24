@@ -336,6 +336,64 @@ def _startup_prewarm():
 
 
 @asynccontextmanager
+
+# ── Orchestrator scan loop (runs as background thread on Railway) ────────────
+def _orchestrator_loop():
+    """Scan /data/bots/ every 30s and manage bot subprocesses."""
+    import time, json, subprocess
+    from pathlib import Path as _Path
+    _procs = {}
+
+    def _alive(proc):
+        return proc is not None and proc.poll() is None
+
+    while True:
+        try:
+            if BOTS_DIR.exists():
+                for student_dir in sorted(BOTS_DIR.iterdir()):
+                    if not student_dir.is_dir():
+                        continue
+                    for meta_path in sorted(student_dir.glob("*.json")):
+                        try:
+                            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                        except Exception:
+                            continue
+                        sid     = meta.get("strategy_id", meta_path.stem)
+                        enabled = meta.get("enabled", False)
+                        script  = meta.get("script_path", "")
+                        proc    = _procs.get(sid)
+                        alive   = _alive(proc)
+
+                        if not enabled:
+                            if alive:
+                                proc.terminate()
+                                _procs.pop(sid, None)
+                                meta["status"] = "stopped"
+                                meta["pid"] = None
+                                meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+                        else:
+                            if alive:
+                                from datetime import datetime as _dt
+                                meta["status"] = "running"
+                                meta["pid"] = proc.pid
+                                meta["last_heartbeat"] = _dt.utcnow().isoformat()
+                                meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+                            elif script and _Path(script).exists():
+                                log_fh = open(str(_Path(script).with_suffix(".log")), "a", encoding="utf-8")
+                                new_proc = subprocess.Popen(
+                                    [PYTHON_EXE, script],
+                                    stdout=log_fh, stderr=log_fh,
+                                    start_new_session=True,
+                                )
+                                _procs[sid] = new_proc
+                                meta["status"] = "running"
+                                meta["pid"] = new_proc.pid
+                                meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+                                _log.info("[ORCH] Started bot %s pid=%d", sid, new_proc.pid)
+        except Exception as e:
+            _log.warning("[ORCH] Scan error: %s", e)
+        time.sleep(30)
+
 async def lifespan(app: FastAPI):
     init_db()
     _auto_restart_bots()
@@ -2968,65 +3026,6 @@ def _stop_process(email: str):
             pass
     _running_processes.pop(email, None)
     update_process_status(email, "stopped")
-
-import threading
-
-def _orchestrator_loop():
-    """Run the bot orchestrator scan loop inside the web process."""
-    import time, json, subprocess
-    from api.config import BOTS_DIR, PYTHON_EXE
-    _procs = {}
-
-    def _is_alive(proc):
-        return proc is not None and proc.poll() is None
-
-    while True:
-        try:
-            if BOTS_DIR.exists():
-                for student_dir in sorted(BOTS_DIR.iterdir()):
-                    if not student_dir.is_dir():
-                        continue
-                    for meta_path in sorted(student_dir.glob("*.json")):
-                        try:
-                            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                        except Exception:
-                            continue
-                        sid      = meta.get("strategy_id", meta_path.stem)
-                        enabled  = meta.get("enabled", False)
-                        script   = meta.get("script_path", "")
-                        proc     = _procs.get(sid)
-                        alive    = _is_alive(proc)
-
-                        if not enabled:
-                            if alive:
-                                proc.terminate()
-                                _procs.pop(sid, None)
-                                meta["status"] = "stopped"
-                                meta["pid"] = None
-                                meta_path.write_text(json.dumps(meta, indent=2))
-                        else:
-                            if alive:
-                                meta["status"] = "running"
-                                meta["pid"] = proc.pid
-                                meta["last_heartbeat"] = __import__('datetime').datetime.utcnow().isoformat()
-                                meta_path.write_text(json.dumps(meta, indent=2))
-                            else:
-                                if script and __import__('pathlib').Path(script).exists():
-                                    log_path = __import__('pathlib').Path(script).with_suffix(".log")
-                                    log_fh = open(str(log_path), "a", encoding="utf-8")
-                                    new_proc = subprocess.Popen(
-                                        [PYTHON_EXE, script],
-                                        stdout=log_fh, stderr=log_fh,
-                                        start_new_session=True,
-                                    )
-                                    _procs[sid] = new_proc
-                                    meta["status"] = "running"
-                                    meta["pid"] = new_proc.pid
-                                    meta_path.write_text(json.dumps(meta, indent=2))
-                                    _log.info("[ORCH] Started bot %s pid=%d", sid, new_proc.pid)
-        except Exception as e:
-            _log.warning("[ORCH] Scan error: %s", e)
-        time.sleep(30)
 
 if __name__ == "__main__":
     import uvicorn
