@@ -29,10 +29,17 @@ def main():
     load_env()
     port = int(os.environ.get("PORT", 8080))
     central = os.environ.get("CENTRAL_API_URL", "")
+    is_railway = bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+    db_url = os.environ.get("DATABASE_URL", "")
+    auth_mode = "postgres" if db_url else "local (SQLite)"
 
     print("=" * 50)
     print("  QuantX Deployer v1.2")
-    print(f"  App: http://localhost:{port}")
+    if is_railway:
+        print("  Hosting: Railway (web mode)")
+    else:
+        print(f"  App: http://localhost:{port}")
+    print(f"  Auth mode: {auth_mode}")
     if central:
         print(f"  Backtest server: {central}")
     else:
@@ -40,11 +47,18 @@ def main():
     print("  Trading: local (your IBKR / LongPort)")
     print("=" * 50)
 
+    # On Railway we bind 0.0.0.0 and skip browser + subprocess wrapping.
+    # Locally we keep the subprocess + auto-open-browser flow for UX.
     dev_mode = os.environ.get("DEV_MODE", "0") == "1"
     python = sys.executable
+    host = "0.0.0.0" if is_railway else "127.0.0.1"
     cmd = [python, "-m", "uvicorn", "api.main:app",
-           "--host", "127.0.0.1", f"--port={port}"]
-    if dev_mode:
+           "--host", host, f"--port={port}"]
+    if is_railway:
+        # Railway sends SIGTERM for graceful shutdown; single worker avoids
+        # duplicated background-prewarm threads hammering R2.
+        cmd += ["--workers", "1"]
+    if dev_mode and not is_railway:
         cmd += ["--reload",
                 "--reload-exclude=bots/*", "--reload-exclude=logs/*",
                 "--reload-exclude=*.db", "--reload-exclude=*.log"]
@@ -54,8 +68,12 @@ def main():
 
     proc = subprocess.Popen(cmd, cwd=str(BASE))
 
-    time.sleep(2)
-    webbrowser.open(f"http://localhost:{port}")
+    if not is_railway:
+        time.sleep(2)
+        try:
+            webbrowser.open(f"http://localhost:{port}")
+        except Exception:
+            pass  # headless local server still works
 
     try:
         proc.wait()

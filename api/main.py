@@ -3,6 +3,7 @@
 import os
 import sys
 import ast
+import secrets
 import subprocess
 import signal
 import json
@@ -19,7 +20,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -31,18 +32,110 @@ from api.config import (
     CENTRAL_API_URL, HOSTING, VERSION, BOTS_DIR, LOGS_DIR, PYTHON_EXE, DB_PATH,
 )
 from api.database import (
-    init_db, get_db, save_student, get_student, save_strategy, get_strategies,
+    get_db, save_student, get_student, save_strategy, get_strategies,
     delete_strategy, toggle_strategy, save_process, update_process_status,
     get_latest_process, log_trade, get_trades, decrypt,
     save_ibkr_config, get_ibkr_config,
     get_broker_accounts, get_broker_account, save_broker_account,
     update_broker_account_status, delete_broker_account, get_broker_credentials,
 )
+# Dual-mode init: PostgreSQL when DATABASE_URL is set, SQLite otherwise.
+from api.db_postgres import init_db, USE_POSTGRES
 from api.generate import (generate_master_bot, generate_ibkr_bot, generate_simple_lp_bot,
                           generate_simple_ibkr_bot, generate_ibkr_bot_prod,
                           generate_lp_master_bot, library_id_to_conditions)
 
 _log = _logging.getLogger("quantx-deployer")
+
+
+# ── LongPort connection pool ─────────────────────────────────────────────────
+# Previously every API call built a fresh QuoteContext / TradeContext. LongPort
+# enforces a per-key connection limit, and creating a context takes ~1s of
+# handshake, so both the UX and the rate limits suffered under multi-student
+# load. The pool below keys contexts by a hash of the credentials so each
+# student reuses the same ctx for up to LP_POOL_TTL seconds.
+#
+# LongPort support has confirmed a single QuoteContext/TradeContext is safe to
+# share across threads. Each student gets their own ctx so credential isolation
+# is preserved.
+import threading as _lp_threading  # noqa: E402  (distinct name to avoid shadowing)
+import hashlib as _lp_hashlib      # noqa: E402
+
+_lp_quote_pool: dict = {}           # cred_hash -> QuoteContext
+_lp_trade_pool: dict = {}           # cred_hash -> TradeContext
+_lp_pool_last_used: dict = {}       # cred_hash -> last-used epoch seconds
+_lp_pool_lock = _lp_threading.Lock()
+
+LP_POOL_TTL = 300  # seconds; after this, reuse stops and a fresh ctx is built
+
+
+def _lp_cred_hash(app_key: str, app_secret: str, access_token: str) -> str:
+    return _lp_hashlib.sha256(
+        f"{app_key}:{app_secret}:{access_token}".encode()
+    ).hexdigest()[:16]
+
+
+def _lp_build_config(app_key: str, app_secret: str, access_token: str):
+    """Config with optional LONGBRIDGE_LOG_PATH wired in (LP-requested)."""
+    from longport.openapi import Config
+    kwargs = dict(app_key=app_key, app_secret=app_secret, access_token=access_token)
+    log_path = os.environ.get("LONGBRIDGE_LOG_PATH", "")
+    if log_path:
+        kwargs["log_path"] = log_path
+    return Config(**kwargs)
+
+
+def get_lp_quote_ctx(app_key: str, app_secret: str, access_token: str):
+    """Return a reusable QuoteContext for these credentials."""
+    from longport.openapi import QuoteContext
+    key = _lp_cred_hash(app_key, app_secret, access_token)
+    now = time.time()
+    with _lp_pool_lock:
+        if key in _lp_quote_pool and (now - _lp_pool_last_used.get(key, 0)) < LP_POOL_TTL:
+            _lp_pool_last_used[key] = now
+            return _lp_quote_pool[key]
+        # Stale or absent -- drop and rebuild
+        _lp_quote_pool.pop(key, None)
+        ctx = QuoteContext(_lp_build_config(app_key, app_secret, access_token))
+        _lp_quote_pool[key] = ctx
+        _lp_pool_last_used[key] = now
+        _log.info("[LP-pool] Created QuoteContext (quote_pool=%d)", len(_lp_quote_pool))
+        return ctx
+
+
+def get_lp_trade_ctx(app_key: str, app_secret: str, access_token: str):
+    """Return a reusable TradeContext for these credentials."""
+    from longport.openapi import TradeContext
+    key = _lp_cred_hash(app_key, app_secret, access_token) + "_trade"
+    now = time.time()
+    with _lp_pool_lock:
+        if key in _lp_trade_pool and (now - _lp_pool_last_used.get(key, 0)) < LP_POOL_TTL:
+            _lp_pool_last_used[key] = now
+            return _lp_trade_pool[key]
+        _lp_trade_pool.pop(key, None)
+        ctx = TradeContext(_lp_build_config(app_key, app_secret, access_token))
+        _lp_trade_pool[key] = ctx
+        _lp_pool_last_used[key] = now
+        _log.info("[LP-pool] Created TradeContext (trade_pool=%d)", len(_lp_trade_pool))
+        return ctx
+
+
+def cleanup_lp_pool() -> int:
+    """Drop contexts untouched for > 2x TTL. Returns number removed. Safe to
+    call from a periodic task -- not wired to any scheduler by default."""
+    now = time.time()
+    dropped = 0
+    with _lp_pool_lock:
+        stale = [k for k, t in _lp_pool_last_used.items() if (now - t) > LP_POOL_TTL * 2]
+        for k in stale:
+            if _lp_quote_pool.pop(k, None) is not None:
+                dropped += 1
+            if _lp_trade_pool.pop(k, None) is not None:
+                dropped += 1
+            _lp_pool_last_used.pop(k, None)
+    if dropped:
+        _log.info("[LP-pool] cleanup removed %d stale contexts", dropped)
+    return dropped
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
@@ -305,7 +398,198 @@ async def health():
             "backtest": "railway" if CENTRAL_API_URL else "local",
             "trading": "local",
         },
+        "auth_mode": "postgres" if USE_POSTGRES else "local",
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION
+# ══════════════════════════════════════════════════════════════════════════════
+# Two modes:
+#   Local/SQLite (no DATABASE_URL): middleware is a no-op; existing flows unchanged
+#   PostgreSQL/Railway: /api/* (except /api/auth/* and /api/health) requires JWT
+
+_PUBLIC_API_PREFIXES = ("/api/auth/", "/api/health", "/api/debug",
+                        "/api/options/share",                   # share links viewable without auth
+                        "/api/options/cache/prewarm-popular",   # gated by ADMIN_PIN, not JWT
+                        "/api/options/cache/repair")            # gated by ADMIN_PIN, not JWT
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Require JWT on /api/* routes when running in PostgreSQL mode."""
+    if not USE_POSTGRES:
+        return await call_next(request)
+    path = request.url.path
+    if not path.startswith("/api/"):
+        return await call_next(request)
+    if any(path.startswith(p) for p in _PUBLIC_API_PREFIXES):
+        return await call_next(request)
+    from api.auth import get_current_user
+    user = get_current_user(request)
+    if not user:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    # Stash on request state so handlers can access without re-parsing
+    request.state.user = user
+    return await call_next(request)
+
+
+class _RegisterBody(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = None
+
+
+class _LoginBody(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+async def auth_register(body: _RegisterBody, response: Response):
+    """Create a user + return JWT. PostgreSQL only."""
+    if not USE_POSTGRES:
+        raise HTTPException(400, "Registration requires PostgreSQL (DATABASE_URL unset)")
+    if len(body.password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    from api.auth import hash_password, create_token, COOKIE_NAME
+    from api.db_postgres import get_conn
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO users (email, name, password_hash, role, last_login)
+            VALUES (%s, %s, %s, 'student', NOW())
+            RETURNING id, email, name, role
+        """, (body.email.lower().strip(), body.name, hash_password(body.password)))
+        row = cur.fetchone()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            raise HTTPException(409, "Email already registered")
+        raise HTTPException(500, f"Registration failed: {e}")
+    finally:
+        cur.close()
+        conn.close()
+    token = create_token(row["id"], row["email"], row["role"], row["name"])
+    response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax",
+                        max_age=7 * 24 * 3600, secure=bool(os.environ.get("RAILWAY_ENVIRONMENT")))
+    return {"token": token, "user": dict(row)}
+
+
+@app.post("/api/auth/login")
+async def auth_login(body: _LoginBody, response: Response):
+    if not USE_POSTGRES:
+        raise HTTPException(400, "Login requires PostgreSQL (DATABASE_URL unset)")
+    from api.auth import verify_password, create_token, COOKIE_NAME
+    from api.db_postgres import get_conn
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, email, name, role, password_hash FROM users WHERE email = %s
+    """, (body.email.lower().strip(),))
+    row = cur.fetchone()
+    if not row or not verify_password(body.password, row["password_hash"]):
+        cur.close()
+        conn.close()
+        raise HTTPException(401, "Invalid email or password")
+    cur.execute("UPDATE users SET last_login = NOW() WHERE id = %s", (row["id"],))
+    conn.commit()
+    cur.close()
+    conn.close()
+    token = create_token(row["id"], row["email"], row["role"], row["name"])
+    response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax",
+                        max_age=7 * 24 * 3600, secure=bool(os.environ.get("RAILWAY_ENVIRONMENT")))
+    user = {k: row[k] for k in ("id", "email", "name", "role")}
+    return {"token": token, "user": user}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(response: Response):
+    from api.auth import COOKIE_NAME
+    response.delete_cookie(COOKIE_NAME)
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    from api.auth import get_current_user
+    user = get_current_user(request)
+    if not user:
+        # In SQLite mode there's no user; return a synthetic "local" identity
+        if not USE_POSTGRES:
+            return {"user": None, "mode": "local"}
+        raise HTTPException(401, "Not authenticated")
+    return {"user": {k: user.get(k) for k in ("user_id", "email", "name", "role")},
+            "mode": "postgres"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LONGPORT OAUTH2
+# ══════════════════════════════════════════════════════════════════════════════
+@app.get("/api/auth/longport/start")
+async def longport_start(request: Request):
+    """Begin OAuth2 flow: return the LongPort authorize URL for the frontend to open."""
+    if not USE_POSTGRES:
+        raise HTTPException(400, "LongPort OAuth requires PostgreSQL")
+    from api.auth import get_current_user
+    from api.longport_oauth import generate_pkce, get_authorize_url, save_oauth_state
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    verifier, challenge = generate_pkce()
+    state = secrets.token_urlsafe(24)
+    save_oauth_state(user["user_id"], state, verifier)
+    return {"auth_url": get_authorize_url(state, challenge), "state": state}
+
+
+@app.get("/callback/longport")
+async def longport_callback(code: Optional[str] = None, state: Optional[str] = None,
+                            error: Optional[str] = None):
+    """Exchange the authorization code for tokens. No /api/ prefix -- LongPort's
+    registered redirect_uri points here directly."""
+    from fastapi.responses import RedirectResponse
+    if error:
+        return RedirectResponse(url=f"/#/brokers?oauth_error={error}")
+    if not code or not state:
+        return RedirectResponse(url="/#/brokers?oauth_error=missing_code_or_state")
+    if not USE_POSTGRES:
+        return RedirectResponse(url="/#/brokers?oauth_error=postgres_required")
+    from api.longport_oauth import consume_oauth_state, exchange_code_for_tokens, store_tokens
+    row = consume_oauth_state(state)
+    if not row:
+        return RedirectResponse(url="/#/brokers?oauth_error=invalid_or_expired_state")
+    try:
+        tokens = exchange_code_for_tokens(code, row["code_verifier"])
+        store_tokens(row["user_id"], tokens)
+    except Exception as e:
+        log = _logging.getLogger("quantx-oauth-callback")
+        log.exception("LongPort token exchange failed")
+        return RedirectResponse(url=f"/#/brokers?oauth_error=exchange_failed&msg={str(e)[:80]}")
+    return RedirectResponse(url="/#/brokers?connected=longport")
+
+
+@app.get("/api/auth/longport/status")
+async def longport_status(request: Request):
+    from api.auth import get_current_user
+    from api.longport_oauth import get_token_status
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    return get_token_status(user["user_id"])
+
+
+@app.delete("/api/auth/longport/disconnect")
+async def longport_disconnect(request: Request):
+    from api.auth import get_current_user
+    from api.longport_oauth import disconnect
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    disconnect(user["user_id"])
+    return {"ok": True}
 
 
 @app.get("/api/debug-fmp")
@@ -753,6 +1037,453 @@ async def backtest_optimize_stream(request: Request):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.post("/api/options/backtest")
+async def options_backtest_stream(request: Request):
+    """SSE streaming backtest for options strategies (vertical spreads, condors, etc.)."""
+    config = await request.json()
+
+    def event_stream():
+        from api.options_backtest import run_options_backtest_stream
+        try:
+            for event in run_options_backtest_stream(config):
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/options/cache/stats")
+async def options_cache_stats():
+    """Disk-cache inventory: file counts + sizes per symbol."""
+    from api.options_data import get_cache_stats
+    return get_cache_stats()
+
+
+_PRECOMPUTE_RESULTS_BUCKET = os.environ.get("R2_RESULTS_BUCKET", "quantx-results")
+
+
+def _precompute_s3_client():
+    """Shared lazily-created R2 client for the precomputed-results routes.
+    Uses R2_RESULTS_* env vars when set (quantx-results bucket needs write
+    creds), otherwise falls back to the read-path credentials used elsewhere."""
+    import boto3 as _boto3
+    from api.options_data import R2_ENDPOINT, R2_ACCESS_KEY, R2_SECRET_KEY
+    access = os.environ.get("R2_RESULTS_ACCESS_KEY") or R2_ACCESS_KEY
+    secret = os.environ.get("R2_RESULTS_SECRET_KEY") or R2_SECRET_KEY
+    return _boto3.client(
+        "s3", endpoint_url=R2_ENDPOINT,
+        aws_access_key_id=access,
+        aws_secret_access_key=secret,
+        region_name="auto",
+    )
+
+
+@app.get("/api/options/precomputed")
+async def get_precomputed_result(symbol: str, strategy: str, dte: int, period: str):
+    """Return a cached backtest result computed by scripts/precompute_spxw.py.
+    404 if the (symbol, strategy, dte, period) combo hasn't been precomputed --
+    frontend should fall back to live compute in that case."""
+    from fastapi.responses import JSONResponse
+    try:
+        s3 = _precompute_s3_client()
+        key = f"results/{symbol}/{strategy}/{dte}DTE/{period}/default.json"
+        obj = s3.get_object(Bucket=_PRECOMPUTE_RESULTS_BUCKET, Key=key)
+        data = json.loads(obj["Body"].read().decode())
+        return JSONResponse(content=data, headers={"X-Result-Source": "precomputed"})
+    except Exception:
+        raise HTTPException(404, "No pre-computed result available")
+
+
+@app.get("/api/options/results/index")
+async def get_results_index():
+    """Master index of precomputed results. Powers the instructor dashboard."""
+    try:
+        s3 = _precompute_s3_client()
+        obj = s3.get_object(Bucket=_PRECOMPUTE_RESULTS_BUCKET, Key="results/index.json")
+        return json.loads(obj["Body"].read().decode())
+    except Exception:
+        raise HTTPException(404, "Results index not found")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# OPTIONS STUDIO SHARE LINKS
+# ══════════════════════════════════════════════════════════════════════════════
+# Saves a backtest result under a short random ID so it can be viewed by
+# anyone with the link (read-only). Dual-mode: PostgreSQL when DATABASE_URL is
+# set, SQLite otherwise. Both routes are whitelisted from the auth middleware
+# so share links remain usable without login.
+
+def _ensure_options_shares_table():
+    """Create the options_shares table on first use. Idempotent."""
+    if USE_POSTGRES:
+        from api.db_postgres import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS options_shares (
+                share_id      TEXT PRIMARY KEY,
+                email         TEXT,
+                config_json   TEXT,
+                metrics_json  TEXT,
+                trade_log_json TEXT,
+                created_at    TEXT
+            )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS options_shares (
+                share_id      TEXT PRIMARY KEY,
+                email         TEXT,
+                config_json   TEXT,
+                metrics_json  TEXT,
+                trade_log_json TEXT,
+                created_at    TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+
+@app.post("/api/options/deploy")
+async def deploy_options_bot(request: Request):
+    """Generate + save a LongPort options bot from an Options Studio config.
+
+    Body: {email, config}
+      email  -- student email (used to look up LP creds via get_student)
+      config -- Options Studio config dict (same shape as /api/options/backtest)
+    """
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    config = body.get("config") or {}
+
+    if not email:
+        raise HTTPException(400, "email required")
+    if not config.get("strategy_type"):
+        raise HTTPException(400, "strategy_type required")
+    if not config.get("symbol"):
+        raise HTTPException(400, "symbol required")
+
+    # Pull credentials from the legacy single-set-per-student store
+    # (matches the pattern used by all other LP routes in this file).
+    student = get_student(email)
+    if not student or not student.get("app_key"):
+        raise HTTPException(400, "No LongPort credentials on file for this student")
+
+    student_payload = {
+        "email":           email,
+        "app_key":         student["app_key"],
+        "app_secret":      student["app_secret"],
+        "access_token":    student["access_token"],
+        "central_api_url": CENTRAL_API_URL,
+    }
+
+    # Generate + save the bot script under bots/<email>/bot_<symbol>_<strat>_<dte>DTE.py
+    from api.generate import save_lp_options_bot
+    from api.config import BOTS_DIR as _BOTS_DIR
+    output_dir = _BOTS_DIR / email
+    try:
+        script_path = save_lp_options_bot(
+            config=config, student=student_payload,
+            output_path=str(output_dir),
+        )
+    except Exception as e:
+        _log.exception("deploy: generate failed")
+        raise HTTPException(500, f"Bot generation failed: {e}")
+
+    # Register the strategy in the DB (positional args, matches save_strategy signature)
+    strategy_id = f"opts_{config['symbol']}_{config['strategy_type']}_{int(time.time())}"
+    strategy_name = f"{config['symbol']} {config['strategy_type']} {config.get('target_dte', 7)}DTE"
+    try:
+        save_strategy(
+            email,                    # email
+            strategy_id,              # strategy_id
+            strategy_name,            # strategy_name
+            config["symbol"],         # symbol
+            "options",                # arena
+            "",                       # timeframe (unused for options)
+            config,                   # conditions (stored as JSON)
+            {},                       # exit_rules (options engine owns its exits)
+            {},                       # risk (options engine owns its risk)
+            is_active=False,          # don't auto-start -- student reviews DRY_RUN first
+            mode="options",
+            library_id="",
+            custom_script=script_path,
+            broker="longport",
+        )
+    except Exception as e:
+        _log.exception("deploy: save_strategy failed")
+        # The script is already on disk; don't wipe it. Surface the error.
+        raise HTTPException(500, f"Strategy save failed: {e}")
+
+    return {
+        "ok": True,
+        "strategy_id": strategy_id,
+        "script_path": script_path,
+        "message": f"Options bot generated for {config['symbol']} {config['strategy_type']} "
+                   f"(DRY_RUN=True; review the script before enabling live trading)",
+    }
+
+
+@app.post("/api/options/share")
+async def options_share_create(request: Request):
+    """Save a backtest result under a short random ID. Returns {share_id, url}."""
+    body = await request.json()
+    _ensure_options_shares_table()
+
+    share_id = secrets.token_urlsafe(8)
+    config = json.dumps(body.get("config") or {}, default=str)
+    metrics = json.dumps(body.get("metrics") or {}, default=str)
+    # Defensive: cap trade log to 100 even if frontend forgot to slice
+    trades = (body.get("trade_log") or [])[:100]
+    trade_log = json.dumps(trades, default=str)
+    email = (body.get("email") or "").strip()
+    created = datetime.utcnow().isoformat()
+
+    if USE_POSTGRES:
+        from api.db_postgres import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO options_shares
+              (share_id, email, config_json, metrics_json, trade_log_json, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (share_id, email, config, metrics, trade_log, created))
+        conn.commit()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        conn.execute("""
+            INSERT INTO options_shares
+              (share_id, email, config_json, metrics_json, trade_log_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (share_id, email, config, metrics, trade_log, created))
+        conn.commit()
+        conn.close()
+
+    return {"share_id": share_id, "url": "/#options-share/" + share_id}
+
+
+@app.get("/api/options/share/{share_id}")
+async def options_share_get(share_id: str):
+    """Retrieve a shared backtest. Public -- no auth required."""
+    _ensure_options_shares_table()
+    if USE_POSTGRES:
+        from api.db_postgres import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT share_id, config_json, metrics_json, trade_log_json, created_at "
+            "FROM options_shares WHERE share_id = %s", (share_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+    else:
+        conn = get_db()
+        row = conn.execute(
+            "SELECT share_id, config_json, metrics_json, trade_log_json, created_at "
+            "FROM options_shares WHERE share_id = ?", (share_id,)).fetchone()
+        conn.close()
+    if not row:
+        raise HTTPException(404, "Share not found")
+    return {
+        "share_id": row["share_id"],
+        "config": json.loads(row["config_json"] or "{}"),
+        "metrics": json.loads(row["metrics_json"] or "{}"),
+        "trade_log": json.loads(row["trade_log_json"] or "[]"),
+        "created_at": row["created_at"],
+    }
+
+
+@app.get("/api/options/dates/{symbol}")
+async def get_options_dates(symbol: str):
+    """Return the actual date range available in R2 for a symbol.
+    Bypasses the TTL cache to ensure frontend sees fresh bucket contents."""
+    from api.options_data import get_available_dates, invalidate_dates_cache
+    invalidate_dates_cache(symbol)
+    dates = get_available_dates(symbol)
+    return {
+        "symbol": symbol.upper(),
+        "dates": dates,
+        "count": len(dates),
+        "first": dates[0] if dates else None,
+        "last": dates[-1] if dates else None,
+    }
+
+
+@app.delete("/api/options/cache")
+async def options_cache_clear(symbol: Optional[str] = Query(None)):
+    """Delete cache files. Pass ?symbol=SPY to clear one symbol, omit to clear all."""
+    from api.options_data import clear_cache
+    return clear_cache(symbol)
+
+
+@app.post("/api/options/cache/preload")
+async def options_cache_preload(request: Request):
+    """SSE stream: pre-download all R2 parquet files for [start_date, end_date]."""
+    body = await request.json()
+    symbol = body["symbol"].upper()
+    start = body["start_date"]
+    end = body["end_date"]
+
+    def event_stream():
+        from api.options_data import get_available_dates, _ensure_day_cached, get_cache_stats
+        try:
+            dates = [d for d in get_available_dates(symbol) if start <= d <= end]
+            total = len(dates)
+            yield f"data: {json.dumps({'type':'start','total':total,'symbol':symbol})}\n\n"
+            for i, d in enumerate(dates, 1):
+                _ensure_day_cached(symbol, d)
+                yield f"data: {json.dumps({'type':'progress','done':i,'total':total,'date':d})}\n\n"
+            stats = get_cache_stats()
+            sym_entry = next((s for s in stats["symbols"] if s["symbol"] == symbol), None)
+            yield f"data: {json.dumps({'type':'complete','cached_files':sym_entry['files'] if sym_entry else total,'size_mb':sym_entry['size_mb'] if sym_entry else 0})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/options/cache/prewarm-popular")
+async def prewarm_popular(request: Request, background_tasks: BackgroundTasks):
+    """Fire-and-forget pre-warm of the most commonly backtested symbols.
+
+    Gated by an admin PIN (the `key` body field). The actual downloads
+    run in a FastAPI BackgroundTasks worker so the HTTP response returns
+    immediately; watch Railway logs for `[prewarm]` lines.
+    """
+    body = await request.json()
+    expected_pin = os.environ.get("ADMIN_PIN", "quantx2025")
+    if body.get("key") != expected_pin:
+        raise HTTPException(403, "Unauthorized")
+
+    symbols = body.get("symbols") or ["SPY", "SPXW"]
+    from datetime import date as _date
+    end = _date.today()
+    start = _date(end.year - 2, end.month, end.day)
+    start_str, end_str = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+
+    def _prewarm_all():
+        # Stream R2 -> disk directly. NO pandas load, NO parallel workers --
+        # the previous version OOM'd Railway because 4 ThreadPool workers each
+        # held a ~600 MB DataFrame at once (4 * 600 = 2.4 GB peak).
+        # This version peaks at the size of one parquet file (~215 MB raw).
+        # Trade-off: stores the FULL raw R2 file (~215 MB), not the slim 50 MB
+        # cleaned version that _ensure_day_cached produces. Backtests that
+        # later read these files will need ~600 MB DataFrame memory at read
+        # time. Acceptable for prewarm-and-go: the OOM happened at prewarm,
+        # not at backtest, and backtests serialize one file at a time.
+        import boto3 as _boto3
+        import botocore.config as _botoconf
+        import time as _time
+        import pyarrow.parquet as _pq
+        from api.options_data import (
+            CACHE_DIR, get_available_dates,
+            R2_ENDPOINT, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET,
+        )
+
+        s3 = _boto3.client(
+            "s3",
+            endpoint_url=R2_ENDPOINT,
+            aws_access_key_id=R2_ACCESS_KEY,
+            aws_secret_access_key=R2_SECRET_KEY,
+            region_name="auto",
+            config=_botoconf.Config(read_timeout=300, connect_timeout=30),
+        )
+
+        for symbol in symbols:
+            sym_up = symbol.upper()
+            try:
+                all_dates = get_available_dates(sym_up)
+                dates = [d for d in all_dates if start_str <= d <= end_str]
+                sym_dir = CACHE_DIR / sym_up
+                sym_dir.mkdir(parents=True, exist_ok=True)
+                print(f"[prewarm] {sym_up}: {len(dates)} dates to download")
+                done = 0
+                skipped = 0
+                for d in dates:
+                    cf = sym_dir / f"{d}.parquet"
+                    # Skip if already cached and valid
+                    if cf.exists():
+                        try:
+                            _pq.read_schema(cf)
+                            skipped += 1
+                            continue
+                        except Exception:
+                            cf.unlink(missing_ok=True)
+                    # Download directly to disk -- key matches the R2 layout
+                    # used by api/options_data._download_day, NOT a flat
+                    # SYMBOL/DATE.parquet path.
+                    try:
+                        key = f"{sym_up}/greeks_1min_daily/{d}.parquet"
+                        s3.download_file(R2_BUCKET, key, str(cf))
+                        done += 1
+                        if done % 10 == 0:
+                            print(f"[prewarm] {sym_up}: {done} downloaded, "
+                                  f"{skipped} already cached")
+                        _time.sleep(0.05)  # be nice to R2
+                    except Exception as e:
+                        print(f"[prewarm] SKIP {sym_up} {d}: {e}")
+                        cf.unlink(missing_ok=True)
+                print(f"[prewarm] {sym_up}: DONE -- "
+                      f"{done} downloaded, {skipped} already cached")
+            except Exception as e:
+                print(f"[prewarm] {sym_up} ERROR: {e}")
+
+    background_tasks.add_task(_prewarm_all)
+    return {
+        "ok": True,
+        "message": f"Pre-warming {symbols} in background",
+        "symbols": symbols,
+        "date_range": {"start": start_str, "end": end_str},
+        "note": "Check Railway logs for [prewarm] lines",
+    }
+
+
+@app.post("/api/options/cache/repair")
+async def repair_cache(request: Request, background_tasks: BackgroundTasks):
+    """Scan cache and delete corrupted parquet files. Admin-gated. Fire-and-forget
+    background scan. Railway logs will show [repair] lines per bad file."""
+    body = await request.json()
+    if body.get("key") != os.environ.get("ADMIN_PIN", "quantx2025"):
+        raise HTTPException(403, "Unauthorized")
+
+    def _repair():
+        import pyarrow.parquet as pq
+        from api.options_data import CACHE_DIR
+        deleted = 0
+        checked = 0
+        if not CACHE_DIR.exists():
+            print("[repair] Cache dir does not exist; nothing to do")
+            return
+        for sym_dir in CACHE_DIR.iterdir():
+            if not sym_dir.is_dir():
+                continue
+            for f in sym_dir.glob("*.parquet"):
+                checked += 1
+                try:
+                    pq.read_schema(f)
+                except Exception as e:
+                    print(f"[repair] Corrupted: {f.name} -- {type(e).__name__}: {e}")
+                    try:
+                        f.unlink(missing_ok=True)
+                        deleted += 1
+                    except Exception as e2:
+                        print(f"[repair] Unlink failed: {f.name}: {e2}")
+        print(f"[repair] Done: checked={checked} deleted={deleted}")
+
+    background_tasks.add_task(_repair)
+    return {"ok": True, "message": "Repair scan running in background",
+            "note": "Check Railway logs for [repair] lines"}
+
+
 @app.get("/api/fundamentals/{symbol}")
 async def fundamentals(symbol: str):
     from api.backtest import get_fundamentals, _fmp_symbol
@@ -834,9 +1565,7 @@ async def screen_now(req: ScreenNowReq):
     universe = get_universe(req.bot_type, req.arena, req.custom_tickers)
 
     def _run():
-        from longport.openapi import Config, QuoteContext
-        cfg = Config(app_key=student["app_key"], app_secret=student["app_secret"], access_token=student["access_token"])
-        ctx = QuoteContext(cfg)
+        ctx = get_lp_quote_ctx(student["app_key"], student["app_secret"], student["access_token"])
         from api.config import DB_PATH
         return run_screener(ctx, req.bot_type, universe, DB_PATH, email, req.strategy_id)
 
@@ -897,6 +1626,9 @@ async def get_config():
         "central_api_url": CENTRAL_API_URL,
         "version": VERSION,
         "hosting": HOSTING,
+        # Frontend uses these to render the status bar + cache messaging.
+        "backtest_source": "longport",
+        "trading_mode": "cloud" if HOSTING == "railway" else "local",
     }
 
 
@@ -1033,13 +1765,8 @@ def _cancel_student_orders(student: dict) -> int:
     """Cancel all open LongPort orders for a student. Returns count cancelled."""
     logger = _logging.getLogger("quantx-deployer")
     try:
-        from longport.openapi import Config, TradeContext, OrderStatus
-        cfg = Config(
-            app_key=student["app_key"],
-            app_secret=student["app_secret"],
-            access_token=student["access_token"],
-        )
-        ctx = TradeContext(cfg)
+        from longport.openapi import OrderStatus  # noqa: F401  (used below via status name)
+        ctx = get_lp_trade_ctx(student["app_key"], student["app_secret"], student["access_token"])
         orders = ctx.today_orders()
         cancelled = 0
         for o in orders:
@@ -1096,11 +1823,9 @@ def _close_lp_positions(student: dict, positions: list) -> dict:
     if not positions:
         return {"closed": closed, "failed": failed}
     try:
-        from longport.openapi import Config, TradeContext, OrderType, OrderSide, TimeInForceType
+        from longport.openapi import OrderType, OrderSide, TimeInForceType
         import decimal
-        cfg = Config(app_key=student["app_key"], app_secret=student["app_secret"],
-                     access_token=student["access_token"])
-        trade_ctx = TradeContext(cfg)
+        trade_ctx = get_lp_trade_ctx(student["app_key"], student["app_secret"], student["access_token"])
         for pos in positions:
             symbol = pos["symbol"]
             qty = abs(int(pos["position"]))
@@ -1530,10 +2255,7 @@ async def test_broker_account(account_id: int):
     def _test():
         if broker == "longport":
             try:
-                from longport.openapi import Config, QuoteContext
-                cfg = Config(app_key=acct["app_key"], app_secret=acct["app_secret"],
-                             access_token=acct["access_token"])
-                ctx = QuoteContext(cfg)
+                ctx = get_lp_quote_ctx(acct["app_key"], acct["app_secret"], acct["access_token"])
                 quotes = ctx.quote(["700.HK"])
                 if quotes:
                     price = float(quotes[0].last_done)
@@ -1987,9 +2709,7 @@ def _fetch_symbol_lp(symbol: str, email: str) -> dict:
     if not student:
         return {"found": False, "error": "Register to search unlisted symbols."}
     try:
-        from longport.openapi import Config, QuoteContext
-        cfg = Config(app_key=student["app_key"], app_secret=student["app_secret"], access_token=student["access_token"])
-        ctx = QuoteContext(cfg)
+        ctx = get_lp_quote_ctx(student["app_key"], student["app_secret"], student["access_token"])
         result = ctx.static_info([symbol])
         if result and len(result) > 0:
             info = result[0]
@@ -2077,13 +2797,7 @@ async def test_connection(req: DeployReq):
         raise HTTPException(404, "Student not registered")
     def _test_lp():
         try:
-            from longport.openapi import Config, QuoteContext
-            cfg = Config(
-                app_key=student["app_key"],
-                app_secret=student["app_secret"],
-                access_token=student["access_token"],
-            )
-            ctx = QuoteContext(cfg)
+            ctx = get_lp_quote_ctx(student["app_key"], student["app_secret"], student["access_token"])
             quotes = ctx.quote(["700.HK"])
             if quotes:
                 q = quotes[0]
