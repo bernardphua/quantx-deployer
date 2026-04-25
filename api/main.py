@@ -3031,3 +3031,33 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8080"))
     uvicorn.run("api.main:app", host="0.0.0.0", port=port, app_dir=str(Path(__file__).parent.parent))
+
+@app.get("/api/admin/cache-report")
+async def cache_report():
+    """Temporary: inspect options cache on Railway volume."""
+    import os
+    from pathlib import Path
+    
+    results = {}
+    
+    # Check all possible cache locations
+    for candidate in ['/data/options_cache', '/data/cache', '/data']:
+        p = Path(candidate)
+        if p.exists():
+            files = list(p.rglob('*.parquet'))
+            part_files = list(p.rglob('*.part'))
+            corrupted = [f for f in files if f.stat().st_size < 1000]
+            total_size = sum(f.stat().st_size for f in files)
+            results[candidate] = {
+                'exists': True,
+                'parquet_files': len(files),
+                'part_files': len(part_files),
+                'corrupted_small': len(corrupted),
+                'total_gb': round(total_size / 1e9, 2),
+                'subdirs': [d.name for d in p.iterdir() if d.is_dir()]
+            }
+        else:
+            results[candidate] = {'exists': False}
+    
+    results['OPTIONS_CACHE_DIR'] = os.environ.get('OPTIONS_CACHE_DIR', 'not set')
+    return results
