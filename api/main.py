@@ -403,6 +403,7 @@ async def lifespan(app: FastAPI):
     if HOSTING == "railway":
         threading.Thread(target=_orchestrator_loop, daemon=True, name="orchestrator").start()
         _log.info("[ORCH] Orchestrator thread started (Railway mode)")
+        print("[ORCH] ORCHESTRATOR STARTED", flush=True)
     yield
     for email, proc in _running_processes.items():
         try:
@@ -3061,3 +3062,13 @@ async def cache_report():
     
     results['OPTIONS_CACHE_DIR'] = os.environ.get('OPTIONS_CACHE_DIR', 'not set')
     return results
+
+@app.get("/api/admin/clean-parts")
+async def clean_parts():
+    from pathlib import Path
+    cache_dir = Path('/data/options_cache')
+    removed = []
+    for f in cache_dir.rglob('*.part'):
+        f.unlink()
+        removed.append(str(f))
+    return {"removed": len(removed), "files": removed}
