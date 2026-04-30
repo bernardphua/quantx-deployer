@@ -22,7 +22,14 @@ import os, sys, json, math, csv, time, signal as _signal, logging, threading, de
 from collections import deque
 from datetime import datetime, timezone, timedelta
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None
+try:
+    import httpx as _httpx
+except ImportError:
+    _httpx = None
 
 EMAIL          = '__EMAIL__'
 CENTRAL_API_URL = '__CENTRAL_API_URL__'
@@ -253,11 +260,17 @@ def log_trade(strategy_id, symbol, side, qty, price, pnl=0.0, signal='',
     logger.info(f'[TRADE][{strategy_id}] {side} {qty} {symbol} @ {price:.4f} | pnl=${pnl:+.2f} | signal={signal}')
     _payload = {'email': EMAIL, 'strategy_id': strategy_id, 'symbol': symbol,
                 'side': side.lower(), 'price': float(price), 'qty': float(qty), 'pnl': float(pnl)}
-    try: requests.post(f'{LOCAL_API_URL}/api/trade', json=_payload, timeout=2)
-    except Exception: pass
+    def _post(url, payload, timeout):
+        try:
+            if requests:
+                requests.post(url, json=payload, timeout=timeout)
+            elif _httpx:
+                _httpx.post(url, json=payload, timeout=timeout)
+        except Exception:
+            pass
+    _post(f'{LOCAL_API_URL}/api/trade', _payload, 2)
     if CENTRAL_API_URL:
-        try: requests.post(f'{CENTRAL_API_URL}/api/trade', json=_payload, timeout=3)
-        except Exception: pass
+        _post(f'{CENTRAL_API_URL}/api/trade', _payload, 3)
 
 
 # ── Strategy state ─────────────────────────────────────────────────────────

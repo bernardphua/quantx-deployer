@@ -2753,6 +2753,40 @@ async def debug_bot_script(email: str, key: str = ""):
     return {"filename": "", "lines": 0, "content": "No bot script found. Deploy first."}
 
 
+@app.get("/api/debug/deploy-test")
+async def debug_deploy_test(email: str, key: str = ""):
+    """Test-run the generated bot script to surface import/syntax errors."""
+    from api.config import ADMIN_PIN, BOTS_DIR, PYTHON_EXE
+    if key != ADMIN_PIN:
+        raise HTTPException(403, "Forbidden")
+    email = email.lower().strip()
+    email_safe = email.replace("@", "_at_").replace(".", "_")
+    candidates = [
+        BOTS_DIR / f"{email_safe}_lp_master.py",
+        BOTS_DIR / f"{email_safe}_master.py",
+    ]
+    for path in candidates:
+        if path.exists():
+            import subprocess, sys
+            result = subprocess.run(
+                [PYTHON_EXE, "-c", f"import ast; ast.parse(open(r'{path}').read()); print('syntax_ok')"],
+                capture_output=True, text=True, timeout=10
+            )
+            # Also try a compile check
+            result2 = subprocess.run(
+                [PYTHON_EXE, "-m", "py_compile", str(path)],
+                capture_output=True, text=True, timeout=10
+            )
+            return {
+                "filename": path.name,
+                "ast_check": result.stdout.strip(),
+                "ast_error": result.stderr.strip(),
+                "compile_check": "ok" if result2.returncode == 0 else "failed",
+                "compile_error": result2.stderr.strip(),
+            }
+    return {"error": "No bot script found"}
+
+
 @app.get("/api/trades/{email}")
 async def trades_list(email: str):
     email = email.lower().strip()
