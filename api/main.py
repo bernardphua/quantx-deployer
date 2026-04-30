@@ -2693,10 +2693,11 @@ async def strategy_logs(email: str, strategy_id: str, lines: int = Query(50, ge=
     email = email.lower().strip()
     email_safe = email.replace("@", "_at_").replace(".", "_")
     safe_sid = strategy_id.replace("/", "_")
-    logs_dir = Path(__file__).parent.parent / "logs"
+    logs_dir = LOGS_DIR
     # Search for log file in order of specificity
     candidates = [
-        f"{email_safe}_{safe_sid}.log",       # strategy-specific
+        f"{email_safe}_lp_master.log",         # LongPort LP master (Railway)
+        f"{email_safe}_{safe_sid}.log",        # strategy-specific
         f"{email_safe}_master.log",            # LongPort master
         f"{email_safe}_ibkr_master.log",       # IBKR master
     ]
@@ -2714,13 +2715,38 @@ async def strategy_logs(email: str, strategy_id: str, lines: int = Query(50, ge=
 async def logs(email: str, lines: int = Query(50, ge=1, le=500)):
     email = email.lower().strip()
     email_safe = email.replace("@", "_at_").replace(".", "_")
-    logs_dir = Path(__file__).parent.parent / "logs"
-    for fname in [f"{email_safe}_master.log", f"{email_safe}_ibkr_master.log"]:
+    logs_dir = LOGS_DIR
+    for fname in [f"{email_safe}_lp_master.log",
+                  f"{email_safe}_master.log",
+                  f"{email_safe}_ibkr_master.log"]:
         log_path = logs_dir / fname
         if log_path.exists():
             all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
             return {"lines": all_lines[-lines:], "total": len(all_lines), "filename": fname}
     return {"lines": [], "total": 0, "filename": ""}
+
+
+@app.get("/api/debug/bot-script")
+async def debug_bot_script(email: str, key: str = ""):
+    """Return the generated bot script for debugging. Admin-key protected."""
+    from api.config import ADMIN_PIN, BOTS_DIR
+    if key != ADMIN_PIN:
+        raise HTTPException(403, "Forbidden")
+    email = email.lower().strip()
+    email_safe = email.replace("@", "_at_").replace(".", "_")
+    candidates = [
+        BOTS_DIR / f"{email_safe}_lp_master.py",
+        BOTS_DIR / f"{email_safe}_master.py",
+    ]
+    for path in candidates:
+        if path.exists():
+            content = path.read_text(encoding="utf-8", errors="replace")
+            return {
+                "filename": path.name,
+                "lines": len(content.splitlines()),
+                "content": content,
+            }
+    return {"filename": "", "lines": 0, "content": "No bot script found. Deploy first."}
 
 
 @app.get("/api/trades/{email}")

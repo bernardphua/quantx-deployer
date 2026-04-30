@@ -223,9 +223,55 @@ def _cond_code(cond, lv, rv, is_value=False):
     return 'True'
 
 
+def _normalize_conditions(raw):
+    """Accept either:
+      - flat list:    [{"left":..., "cond":..., "right":...}, ...]
+      - Studio wrap:  {"conditions": [...], "logic": "AND"}
+
+    Also normalise per-condition key names inside left/right dicts:
+      "id" -> "ind"   (Studio uses "id", legacy code expects "ind")
+      "p"  -> "params" (Studio uses "p", legacy code expects "params")
+
+    Returns (flat_list, logic_string).
+    """
+    if isinstance(raw, dict):
+        logic = raw.get("logic", "AND")
+        items = raw.get("conditions", [])
+    elif isinstance(raw, list):
+        logic = "AND"
+        items = raw
+    else:
+        return [], "AND"
+
+    normalized = []
+    for c in items:
+        nc = dict(c)
+        for side_key in ("left", "right"):
+            if side_key in nc and isinstance(nc[side_key], dict):
+                s = dict(nc[side_key])
+                if "id" in s and "ind" not in s:
+                    s["ind"] = s.pop("id")
+                if "p" in s and "params" not in s:
+                    s["params"] = s.pop("p")
+                nc[side_key] = s
+        normalized.append(nc)
+    return normalized, logic
+
+
 def generate_signal_code(entry_long, exit_long, entry_short=None, exit_short=None,
                          entry_long_logic='AND', exit_long_logic='OR', has_short=False):
     """Convert builder conditions to compute_signals() Python function."""
+    # Normalize all condition inputs (handles both flat list and Studio wrapped format)
+    entry_long,  el_logic = _normalize_conditions(entry_long  or [])
+    exit_long,   xl_logic = _normalize_conditions(exit_long   or [])
+    entry_short, es_logic = _normalize_conditions(entry_short or [])
+    exit_short,  xs_logic = _normalize_conditions(exit_short  or [])
+
+    # Override logic strings only if the wrapped format provided them explicitly.
+    # Defaults remain whatever the caller passed; Studio wrappers carry their own.
+    if el_logic != 'AND': entry_long_logic = el_logic
+    if xl_logic != 'OR':  exit_long_logic  = xl_logic
+
     all_conds = list(entry_long or []) + list(exit_long or [])
     if has_short:
         all_conds += list(entry_short or []) + list(exit_short or [])
@@ -418,14 +464,23 @@ def generate_lp_master_bot(email: str, strategies: list[dict],
         if not conds.get("entry_long") and s.get("library_id"):
             conds = library_id_to_conditions(s["library_id"])
 
+        # Studio wraps conditions as {"conditions":[...], "logic":...} -- a bare
+        # bool() check on that dict is True even when the conditions list is
+        # empty, falsely flagging short-side trading.
+        raw_es = conds.get("entry_short", [])
+        if isinstance(raw_es, dict):
+            has_short = bool(raw_es.get("conditions", []))
+        else:
+            has_short = bool(raw_es)
+
         fn_code = generate_signal_code(
             entry_long=conds.get("entry_long", []),
             exit_long=conds.get("exit_long", []),
-            entry_short=conds.get("entry_short", []),
+            entry_short=raw_es,
             exit_short=conds.get("exit_short", []),
             entry_long_logic=conds.get("entry_long_logic", "AND"),
             exit_long_logic=conds.get("exit_long_logic", "OR"),
-            has_short=bool(conds.get("entry_short")),
+            has_short=has_short,
         )
         # Rename compute_signals -> compute_signals_XXXX
         fn_code = fn_code.replace("def compute_signals(", f"def compute_signals_{sid}(")
@@ -809,3 +864,37 @@ def save_lp_options_bot(config: dict, student: dict, output_path: str) -> str:
     meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     return str(script_path.resolve())
+
+# ── Self-test: run with `python api/generate.py` ─────────────────────────────
+if __name__ == "__main__":
+    # Test Studio format normalisation
+    raw = {"conditions": [{"left": {"id": "ema", "p": {"period": 5}},
+                            "cond": "crosses_above",
+                            "right": {"type": "indicator", "id": "ema", "p": {"period": 20}}}],
+           "logic": "AND"}
+    items, logic = _normalize_conditions(raw)
+    assert len(items) == 1
+    assert items[0]["left"]["ind"] == "ema"
+    assert items[0]["left"]["params"] == {"period": 5}
+    assert items[0]["right"]["ind"] == "ema"
+    assert logic == "AND"
+    print("_normalize_conditions: OK")
+
+    # Test that generate_signal_code produces valid Python with Studio format
+    code = generate_signal_code(
+        entry_long=raw,
+        exit_long={"conditions": [], "logic": "OR"},
+        entry_short={"conditions": [{"left": {"id": "ema", "p": {"period": 5}},
+                                       "cond": "crosses_below",
+                                       "right": {"type": "indicator", "id": "ema", "p": {"period": 20}}}],
+                     "logic": "AND"},
+        exit_short={"conditions": [], "logic": "OR"},
+        has_short=True,
+    )
+    assert "ema_5" in code, f"Expected ema_5 in code, got:\n{code}"
+    assert "ema_20" in code, "Expected ema_20 in code"
+    assert "crosses_above" not in code, "crosses_above should be lowered to a Python expression"
+    assert "def compute_signals" in code
+    compile(code, "<string>", "exec")  # raises SyntaxError if broken
+    print("generate_signal_code with Studio format: OK")
+    print("All checks passed.")
