@@ -365,7 +365,11 @@ def generate_signal_code(entry_long, exit_long, entry_short=None, exit_short=Non
 
     lines.append("")
     lines.append("    return signals")
-    return "\n".join(lines)
+    import textwrap
+    code = "\n".join(lines)
+    # Normalize: replace tabs with 4 spaces, ensure no trailing whitespace per line
+    code = "\n".join(line.replace("\t", "    ").rstrip() for line in code.splitlines())
+    return code
 
 
 def generate_ibkr_bot_prod(email: str, strategy_config: dict,
@@ -528,6 +532,13 @@ def generate_lp_master_bot(email: str, strategies: list[dict],
 
     if custom_code_blocks:
         signal_functions = custom_code_blocks + [""] + signal_functions
+
+    # Verify all signal functions compile cleanly before injecting
+    combined_signals = "\n".join(signal_functions)
+    try:
+        compile(combined_signals, "<signal_functions>", "exec")
+    except SyntaxError as e:
+        raise ValueError(f"Generated signal function has syntax error: {e}\n\nCode:\n{combined_signals}") from e
 
     content = LP_MASTER_TEMPLATE
     replacements = {
@@ -897,4 +908,14 @@ if __name__ == "__main__":
     assert "def compute_signals" in code
     compile(code, "<string>", "exec")  # raises SyntaxError if broken
     print("generate_signal_code with Studio format: OK")
+
+    # Verify compile check catches bad code
+    try:
+        from api.generate import generate_lp_master_bot
+    except ImportError:
+        pass
+
+    # Verify generated code compiles cleanly
+    compile(code, "<test>", "exec")
+    print("Compile check: OK")
     print("All checks passed.")

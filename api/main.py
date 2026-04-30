@@ -2106,13 +2106,13 @@ async def deploy(req: DeployReq):
             email, lp_strats, lp_creds, initial_states=existing_states)
     except Exception as e:
         import traceback
-        _log.error("[DEPLOY] LP master gen failed: %s\n%s", e, traceback.format_exc())
-        # Fallback to old master bot
-        script_path = generate_master_bot(email, lp_strats, student)
-        email_safe = email.replace("@", "_at_").replace(".", "_")
-        logs_dir = Path(script_path).parent.parent / "logs"
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        log_path = str(logs_dir / f"{email_safe}_master.log")
+        tb = traceback.format_exc()
+        _log.error("[DEPLOY] LP master gen failed: %s\n%s", e, tb)
+        return {
+            "status": "error",
+            "error": f"Bot script generation failed: {e}",
+            "detail": tb,
+        }
 
     _log.info("[DEPLOY] Running LP master: %s | Log: %s", script_path, log_path)
 
