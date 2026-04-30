@@ -605,6 +605,13 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
         <div class="form-group"><label>Stop Loss %</label><input type="number" id="bd-set-sl" step="0.5" value="5"></div>
         <div class="form-group"><label>Take Profit %</label><input type="number" id="bd-set-tp" step="0.5" value="10"></div>
       </div>
+      <div class="form-row" style="grid-template-columns:1fr 1fr;margin-top:0">
+        <div class="form-group">
+          <label>Lots (shares per trade)</label>
+          <input type="number" id="bd-set-lots" min="1" value="1">
+          <div id="bd-set-lots-warn" style="font-size:11px;color:#92400E;min-height:16px;margin-top:3px"></div>
+        </div>
+      </div>
       <div class="form-group"><label>Strategy</label><input type="text" id="bd-set-strat" disabled style="background:var(--surface-2);color:var(--text-muted)"></div>
       <div id="bd-set-msg" style="font-size:12px;min-height:18px;margin-bottom:8px"></div>
       <button class="btn btn-primary" onclick="saveBotSettings()">Save Changes</button>
@@ -2685,6 +2692,33 @@ function openBotDetail(sid) {
   document.getElementById('bd-set-alloc').value = _currentBot.allocation || 10000;
   document.getElementById('bd-set-sl').value = (_currentBot.risk || {}).sl_pct || 5;
   document.getElementById('bd-set-tp').value = (_currentBot.risk || {}).tp_pct || 10;
+  const lots = (_currentBot.risk && _currentBot.risk.lots) || 1;
+  const lotsEl = document.getElementById('bd-set-lots');
+  if (lotsEl) lotsEl.value = lots;
+  // Fetch lot_size for this symbol and warn if lots is too small
+  const sym = _currentBot.symbol;
+  if (sym && EMAIL) {
+    fetch(`${API}/api/symbol-search?query=${encodeURIComponent(sym)}&email=${encodeURIComponent(EMAIL)}`)
+      .then(r => r.json())
+      .then(info => {
+        const minLot = info.lot_size || 1;
+        const warnEl = document.getElementById('bd-set-lots-warn');
+        if (!warnEl) return;
+        if (minLot > 1 && lots < minLot) {
+          warnEl.innerHTML = `⚠️ ${sym} requires min ${minLot} shares per trade. Current value (${lots}) will be rejected by LongPort.`;
+          warnEl.style.color = '#92400E';
+          if (lotsEl) lotsEl.style.borderColor = '#F59E0B';
+        } else if (minLot > 1) {
+          warnEl.innerHTML = `ℹ️ Min board lot for ${sym}: ${minLot}`;
+          warnEl.style.color = '#6B7280';
+          if (lotsEl) lotsEl.style.borderColor = '';
+        } else {
+          warnEl.innerHTML = '';
+          if (lotsEl) lotsEl.style.borderColor = '';
+        }
+      })
+      .catch(() => {});
+  }
   document.getElementById('bd-set-strat').value = _currentBot.library_id || _currentBot.mode || '—';
   hideDeleteConfirm();
   // Load live trades
@@ -2950,7 +2984,7 @@ async function saveBotSettings() {
         email: EMAIL, strategy_id: _currentBot.strategy_id, strategy_name: name, symbol: sym,
         arena: sym.endsWith('.HK') ? 'HK' : sym.endsWith('.SI') ? 'SG' : 'US',
         timeframe: _currentBot.timeframe || '1day', conditions: _currentBot.conditions || {},
-        exit_rules: _currentBot.exit_rules || {}, risk: { ..._currentBot.risk, sl_pct: parseFloat(document.getElementById('bd-set-sl').value) || 5, tp_pct: parseFloat(document.getElementById('bd-set-tp').value) || 10 },
+        exit_rules: _currentBot.exit_rules || {}, risk: { ..._currentBot.risk, sl_pct: parseFloat(document.getElementById('bd-set-sl').value) || 5, tp_pct: parseFloat(document.getElementById('bd-set-tp').value) || 10, lots: parseInt(document.getElementById('bd-set-lots') ? document.getElementById('bd-set-lots').value : '1') || 1 },
         is_active: _currentBot.is_active, mode: _currentBot.mode || 'library', library_id: _currentBot.library_id || ''
       })
     });
@@ -4056,12 +4090,29 @@ function nbShowDropdown(symbols, query) {
   dd.style.display = 'block';
 }
 
+let _nbCurrentLotSize = 1; // track lot_size for selected symbol
+
 function nbSelectSymbol(symbol, name) {
   document.getElementById('nb-symbol').value = symbol;
   document.getElementById('nb-sym-dropdown').style.display = 'none';
   const val = document.getElementById('nb-sym-validation');
   if (name) val.innerHTML = `<span style="color:#16A34A">\u2713 ${name}</span>`;
   else val.innerHTML = `<span style="color:#6B7280">Custom symbol</span>`;
+
+  // Fetch lot_size and show warning if needed
+  _nbCurrentLotSize = 1;
+  if (EMAIL) {
+    fetch(`${API}/api/symbol-search?query=${encodeURIComponent(symbol)}&email=${encodeURIComponent(EMAIL)}`)
+      .then(r => r.json())
+      .then(info => {
+        const lotSize = info.lot_size || 1;
+        _nbCurrentLotSize = lotSize;
+        if (lotSize > 1) {
+          val.innerHTML += ` <span style="color:#92400E;background:#FEF3C7;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:4px">⚠️ Min lot: ${lotSize} — set Lots ≥ ${lotSize}</span>`;
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 document.addEventListener('click', e => {
