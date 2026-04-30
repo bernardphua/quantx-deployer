@@ -339,7 +339,7 @@ def main():
     logger.info('LongPort connected (2 connections: quote + trade)')
 
     # Build strategy states with their compute_signals functions
-    # The __SIGNAL_FUNCTIONS__ block defines compute_signals_XXXX for each strategy
+    # The __SIGNAL_FUNCTIONS_BLOCK__ block defines compute_signals_XXXX for each strategy
     states = []
     for s in STRATEGIES:
         fn_name = f'compute_signals_{s["strategy_id"]}'
