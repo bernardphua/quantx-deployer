@@ -513,7 +513,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <div style="font-size:56px;margin-bottom:16px">&#128200;</div>
       <div style="font-size:20px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Options Trading &mdash; Coming Soon</div>
       <div style="font-size:14px;color:var(--text-muted);max-width:480px;line-height:1.6;margin-bottom:24px">
-        Deploy automated options strategies including covered calls, cash-secured puts, iron condors, and vertical spreads. Fully integrated with IBKR.
+        Deploy automated options strategies including covered calls, cash-secured puts, iron condors, and vertical spreads. Fully integrated with LongPort.
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:28px">
         <span style="background:#EEF2FF;color:#4338CA;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500">Covered Calls</span>
@@ -650,7 +650,6 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <label>Data Source</label>
       <div style="display:flex;gap:6px;align-items:center">
         <button class="bt-broker-btn active" id="bt-broker-lp" onclick="setBtBroker('longport')">LongPort</button>
-        <button class="bt-broker-btn" id="bt-broker-ibkr" onclick="setBtBroker('ibkr')">IBKR</button>
         <button class="bt-broker-btn" id="bt-broker-yahoo" onclick="setBtBroker('yahoo')">Yahoo</button>
         <span id="bt-broker-note" style="font-size:11px;color:var(--text-muted);margin-left:4px"></span>
       </div>
@@ -787,17 +786,13 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 <div class="modal-overlay" id="add-acct-modal">
   <div class="modal">
     <div class="modal-header"><div class="modal-title">Add Trading Account</div><button class="modal-close" onclick="closeModal('add-acct-modal')">x</button></div>
-    <div class="form-group"><label>Broker</label><div style="display:flex;gap:6px"><span class="filter-pill active" id="aa-lp" onclick="setAcctBroker('longport')">LongPort</span><span class="filter-pill" id="aa-ib" onclick="setAcctBroker('ibkr')">IBKR</span></div><input type="hidden" id="aa-broker" value="longport"></div>
+    <div class="form-group"><label>Broker</label><div style="display:flex;gap:6px"><span class="filter-pill active" id="aa-lp" onclick="setAcctBroker('longport')">LongPort</span></div><input type="hidden" id="aa-broker" value="longport"></div>
     <div class="form-group"><label>Account Type</label><div style="display:flex;gap:8px"><label style="font-size:13px;cursor:pointer"><input type="radio" name="aa-type" value="paper" checked> Paper/Demo</label><label style="font-size:13px;cursor:pointer"><input type="radio" name="aa-type" value="live"> Live</label></div></div>
-    <div class="form-group"><label>Nickname</label><input type="text" id="aa-nickname" placeholder="e.g. IBKR Paper"></div>
+    <div class="form-group"><label>Nickname</label><input type="text" id="aa-nickname" placeholder="e.g. LongPort Paper"></div>
     <div id="aa-lp-fields">
       <div class="form-group"><label>App Key</label><input type="text" id="aa-appkey" placeholder="LongPort App Key"></div>
       <div class="form-group"><label>App Secret</label><input type="password" id="aa-appsecret" placeholder="LongPort App Secret"></div>
       <div class="form-group"><label>Access Token</label><input type="text" id="aa-token" placeholder="Access Token"></div>
-    </div>
-    <div id="aa-ibkr-fields" style="display:none">
-      <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="form-group"><label>TWS Host</label><input type="text" id="aa-host" value="127.0.0.1"></div><div class="form-group"><label>Port</label><input type="number" id="aa-port" value="7497"></div></div>
-      <div class="form-hint">Paper=7497, Live=7496. TWS or IB Gateway must be running.</div>
     </div>
     <div id="aa-live-warn" style="display:none;margin-top:8px;padding:10px;background:var(--red-light);border:1px solid #FECACA;border-radius:6px"><div style="font-size:12px;color:var(--red);font-weight:600">Real Money Warning</div><div style="font-size:12px;color:var(--red)">This account uses real funds. Type CONFIRM to proceed:</div><input type="text" id="aa-confirm" placeholder="Type CONFIRM" style="margin-top:6px"></div>
     <div id="aa-error" style="color:var(--red);font-size:12px;min-height:18px;margin-top:8px"></div>
@@ -1658,7 +1653,6 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <div class="form-group"><label>Broker</label>
         <div style="display:flex;gap:8px">
           <span class="filter-pill active" id="nb-broker-lp" onclick="setNbBroker('longport')">LongPort</span>
-          <span class="filter-pill" id="nb-broker-ib" onclick="setNbBroker('ibkr')">IBKR</span>
         </div>
         <input type="hidden" id="nb-broker" value="longport">
       </div>
@@ -1679,7 +1673,6 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       </div>
       <div class="form-group"><label>Timeframe</label><select id="nb-timeframe"><option value="1min">1m</option><option value="5min">5m</option><option value="15min">15m</option><option value="1hour">1h</option><option value="4hour">4h</option><option value="1day" selected>1d</option></select></div>
       <div class="form-group"><label>Allocation ($)</label><input type="number" id="nb-alloc" value="1000"></div>
-      <div id="nb-ibkr-fields" style="display:none"><div class="form-row" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:8px"><div class="form-group"><label>Bar Size</label><select id="nb-bar-size"><option value="1 min">1 min</option><option value="5 mins">5 mins</option><option value="15 mins">15 mins</option><option value="1 hour">1 hour</option><option value="1 day">1 day</option></select></div><div class="form-group"><label>Lot Size</label><input type="number" id="nb-lot-size" value="1" min="1"></div><div class="form-group"><label>Mode</label><select id="nb-mode"><option value="paper">Paper (7497)</option><option value="live">Live (7496)</option></select></div></div></div>
       <div class="form-group"><label>Bot Name</label><input type="text" id="nb-name" placeholder="My Bot"></div>
       <div id="nb-error" style="color:var(--red);font-size:12px;min-height:18px;margin-bottom:8px"></div>
       <div style="display:flex;gap:8px">
@@ -1871,7 +1864,6 @@ let ALL_STRATEGIES = [];   // library strategies (from /api/strategies-library)
 let USER_STRATEGIES = [];  // user's saved bots (from /api/strategies/{email})
 let BOT_RUNNING = false;   // true if any subprocess is running
 let LP_BOT_RUNNING = false;
-let IBKR_BOT_RUNNING = false;
 let _currentBot = null;
 
 const SYMBOL_LIBRARY = [
@@ -1888,15 +1880,6 @@ const SYMBOL_LIBRARY = [
   {s:"GOOGL.US",n:"Alphabet",b:"longport",m:"US"},{s:"META.US",n:"Meta Platforms",b:"longport",m:"US"},
   {s:"AMZN.US",n:"Amazon",b:"longport",m:"US"},{s:"SPY.US",n:"S&P 500 ETF",b:"longport",m:"US"},
   {s:"QQQ.US",n:"Nasdaq 100 ETF",b:"longport",m:"US"},{s:"TQQQ.US",n:"3x Nasdaq ETF",b:"longport",m:"US"},
-  {s:"AAPL",n:"Apple Inc",b:"ibkr",m:"US"},{s:"MSFT",n:"Microsoft",b:"ibkr",m:"US"},
-  {s:"NVDA",n:"Nvidia",b:"ibkr",m:"US"},{s:"TSLA",n:"Tesla",b:"ibkr",m:"US"},
-  {s:"GOOGL",n:"Alphabet",b:"ibkr",m:"US"},{s:"META",n:"Meta Platforms",b:"ibkr",m:"US"},
-  {s:"AMZN",n:"Amazon",b:"ibkr",m:"US"},{s:"SPY",n:"S&P 500 ETF",b:"ibkr",m:"US"},
-  {s:"QQQ",n:"Nasdaq 100 ETF",b:"ibkr",m:"US"},{s:"TQQQ",n:"3x Nasdaq ETF",b:"ibkr",m:"US"},
-  {s:"AMD",n:"AMD",b:"ibkr",m:"US"},{s:"NFLX",n:"Netflix",b:"ibkr",m:"US"},{s:"JPM",n:"JPMorgan Chase",b:"ibkr",m:"US"},
-  {s:"700",n:"Tencent Holdings",b:"ibkr",m:"HK"},{s:"9988",n:"Alibaba Group",b:"ibkr",m:"HK"},
-  {s:"5",n:"HSBC Holdings",b:"ibkr",m:"HK"},
-  {s:"D05",n:"DBS Group",b:"ibkr",m:"SG"},{s:"O39",n:"OCBC Bank",b:"ibkr",m:"SG"},{s:"Z74",n:"Singtel",b:"ibkr",m:"SG"},
 ];
 let _btChart = null;
 let _bdChart = null;
@@ -2314,10 +2297,9 @@ async function loadBots() {
       const recentDeploy = (Date.now() - _deployedAt) < 10000;
       // Don't revert running state if deployed within last 10s (process may still be starting)
       if (!recentDeploy || sd.lp_running) LP_BOT_RUNNING = sd.lp_running || false;
-      if (!recentDeploy || sd.ibkr_running) IBKR_BOT_RUNNING = sd.ibkr_running || false;
-      BOT_RUNNING = LP_BOT_RUNNING || IBKR_BOT_RUNNING;
-      console.log('[STATUS] LP:', LP_BOT_RUNNING, 'IBKR:', IBKR_BOT_RUNNING, 'recentDeploy:', recentDeploy);
-    } catch (_) { if ((Date.now() - _deployedAt) > 10000) { BOT_RUNNING = LP_BOT_RUNNING = IBKR_BOT_RUNNING = false; } }
+      BOT_RUNNING = LP_BOT_RUNNING;
+      console.log('[STATUS] LP:', LP_BOT_RUNNING, 'recentDeploy:', recentDeploy);
+    } catch (_) { if ((Date.now() - _deployedAt) > 10000) { BOT_RUNNING = LP_BOT_RUNNING = false; } }
     checkDuplicateBots();
     renderBots();
   } catch (e) { showToast('Failed to load bots: ' + e.message, 'error'); }
@@ -2337,7 +2319,7 @@ function renderBots() {
   empty.style.display = 'none';
 
   // Stats
-  const active = USER_STRATEGIES.filter(s => s.is_active && ((s.broker||'longport')==='ibkr'?IBKR_BOT_RUNNING:LP_BOT_RUNNING)).length;
+  const active = USER_STRATEGIES.filter(s => s.is_active && LP_BOT_RUNNING).length;
   document.getElementById('bs-total').textContent = USER_STRATEGIES.length;
   document.getElementById('bs-active').textContent = active;
   const rets = USER_STRATEGIES.map(s => (s.backtest_results || {}).total_return_pct).filter(v => typeof v === 'number');
@@ -2352,7 +2334,7 @@ function renderBots() {
     return `<tr onclick="openBotDetail('${s.strategy_id}')">
       <td style="font-size:20px">🤖</td>
       <td><strong>${s.strategy_name || s.strategy_id}</strong></td>
-      <td>${s.broker === 'ibkr' ? '<span class="badge badge-orange">IBKR</span>' : '<span class="badge badge-blue">LongPort</span>'}</td>
+      <td><span class="badge badge-blue">LongPort</span></td>
       <td style="font-weight:600;color:var(--blue-primary)">${s.symbol}${s.current_position ? '<div style="font-size:10px;font-weight:400;color:' + (s.current_position > 0 ? 'var(--green)' : 'var(--red)') + '">' + (s.current_position > 0 ? 'Long' : 'Short') + ' ' + Math.abs(s.current_position) + ' @ $' + (s.position_entry_price||0).toFixed(2) + '</div>' : ''}</td>
       <td>${s.library_id || s.mode || '—'}</td>
       <td class="stat-value ${retClass}" style="font-size:13px">${mf(bt.total_return_pct)}%</td>
@@ -2419,8 +2401,7 @@ async function deleteRowBot(sid) {
 let _deployedAt = 0; // timestamp of last deploy
 
 function _renderDeployBtn(s) {
-  const broker = s.broker || 'longport';
-  const isRunning = (broker === 'ibkr' ? IBKR_BOT_RUNNING : LP_BOT_RUNNING) && s.is_active;
+  const isRunning = LP_BOT_RUNNING && s.is_active;
   if (s._toggling) return `<button class="deploy-btn deploy-btn-loading" disabled>\u27F3 ${s._toggling === 'deploy' ? 'Deploying...' : 'Stopping...'}</button>`;
   if (isRunning) return `<button class="deploy-btn deploy-btn-on" onclick="event.stopPropagation();toggleBot('${s.strategy_id}',false)">\u25A0 Stop</button>`;
   return `<button class="deploy-btn deploy-btn-off" onclick="event.stopPropagation();toggleBot('${s.strategy_id}',true)">\u25B6 Deploy</button>`;
@@ -2455,8 +2436,8 @@ async function toggleBot(sid, active) {
       const sr = await fetch(API + '/api/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL, broker: broker }) });
       if (!sr.ok) { const sd = await sr.json(); throw new Error(sd.detail || 'Stop failed'); }
       await fetch(API + '/api/strategy/' + encodeURIComponent(sid) + '/toggle?active=false', { method: 'PUT' });
-      if (broker === 'ibkr') IBKR_BOT_RUNNING = false; else LP_BOT_RUNNING = false;
-      BOT_RUNNING = LP_BOT_RUNNING || IBKR_BOT_RUNNING;
+      LP_BOT_RUNNING = false;
+      BOT_RUNNING = LP_BOT_RUNNING;
       s.is_active = false;
       showToast('Bot stopped (' + broker + ')', 'info');
       s._toggling = false;
@@ -2576,13 +2557,13 @@ async function _executeDeploy(sid, endpoint) {
     const dr = await fetch(API + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
     if (!dr.ok) { const dd = await dr.json(); throw new Error(dd.detail || 'Deploy failed'); }
     const result = await dr.json();
-    if (broker === 'ibkr') IBKR_BOT_RUNNING = true; else LP_BOT_RUNNING = true;
+    LP_BOT_RUNNING = true;
     BOT_RUNNING = true;
     s.is_active = true;
     _deployedAt = Date.now();
     const extra = (result.positions_closed && result.positions_closed.length) ? ' (' + result.positions_closed.length + ' positions closed)' : '';
-    _deploySuccess(sid, 'Bot deployed (' + broker + ')' + extra);
-    showToast('Bot deployed (' + broker + ')' + extra, 'success');
+    _deploySuccess(sid, 'Bot deployed (longport)' + extra);
+    showToast('Bot deployed (longport)' + extra, 'success');
     s._toggling = false;
     if (cell) cell.innerHTML = _renderDeployBtn(s);
     setTimeout(loadBots, 5000);
@@ -2631,13 +2612,8 @@ async function createBot(andDeploy = false) {
       email: EMAIL, strategy_id: sid, strategy_name: name, symbol: sym,
       arena: sym.endsWith('.HK') ? 'HK' : sym.endsWith('.SI') ? 'SG' : 'US',
       timeframe: tf,
-      conditions: isTest ? {type: 'quick_test'} : (broker === 'ibkr' ? {
-        bar_size: document.getElementById('nb-bar-size')?.value || '1 min',
-        interval_minutes: parseInt(document.getElementById('nb-bar-size')?.value?.includes('hour') ? '60' : document.getElementById('nb-bar-size')?.value?.includes('day') ? '1440' : document.getElementById('nb-bar-size')?.value?.split(' ')[0] || '1'),
-        sec_type: 'STK', exchange: 'SMART', currency: 'USD',
-        port: document.getElementById('nb-mode')?.value === 'live' ? 7496 : 7497,
-      } : {}),
-      exit_rules: {}, risk: isTest ? {lots: 100, tp_pct: 1, sl_pct: 2} : (broker === 'ibkr' ? {lots: parseInt(document.getElementById('nb-lot-size')?.value || '1'), sl_pct: 2, tp_pct: 5} : (lib ? lib.default_risk || {} : {})),
+      conditions: isTest ? {type: 'quick_test'} : {},
+      exit_rules: {}, risk: isTest ? {lots: 100, tp_pct: 1, sl_pct: 2} : (lib ? lib.default_risk || {} : {}),
       is_active: false, mode: 'library', library_id: isTest ? 'QUICK_TEST' : strat,
       custom_script: '',
       broker: broker
@@ -3032,15 +3008,6 @@ const DATA_DEPTH = {
     "1day":  {bars:10000, months:300,  label:"25 years"},
     "1week": {bars:999,   months:999,  label:"20+ years"},
   },
-  ibkr: {
-    "1min":  {bars:20000, months:6,   label:"~6 months"},
-    "5min":  {bars:20000, months:36,  label:"~3 years"},
-    "15min": {bars:20000, months:60,  label:"~5 years"},
-    "30min": {bars:20000, months:120, label:"~10 years"},
-    "1hour": {bars:20000, months:120, label:"~10 years"},
-    "1day":  {bars:20000, months:600, label:"50 years"},
-    "1week": {bars:999,   months:999, label:"50+ years"},
-  }
 };
 const PERIOD_DEFS = [
   {key:"1Y",  bars:252,   months:12},
@@ -3055,13 +3022,9 @@ let _btBroker = 'longport';
 function setBtBroker(broker) {
   _btBroker = broker;
   document.getElementById('bt-broker-lp').classList.toggle('active', broker === 'longport');
-  document.getElementById('bt-broker-ibkr').classList.toggle('active', broker === 'ibkr');
   document.getElementById('bt-broker-yahoo').classList.toggle('active', broker === 'yahoo');
   const note = document.getElementById('bt-broker-note');
-  if (broker === 'ibkr' && !localStorage.getItem('ibkr_config')) {
-    note.textContent = 'Connect IBKR in Brokers tab first';
-    note.style.color = 'var(--orange)';
-  } else if (broker === 'longport' && !_hasLpCreds) {
+  if (broker === 'longport' && !_hasLpCreds) {
     note.textContent = 'Connect LongPort in Brokers tab first';
     note.style.color = 'var(--orange)';
   } else {
@@ -3083,7 +3046,7 @@ function updateDataDepth() {
   const label = document.getElementById('bt-depth-label');
   const value = document.getElementById('bt-depth-value');
   const fill = document.getElementById('bt-depth-fill');
-  const brokerName = {longport:'LongPort',ibkr:'IBKR',yahoo:'Yahoo'}[broker] || broker;
+  const brokerName = {longport:'LongPort',yahoo:'Yahoo'}[broker] || broker;
   if (label) label.textContent = brokerName + ' data depth:';
   if (value) { value.textContent = depth.label; value.style.color = depth.months >= 24 ? 'var(--green)' : depth.months >= 6 ? 'var(--orange)' : 'var(--red)'; }
   if (fill) {
@@ -3143,7 +3106,6 @@ function setBtPeriod(limit, el) {
 function initBtBroker() {
   // Default broker based on available credentials
   if (_hasLpCreds) _btBroker = 'longport';
-  else if (localStorage.getItem('ibkr_config')) _btBroker = 'ibkr';
   else _btBroker = 'yahoo';
   setBtBroker(_btBroker);
 }
@@ -3171,7 +3133,7 @@ async function runBacktest() {
   if (prog) prog.style.display = 'flex';
   if (progMsg) progMsg.textContent = msgs[0];
   const msgInt = setInterval(() => { mi = (mi + 1) % msgs.length; if (progMsg) progMsg.textContent = msgs[mi]; }, 2000);
-  const btPayload = JSON.stringify({ symbol: sym, strategy: strat, params: {}, initial_capital: cap, timeframe: tf, limit: _btLimit, email: EMAIL, use_ibkr: _btBroker === 'ibkr', broker_hint: _btBroker, skip_cache: false, commission_pct: parseFloat(document.getElementById('bt-commission')?.value||'0.1'), slippage_pct: parseFloat(document.getElementById('bt-slippage')?.value||'0.05') });
+  const btPayload = JSON.stringify({ symbol: sym, strategy: strat, params: {}, initial_capital: cap, timeframe: tf, limit: _btLimit, email: EMAIL, broker_hint: _btBroker, skip_cache: false, commission_pct: parseFloat(document.getElementById('bt-commission')?.value||'0.1'), slippage_pct: parseFloat(document.getElementById('bt-slippage')?.value||'0.05') });
   let btBase = getBacktestBaseUrl();
   try {
     console.log('[BT] Running on:', btBase);
@@ -3247,8 +3209,8 @@ function showBacktestResults(d, sym, strat, tf) {
   // Settings summary
   const pm = {252:'1Y',504:'2Y',756:'3Y',1260:'5Y',2520:'10Y'};
   const sumEl = document.getElementById('btr-summary');
-  const srcBadge = {local_cache:'\uD83D\uDCBE Cache',ibkr:'\uD83D\uDCCA IBKR',longport:'\uD83D\uDCCA LongPort',r2:'\u2601\uFE0F QuantX Library',yahoo:'\uD83D\uDCC8 Yahoo',fmp:'\uD83D\uDCCA FMP'}[d.source] || d.source || '';
-  const srcColor = {local_cache:'#6B7280',ibkr:'#1D4ED8',longport:'#1D4ED8',r2:'#7C3AED',yahoo:'#16A34A',fmp:'#7C3AED'}[d.source] || '#6B7280';
+  const srcBadge = {local_cache:'\uD83D\uDCBE Cache',longport:'\uD83D\uDCCA LongPort',r2:'\u2601\uFE0F QuantX Library',yahoo:'\uD83D\uDCC8 Yahoo',fmp:'\uD83D\uDCCA FMP'}[d.source] || d.source || '';
+  const srcColor = {local_cache:'#6B7280',longport:'#1D4ED8',r2:'#7C3AED',yahoo:'#16A34A',fmp:'#7C3AED'}[d.source] || '#6B7280';
   if (sumEl) sumEl.innerHTML = [
     `<span><strong>${sym}</strong></span>`,
     `<span>${strat}</span>`,
@@ -3660,7 +3622,7 @@ async function runBuilderBacktest() {
   const msgInt = setInterval(() => { mi = (mi + 1) % msgs.length; if (progMsg) progMsg.textContent = msgs[mi]; }, 2000);
   const script = bldrGenerateScript();
   console.log('[BUILDER] Generated script:\n', script);
-  const bldrPayload = JSON.stringify({ symbol: sym, script: script, initial_capital: cap, timeframe: tf, limit: _btLimit, email: EMAIL || '', use_ibkr: _btBroker === 'ibkr', broker_hint: _btBroker, skip_cache: false });
+  const bldrPayload = JSON.stringify({ symbol: sym, script: script, initial_capital: cap, timeframe: tf, limit: _btLimit, email: EMAIL || '', broker_hint: _btBroker, skip_cache: false });
   let btBase = getBacktestBaseUrl();
   try {
     const r = await fetch(btBase + '/api/backtest/run-script', {
@@ -3729,7 +3691,7 @@ async function deployOptionsBot() {
     // First save as strategy
     const stratPayload = {
       email: EMAIL, strategy_id: sid, strategy_name: botName, symbol: underlying,
-      arena: 'US', timeframe: '1min', broker: 'ibkr', mode: 'options', library_id: '',
+      arena: 'US', timeframe: '1min', broker: 'longport', mode: 'options', library_id: '',
       is_active: true, conditions: {
         sec_type: 'OPT',
         underlying: underlying,
@@ -3835,22 +3797,20 @@ function renderAccountCards() {
   empty.style.display = 'none';
   list.innerHTML = BROKER_ACCOUNTS.map(a => {
     const isLp = a.broker === 'longport';
-    const icon = isLp ? 'LP' : 'IB';
-    const iconBg = isLp ? 'var(--blue-primary)' : 'var(--orange)';
+    const icon = 'LP';
+    const iconBg = 'var(--blue-primary)';
     const statusDot = a.is_connected
       ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px"></span>Connected'
       : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--text-muted);margin-right:6px"></span>Not tested';
     const typeBadge = a.account_type === 'live'
       ? '<span style="font-size:10px;padding:2px 8px;border-radius:4px;background:var(--red-light);color:var(--red);font-weight:600;text-transform:uppercase">Live</span>'
       : '<span style="font-size:10px;padding:2px 8px;border-radius:4px;background:var(--blue-pale);color:var(--blue-primary);font-weight:600;text-transform:uppercase">Paper</span>';
-    const detail = isLp
-      ? 'App Key: ' + esc((a.account_id || 'configured'))
-      : esc((a.ibkr_host || '127.0.0.1') + ':' + (a.ibkr_port || 7497)) + (a.account_id ? ' (' + esc(a.account_id) + ')' : '');
+    const detail = 'App Key: ' + esc((a.account_id || 'configured'));
     return `<div class="broker-card" style="margin-bottom:12px;display:flex;align-items:center;gap:16px">
       <div class="broker-icon" style="background:${iconBg};flex-shrink:0">${icon}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span class="broker-title" style="margin:0">${esc(a.nickname || (isLp ? 'LongPort' : 'IBKR'))}</span>
+          <span class="broker-title" style="margin:0">${esc(a.nickname || 'LongPort')}</span>
           ${typeBadge}
         </div>
         <div style="font-size:12px;color:var(--text-muted)">${detail}</div>
@@ -3892,9 +3852,7 @@ function openAddAccountModal() {
 function setAcctBroker(broker) {
   document.getElementById('aa-broker').value = broker;
   document.getElementById('aa-lp').classList.toggle('active', broker === 'longport');
-  document.getElementById('aa-ib').classList.toggle('active', broker === 'ibkr');
   document.getElementById('aa-lp-fields').style.display = broker === 'longport' ? '' : 'none';
-  document.getElementById('aa-ibkr-fields').style.display = broker === 'ibkr' ? '' : 'none';
 }
 
 async function saveNewAccount() {
@@ -3919,9 +3877,6 @@ async function saveNewAccount() {
     payload.app_key = ak;
     payload.app_secret = as;
     payload.access_token = at;
-  } else {
-    payload.ibkr_host = document.getElementById('aa-host').value.trim() || '127.0.0.1';
-    payload.ibkr_port = parseInt(document.getElementById('aa-port').value) || 7497;
   }
 
   try {
@@ -3975,7 +3930,6 @@ function setNbBroker(broker) {
   const currentSym = symInput ? symInput.value : '';
   document.getElementById('nb-broker').value = broker;
   document.getElementById('nb-broker-lp').classList.toggle('active', broker === 'longport');
-  document.getElementById('nb-broker-ib').classList.toggle('active', broker === 'ibkr');
   nbRenderQuicktags(broker);
   // Only clear symbol if it was empty; otherwise preserve it
   if (currentSym && symInput) {
@@ -3984,17 +3938,12 @@ function setNbBroker(broker) {
   } else {
     document.getElementById('nb-sym-validation').innerHTML = '';
   }
-  // Show/hide IBKR-specific fields
-  const ibkrFields = document.getElementById('nb-ibkr-fields');
-  if (ibkrFields) ibkrFields.style.display = broker === 'ibkr' ? '' : 'none';
 }
 
 function nbRenderQuicktags(broker) {
   const qt = document.getElementById('nb-sym-qtags');
   if (!qt) return;
-  const tags = broker === 'ibkr'
-    ? [{s:'AAPL',n:'Apple'},{s:'TSLA',n:'Tesla'},{s:'SPY',n:'S&P 500'},{s:'700',n:'Tencent'}]
-    : [{s:'700.HK',n:'Tencent'},{s:'D05.SI',n:'DBS'},{s:'TQQQ.US',n:'3x Nasdaq'},{s:'SPY.US',n:'S&P 500'}];
+  const tags = [{s:'700.HK',n:'Tencent'},{s:'D05.SI',n:'DBS'},{s:'TQQQ.US',n:'3x Nasdaq'},{s:'SPY.US',n:'S&P 500'}];
   qt.innerHTML = tags.map(t => `<span class="qtag" onclick="nbSelectSymbol('${t.s}','${t.n}')">${t.s}</span>`).join('');
 }
 
@@ -4944,7 +4893,7 @@ async function studioRunBacktest() {
     const r = await fetch(API + '/api/backtest/run-script', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({symbol:STUDIO.symbol, script:script, initial_capital:STUDIO.risk.capital||10000,
-        timeframe:STUDIO.timeframe, limit:_studioLimit, email:EMAIL||'', use_ibkr:false, broker_hint:'longport', skip_cache:false,
+        timeframe:STUDIO.timeframe, limit:_studioLimit, email:EMAIL||'', broker_hint:'longport', skip_cache:false,
         commission_pct:STUDIO.commission_mode==='flat'?(STUDIO.commission_flat||0)/100:(STUDIO.commission_pct||0.1), slippage_pct:STUDIO.slippage_pct||0.05})
     });
     const d = await r.json();

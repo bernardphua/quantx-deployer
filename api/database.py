@@ -123,13 +123,6 @@ def init_db():
             timestamp TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (email) REFERENCES students(email)
         );
-        CREATE TABLE IF NOT EXISTS ibkr_configs (
-            email TEXT PRIMARY KEY,
-            host TEXT DEFAULT '127.0.0.1',
-            port INTEGER DEFAULT 7497,
-            client_id INTEGER DEFAULT 1,
-            updated_at TEXT DEFAULT (datetime('now'))
-        );
     """)
     conn.commit()
     # Migration: add new strategy columns
@@ -202,8 +195,6 @@ def init_db():
                 app_key_enc TEXT DEFAULT '',
                 app_secret_enc TEXT DEFAULT '',
                 access_token_enc TEXT DEFAULT '',
-                ibkr_host TEXT DEFAULT '127.0.0.1',
-                ibkr_port INTEGER DEFAULT 7497,
                 is_connected INTEGER DEFAULT 0,
                 last_tested TEXT DEFAULT '',
                 last_error TEXT DEFAULT '',
@@ -235,17 +226,6 @@ def _migrate_broker_accounts(conn):
                    (email, broker, account_type, nickname, app_key_enc, app_secret_enc, access_token_enc)
                    VALUES (?, 'longport', 'paper', 'LongPort Demo', ?, ?, ?)""",
                 (r[0], r[1], r[2], r[3]))
-        # Migrate IBKR from ibkr_configs table
-        try:
-            ibkr_rows = conn.execute("SELECT email, host, port FROM ibkr_configs").fetchall()
-            for r in ibkr_rows:
-                conn.execute(
-                    """INSERT OR IGNORE INTO broker_accounts
-                       (email, broker, account_type, nickname, ibkr_host, ibkr_port)
-                       VALUES (?, 'ibkr', 'paper', 'IBKR Paper', ?, ?)""",
-                    (r[0], r[1], r[2]))
-        except Exception:
-            pass
         conn.commit()
     except Exception:
         pass
@@ -459,36 +439,6 @@ def get_trades(email: str) -> list[dict]:
         conn.close()
 
 
-# ── IBKR config helpers ────────────────────────────────────────────────────
-
-def save_ibkr_config(email: str, host: str = "127.0.0.1", port: int = 7497,
-                     client_id: int = 1):
-    conn = get_db()
-    try:
-        conn.execute(
-            """INSERT INTO ibkr_configs (email, host, port, client_id, updated_at)
-               VALUES (?, ?, ?, ?, datetime('now'))
-               ON CONFLICT(email) DO UPDATE SET
-                 host=excluded.host, port=excluded.port,
-                 client_id=excluded.client_id, updated_at=excluded.updated_at""",
-            (email, host, port, client_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_ibkr_config(email: str) -> dict | None:
-    conn = get_db()
-    try:
-        row = conn.execute("SELECT * FROM ibkr_configs WHERE email = ?", (email,)).fetchone()
-        if not row:
-            return None
-        return {"host": row["host"], "port": row["port"], "client_id": row["client_id"]}
-    finally:
-        conn.close()
-
-
 # ── Broker accounts helpers ────────────────────────────────────────────────
 
 def get_broker_accounts(email: str) -> list[dict]:
@@ -522,8 +472,7 @@ def get_broker_account(account_id: int) -> dict | None:
 def save_broker_account(email: str, broker: str, account_type: str,
                         nickname: str = "", account_id: str = "",
                         app_key: str = "", app_secret: str = "",
-                        access_token: str = "",
-                        ibkr_host: str = "127.0.0.1", ibkr_port: int = 7497) -> int:
+                        access_token: str = "") -> int:
     conn = get_db()
     try:
         # Encrypt LP credentials if provided
@@ -533,16 +482,14 @@ def save_broker_account(email: str, broker: str, account_type: str,
         conn.execute(
             """INSERT INTO broker_accounts
                (email, broker, account_type, nickname, account_id,
-                app_key_enc, app_secret_enc, access_token_enc,
-                ibkr_host, ibkr_port)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                app_key_enc, app_secret_enc, access_token_enc)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(email, broker, account_type) DO UPDATE SET
                  nickname=excluded.nickname, account_id=excluded.account_id,
                  app_key_enc=excluded.app_key_enc, app_secret_enc=excluded.app_secret_enc,
-                 access_token_enc=excluded.access_token_enc,
-                 ibkr_host=excluded.ibkr_host, ibkr_port=excluded.ibkr_port""",
+                 access_token_enc=excluded.access_token_enc""",
             (email, broker, account_type, nickname, account_id,
-             ak_enc, as_enc, at_enc, ibkr_host, ibkr_port))
+             ak_enc, as_enc, at_enc))
         conn.commit()
         row = conn.execute(
             "SELECT id FROM broker_accounts WHERE email=? AND broker=? AND account_type=?",

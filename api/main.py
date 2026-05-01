@@ -35,14 +35,12 @@ from api.database import (
     get_db, save_student, get_student, save_strategy, get_strategies,
     delete_strategy, toggle_strategy, save_process, update_process_status,
     get_latest_process, log_trade, get_trades, decrypt,
-    save_ibkr_config, get_ibkr_config,
     get_broker_accounts, get_broker_account, save_broker_account,
     update_broker_account_status, delete_broker_account, get_broker_credentials,
 )
 # Dual-mode init: PostgreSQL when DATABASE_URL is set, SQLite otherwise.
 from api.db_postgres import init_db, USE_POSTGRES
-from api.generate import (generate_master_bot, generate_ibkr_bot, generate_simple_lp_bot,
-                          generate_simple_ibkr_bot, generate_ibkr_bot_prod,
+from api.generate import (generate_master_bot, generate_simple_lp_bot,
                           generate_lp_master_bot, library_id_to_conditions)
 
 _log = _logging.getLogger("quantx-deployer")
@@ -166,13 +164,6 @@ class StrategyReq(BaseModel):
     broker: str = "longport"
 
 
-class IBKRConfigReq(BaseModel):
-    email: str
-    host: str = "127.0.0.1"
-    port: int = 7497
-    client_id: int = 1
-
-
 class ValidateScriptReq(BaseModel):
     script: str
 
@@ -201,7 +192,6 @@ class BacktestReq(BaseModel):
     commission_pct: float = 0.0
     slippage_pct: float = 0.0
     email: str = ""
-    use_ibkr: bool = False
     skip_cache: bool = False
     broker_hint: str = ""
 
@@ -223,7 +213,6 @@ class ScriptBacktestReq(BaseModel):
     limit: int = 1260
     params: dict = {}
     email: str = ""
-    use_ibkr: bool = False
     skip_cache: bool = False
     broker_hint: str = ""
 
@@ -246,17 +235,6 @@ class ScreenNowReq(BaseModel):
     bot_type: str
     arena: str = "US"
     custom_tickers: list = []
-
-
-class DownloadScriptReq(BaseModel):
-    email: str
-    library_id: str
-    strategy_id: str = ""
-    symbol: str = "TQQQ.US"
-    arena: str = "US"
-    timeframe: str = "5m"
-    params: dict = {}
-    risk: dict = {}
 
 
 class TradeReq(BaseModel):
@@ -735,32 +713,6 @@ async def me(email: str = Query("")):
     }
 
 
-@app.post("/api/download-script")
-async def download_script(req: DownloadScriptReq):
-    email = req.email.lower().strip()
-    student = get_student(email)
-    if not student:
-        raise HTTPException(404, "Student not found. Register first.")
-    strat = {
-        "strategy_id": req.strategy_id or f"{req.library_id}_DL",
-        "strategy_name": req.library_id.replace("_", " ").title(),
-        "symbol": req.symbol, "arena": req.arena.upper(),
-        "timeframe": req.timeframe, "mode": "library",
-        "library_id": req.library_id,
-        "conditions": {"type": req.library_id, "params": req.params},
-        "exit_rules": {}, "risk": req.risk or {"tp_pct": 0.5, "sl_pct": 0.3, "lots": 1},
-        "is_active": True, "custom_script": "",
-    }
-    path = generate_master_bot(email, [strat], student)
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-    from datetime import date
-    header = f'#!/usr/bin/env python3\n# QuantX Strategy Bot - {req.library_id}\n# Symbol: {req.symbol} | Generated: {date.today()} | Student: {email}\n# Run: pip install longport httpx && python this_file.py\n\n'
-    filename = f"quantx_{req.library_id.lower()}_{req.symbol.replace('.','_').lower()}_{date.today()}.py"
-    return Response(content=header + content, media_type="text/plain",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
-
-
 def _safe_json(row, key):
     """Safely parse a JSON column from sqlite3.Row."""
     try:
@@ -870,9 +822,6 @@ async def backtest_run(body: BacktestReq):
     def _run():
         # Get credentials if email provided, respecting broker_hint
         hint = (body.broker_hint or "").lower()
-        ibkr_cfg = None
-        if body.email and (body.use_ibkr or hint == "ibkr"):
-            ibkr_cfg = get_ibkr_config(body.email.lower().strip())
         lp_creds = None
         if body.email and hint != "yahoo":
             student = get_student(body.email.lower().strip())
@@ -882,12 +831,11 @@ async def backtest_run(body: BacktestReq):
                             "access_token": student["access_token"]}
         # If user explicitly chose Yahoo, skip broker data sources
         if hint == "yahoo":
-            ibkr_cfg = None
             lp_creds = None
         # Waterfall fetch
         data = fetch_bars_waterfall_sync(
             symbol=body.symbol, timeframe=body.timeframe, limit=body.limit,
-            db_path=str(DB_PATH), ibkr_config=ibkr_cfg, lp_credentials=lp_creds,
+            db_path=str(DB_PATH), lp_credentials=lp_creds,
             skip_cache=body.skip_cache)
         if data["error"]:
             return {"status": "error", "message": data["error"],
@@ -940,9 +888,6 @@ async def backtest_run_script(body: ScriptBacktestReq):
     from api.data_manager import fetch_bars_waterfall_sync
     def _run():
         hint = (body.broker_hint or "").lower()
-        ibkr_cfg = None
-        if body.email and (body.use_ibkr or hint == "ibkr"):
-            ibkr_cfg = get_ibkr_config(body.email.lower().strip())
         lp_creds = None
         if body.email and hint != "yahoo":
             student = get_student(body.email.lower().strip())
@@ -951,11 +896,10 @@ async def backtest_run_script(body: ScriptBacktestReq):
                             "app_secret": student["app_secret"],
                             "access_token": student["access_token"]}
         if hint == "yahoo":
-            ibkr_cfg = None
             lp_creds = None
         data = fetch_bars_waterfall_sync(
             symbol=body.symbol, timeframe=body.timeframe, limit=body.limit,
-            db_path=str(DB_PATH), ibkr_config=ibkr_cfg, lp_credentials=lp_creds,
+            db_path=str(DB_PATH), lp_credentials=lp_creds,
             skip_cache=body.skip_cache)
         if data["error"]:
             return {"status": "error", "message": data["error"],
@@ -1991,9 +1935,8 @@ async def deploy(req: DeployReq):
 
     _log.info("Deploying with central API: %s", central_url)
 
-    # Split strategies by broker and type
-    lp_strats = [s for s in strategies if s.get("broker", "longport") != "ibkr"]
-    ibkr_strats = [s for s in strategies if s.get("broker") == "ibkr"]
+    # All strategies are LongPort
+    lp_strats = list(strategies)
 
     # Check for simple/quick_test strategies — deploy as individual simple bots
     deployed_simple = []
@@ -2004,92 +1947,17 @@ async def deploy(req: DeployReq):
                     s.get("mode") == "quick_test")
         if is_quick:
             sym = s.get("symbol", "700.HK")
-            broker = s.get("broker", "longport")
             try:
-                if broker == "ibkr":
-                    ibkr_cfg = get_ibkr_config(email) or {"host": "127.0.0.1", "port": 7497, "client_id": 1}
-                    sp, lp = generate_simple_ibkr_bot(email, sym, ibkr_cfg, student)
-                else:
-                    sp, lp = generate_simple_lp_bot(email, sym, student)
+                sp, lp = generate_simple_lp_bot(email, sym, student)
                 proc = _launch_bot(sp, lp)
                 save_process(email, proc.pid, "running", sp, lp)
-                deployed_simple.append({"strategy_id": s["strategy_id"], "pid": proc.pid, "broker": broker})
-                _log.info("[DEPLOY] Simple %s bot PID: %s for %s", broker, proc.pid, sym)
+                deployed_simple.append({"strategy_id": s["strategy_id"], "pid": proc.pid, "broker": "longport"})
+                _log.info("[DEPLOY] Simple longport bot PID: %s for %s", proc.pid, sym)
             except Exception as e:
                 import traceback
                 _log.error("[DEPLOY] Simple bot FAILED for %s: %s\n%s", sym, e, traceback.format_exc())
-            # Remove from regular deploy lists
+            # Remove from regular deploy list
             lp_strats = [x for x in lp_strats if x["strategy_id"] != s["strategy_id"]]
-            ibkr_strats = [x for x in ibkr_strats if x["strategy_id"] != s["strategy_id"]]
-
-    # Deploy options bots (sec_type=OPT)
-    for s in list(ibkr_strats):
-        conds = s.get("conditions", {})
-        if conds.get("sec_type") == "OPT" or s.get("mode") == "options":
-            try:
-                from api.generate import generate_options_bot
-                ibkr_cfg = get_ibkr_config(email) or {"host": "127.0.0.1", "port": 7497, "client_id": 1}
-                ibkr_cfg["central_api_url"] = central_url
-                ibkr_cfg["account_id"] = ibkr_cfg.get("account_id", "")
-                ibkr_cfg["port"] = conds.get("port", ibkr_cfg.get("port", 7497))
-                sp, lp, tp = generate_options_bot(email, conds, ibkr_cfg)
-                proc = _launch_bot(sp, lp)
-                save_process(email, proc.pid, "running", sp, lp)
-                _log.info("[DEPLOY] Options bot PID: %s for %s", proc.pid, s["strategy_id"])
-            except Exception as e:
-                import traceback
-                _log.error("[DEPLOY] Options bot FAILED: %s\n%s", e, traceback.format_exc())
-            ibkr_strats = [x for x in ibkr_strats if x["strategy_id"] != s["strategy_id"]]
-
-    # If there are IBKR strategies, deploy each via production bot generator
-    if ibkr_strats:
-        ibkr_cfg = get_ibkr_config(email) or {"host": "127.0.0.1", "port": 7497, "client_id": 1}
-        ibkr_cfg["central_api_url"] = central_url
-        ibkr_cfg["account_id"] = ibkr_cfg.get("account_id", "")
-        for s in ibkr_strats:
-            try:
-                # Build strategy config for generate_ibkr_bot_prod
-                conds = s.get("conditions", {})
-                # If library strategy, convert to Builder conditions
-                if not conds.get("entry_long") and s.get("library_id"):
-                    conds = library_id_to_conditions(s["library_id"])
-                risk = s.get("risk", {})
-                strat_config = {
-                    "strategy_id": s["strategy_id"],
-                    "symbol": s["symbol"],
-                    "sec_type": conds.get("sec_type", "STK"),
-                    "exchange": conds.get("exchange", "SMART"),
-                    "currency": conds.get("currency", "USD"),
-                    "lot_size": int(risk.get("lots", 1)),
-                    "max_capital": float(s.get("allocation", 1000)),
-                    "bar_size": conds.get("bar_size", "1 min"),
-                    "interval_minutes": int(conds.get("interval_minutes", 1)),
-                    "stop_loss_pct": float(risk.get("sl_pct", 2)) / 100 if float(risk.get("sl_pct", 2)) > 1 else float(risk.get("sl_pct", 0.02)),
-                    "take_profit_pct": float(risk.get("tp_pct", 5)) / 100 if float(risk.get("tp_pct", 5)) > 1 else float(risk.get("tp_pct", 0.05)),
-                    "has_short": bool(conds.get("entry_short")),
-                    "entry_long": conds.get("entry_long", []),
-                    "exit_long": conds.get("exit_long", []),
-                    "entry_short": conds.get("entry_short", []),
-                    "exit_short": conds.get("exit_short", []),
-                    "entry_long_logic": conds.get("entry_long_logic", "AND"),
-                    "exit_long_logic": conds.get("exit_long_logic", "OR"),
-                }
-                sp, lp, tp = generate_ibkr_bot_prod(email, strat_config, ibkr_cfg)
-                proc = _launch_bot(sp, lp)
-                save_process(email, proc.pid, "running", sp, lp)
-                _log.info("[DEPLOY] IBKR prod bot PID: %s for %s %s", proc.pid, s["strategy_id"], s["symbol"])
-            except Exception as e:
-                import traceback
-                _log.error("[DEPLOY] IBKR prod bot FAILED for %s: %s\n%s", s["strategy_id"], e, traceback.format_exc())
-
-    # If no LP strategies remain, we're done (all IBKR)
-    if not lp_strats and ibkr_strats:
-        return {
-            "status": "deployed",
-            "broker": "ibkr",
-            "strategies_count": len(ibkr_strats),
-            "central_api_url": central_url,
-        }
 
     if not lp_strats:
         return {"status": "deployed", "strategies_count": 0, "central_api_url": central_url}
@@ -2158,7 +2026,6 @@ async def deploy(req: DeployReq):
             "log_path": log_path,
             "strategies_count": len(strategies),
             "lp_strategies": len(lp_strats),
-            "ibkr_strategies": len(ibkr_strats),
             "lp_connections": 2,
             "central_api_url": central_url,
             "old_orders_cancelled": old_cancelled,
@@ -2170,35 +2037,25 @@ async def deploy(req: DeployReq):
 @app.post("/api/stop")
 async def stop(req: StopReq):
     email = req.email.lower().strip()
-    broker = req.broker or "all"
     stopped = []
-    # Stop by broker type using psutil
-    if broker in ("all", "longport"):
-        if email in _running_processes:
-            _stop_process(email)
-            stopped.append("longport")
-        else:
-            # Try killing from DB PID
-            _kill_process_by_db(email, ibkr=False)
-            stopped.append("longport")
-    if broker in ("all", "ibkr"):
-        _kill_process_by_db(email, ibkr=True)
-        stopped.append("ibkr")
+    if email in _running_processes:
+        _stop_process(email)
+        stopped.append("longport")
+    else:
+        _kill_process_by_db(email)
+        stopped.append("longport")
     if not stopped and email not in _running_processes:
         return {"status": "stopped", "message": "No running bot found"}
     return {"status": "stopped", "brokers_stopped": stopped}
 
 
-def _kill_process_by_db(email: str, ibkr: bool = False):
+def _kill_process_by_db(email: str):
     """Kill a process found in the DB by its PID."""
     conn = get_db()
     try:
-        pattern = '%ibkr%' if ibkr else '%master%'
-        not_pattern = '%ibkr%'
-        if ibkr:
-            row = conn.execute("SELECT pid FROM processes WHERE email=? AND master_script_path LIKE '%ibkr%' AND status='running' ORDER BY id DESC LIMIT 1", (email,)).fetchone()
-        else:
-            row = conn.execute("SELECT pid FROM processes WHERE email=? AND master_script_path NOT LIKE '%ibkr%' AND status='running' ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+        row = conn.execute(
+            "SELECT pid FROM processes WHERE email=? AND status='running' ORDER BY id DESC LIMIT 1",
+            (email,)).fetchone()
     finally:
         conn.close()
     if not row:
@@ -2223,50 +2080,6 @@ async def restart(req: DeployReq):
     if email in _running_processes:
         _stop_process(email)
     return await deploy(req)
-
-
-@app.post("/api/ibkr-config")
-async def set_ibkr_config(req: IBKRConfigReq):
-    email = req.email.lower().strip()
-    save_ibkr_config(email, req.host, req.port, req.client_id)
-    return {"status": "saved", "host": req.host, "port": req.port, "client_id": req.client_id}
-
-
-@app.get("/api/ibkr-config")
-async def get_ibkr_config_endpoint(email: str):
-    cfg = get_ibkr_config(email.lower().strip())
-    if not cfg:
-        return {"configured": False}
-    return {"configured": True, **cfg}
-
-
-@app.post("/api/test-ibkr-connection")
-async def test_ibkr_connection(req: IBKRConfigReq):
-    def _test_sync():
-        import asyncio as _asyncio
-        # Create event loop for this thread BEFORE importing ib_insync
-        _loop = _asyncio.new_event_loop()
-        _asyncio.set_event_loop(_loop)
-        try:
-            from ib_insync import IB
-            ib = IB()
-            ib.connect(req.host, req.port, clientId=req.client_id + 50, timeout=10)
-            connected = ib.isConnected()
-            accounts = list(ib.managedAccounts()) if connected else []
-            ib.disconnect()
-            if connected:
-                return {"ok": True, "message": "Connected to IBKR",
-                        "account": accounts[0] if accounts else "unknown"}
-            return {"ok": False, "message": "Connection returned but isConnected=False"}
-        except Exception as e:
-            return {"ok": False, "message": str(e)}
-        finally:
-            _loop.close()
-    try:
-        result = await asyncio.get_event_loop().run_in_executor(_executor, _test_sync)
-        return result
-    except Exception as e:
-        return {"ok": False, "message": f"Server error: {e}"}
 
 
 # ── Broker accounts ──────────────────────────────────────────────────────────
@@ -2294,8 +2107,6 @@ async def add_broker_account(request: Request):
         app_key=body.get("app_key", ""),
         app_secret=body.get("app_secret", ""),
         access_token=body.get("access_token", ""),
-        ibkr_host=body.get("ibkr_host", "127.0.0.1"),
-        ibkr_port=int(body.get("ibkr_port", 7497)),
     )
     # Also save to legacy tables for backward compat
     if broker == "longport" and body.get("app_key"):
@@ -2304,9 +2115,6 @@ async def add_broker_account(request: Request):
             save_student(email, student.get("name", ""), body["app_key"],
                         body["app_secret"], body["access_token"],
                         student.get("central_api_url", ""))
-    elif broker == "ibkr":
-        save_ibkr_config(email, body.get("ibkr_host", "127.0.0.1"),
-                        int(body.get("ibkr_port", 7497)), 1)
     return {"status": "saved", "id": aid}
 
 
@@ -2337,40 +2145,6 @@ async def test_broker_account(account_id: int):
                 return {"ok": True, "message": "Connected (no quote data)"}
             except Exception as e:
                 update_broker_account_status(account_id, False, str(e))
-                return {"ok": False, "message": str(e)}
-        elif broker == "ibkr":
-            try:
-                import asyncio as _aio
-                _loop = _aio.new_event_loop()
-                _aio.set_event_loop(_loop)
-                try:
-                    from ib_insync import IB
-                    ib = IB()
-                    ib.connect(acct.get("ibkr_host", "127.0.0.1"),
-                              int(acct.get("ibkr_port", 7497)),
-                              clientId=int(acct.get("id", 1)) + 50, timeout=10)
-                    connected = ib.isConnected()
-                    accounts = list(ib.managedAccounts()) if connected else []
-                    ib.disconnect()
-                    if connected:
-                        aid_str = accounts[0] if accounts else ""
-                        if aid_str:
-                            # Update account_id in DB
-                            conn = get_db()
-                            conn.execute("UPDATE broker_accounts SET account_id=? WHERE id=?",
-                                        (aid_str, account_id))
-                            conn.commit(); conn.close()
-                        update_broker_account_status(account_id, True)
-                        return {"ok": True, "message": f"Connected to IBKR",
-                                "account": aid_str}
-                    update_broker_account_status(account_id, False, "isConnected=False")
-                    return {"ok": False, "message": "Connection returned but isConnected=False"}
-                except Exception as e:
-                    update_broker_account_status(account_id, False, str(e))
-                    return {"ok": False, "message": str(e)}
-                finally:
-                    _loop.close()
-            except Exception as e:
                 return {"ok": False, "message": str(e)}
         return {"ok": False, "message": f"Unknown broker: {broker}"}
     try:
@@ -2409,11 +2183,8 @@ async def data_prefetch(request: Request):
         return {"ok": False, "message": "symbol required"}
     def _fetch():
         from api.data_manager import fetch_bars_waterfall_sync
-        ibkr_cfg = None
-        if email:
-            ibkr_cfg = get_ibkr_config(email.lower().strip())
         result = fetch_bars_waterfall_sync(symbol=symbol, timeframe=timeframe, limit=limit,
-                                           db_path=str(DB_PATH), ibkr_config=ibkr_cfg)
+                                           db_path=str(DB_PATH))
         _log.info("Prefetch %s/%s: %s (%d bars)", symbol, timeframe, result["source"], result["bar_count"])
     asyncio.get_event_loop().run_in_executor(_executor, _fetch)
     return {"ok": True, "message": f"Fetching {symbol}/{timeframe} in background..."}
@@ -2640,15 +2411,11 @@ async def indicators_import(file: UploadFile = File(...), email: str = Form(""),
 async def status(email: str):
     email = email.lower().strip()
 
-    # Check DB for LP and IBKR processes
+    # Check DB for LP process
     conn = get_db()
     try:
         lp_proc = conn.execute(
-            "SELECT pid, status FROM processes WHERE email=? AND master_script_path NOT LIKE '%ibkr%' ORDER BY id DESC LIMIT 1",
-            (email,)
-        ).fetchone()
-        ibkr_proc = conn.execute(
-            "SELECT pid, status FROM processes WHERE email=? AND master_script_path LIKE '%ibkr%' ORDER BY id DESC LIMIT 1",
+            "SELECT pid, status FROM processes WHERE email=? ORDER BY id DESC LIMIT 1",
             (email,)
         ).fetchone()
     finally:
@@ -2666,7 +2433,6 @@ async def status(email: str):
 
     # Also check in-memory processes
     lp_running = _is_alive(lp_proc)
-    ibkr_running = _is_alive(ibkr_proc)
 
     # Fallback: check _running_processes dict
     if not lp_running and email in _running_processes:
@@ -2682,14 +2448,12 @@ async def status(email: str):
 
     return {
         "email": email,
-        "status": "running" if (lp_running or ibkr_running) else "stopped",
+        "status": "running" if lp_running else "stopped",
         "lp_running": lp_running,
         "lp_pid": lp_proc["pid"] if lp_proc and lp_running else None,
-        "ibkr_running": ibkr_running,
-        "ibkr_pid": ibkr_proc["pid"] if ibkr_proc and ibkr_running else None,
-        "pid": (lp_proc["pid"] if lp_running else None) or (ibkr_proc["pid"] if ibkr_running else None),
-        "is_running": lp_running or ibkr_running,
-        "bot_status": "running" if (lp_running or ibkr_running) else "stopped",
+        "pid": lp_proc["pid"] if lp_running else None,
+        "is_running": lp_running,
+        "bot_status": "running" if lp_running else "stopped",
         "strategies": [
             {**s, "total_pnl": round(strat_pnl.get(s["strategy_id"], 0), 4)}
             for s in strategies
@@ -2710,7 +2474,6 @@ async def strategy_logs(email: str, strategy_id: str, lines: int = Query(50, ge=
         f"{email_safe}_lp_master.log",         # LongPort LP master (Railway)
         f"{email_safe}_{safe_sid}.log",        # strategy-specific
         f"{email_safe}_master.log",            # LongPort master
-        f"{email_safe}_ibkr_master.log",       # IBKR master
     ]
     for fname in candidates:
         log_path = logs_dir / fname
@@ -2728,8 +2491,7 @@ async def logs(email: str, lines: int = Query(50, ge=1, le=500)):
     email_safe = email.replace("@", "_at_").replace(".", "_")
     logs_dir = LOGS_DIR
     for fname in [f"{email_safe}_lp_master.log",
-                  f"{email_safe}_master.log",
-                  f"{email_safe}_ibkr_master.log"]:
+                  f"{email_safe}_master.log"]:
         log_path = logs_dir / fname
         if log_path.exists():
             all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
