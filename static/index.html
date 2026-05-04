@@ -2418,6 +2418,37 @@ async function toggleBot(sid, active) {
   if (cell) cell.innerHTML = _renderDeployBtn(s);
   try {
     if (active) {
+      // Lot size guard — warn before deploy if lots < minimum board lot
+      const sLots = (s.risk && s.risk.lots) || 1;
+      if (sLots < (s._minLotSize || 1)) {
+        // _minLotSize was fetched when bot detail was opened; if not available, skip check
+      }
+      // Check lot size via a quick fetch if we don't have it cached
+      const needsLotCheck = s.symbol && (s.symbol.endsWith('.HK') || s.symbol.endsWith('.SI'));
+      if (needsLotCheck && sLots === 1) {
+        try {
+          const lr = await fetch(`${API}/api/symbol-search?query=${encodeURIComponent(s.symbol)}&email=${encodeURIComponent(EMAIL)}`);
+          const ld = await lr.json();
+          const minLot = ld.lot_size || 1;
+          if (minLot > 1 && sLots < minLot) {
+            const proceed = confirm(
+              `⚠️ Lot size warning\n\n` +
+              `${s.symbol} requires a minimum of ${minLot} shares per order.\n` +
+              `Your current setting is ${sLots} share(s).\n\n` +
+              `LongPort will reject orders with incorrect lot sizes (error 602001).\n\n` +
+              `Go to Bot Settings → Lots and set it to ${minLot} before deploying.\n\n` +
+              `Deploy anyway?`
+            );
+            if (!proceed) {
+              s._toggling = false;
+              if (cell) cell.innerHTML = _renderDeployBtn(s);
+              openBotDetail(sid);  // open settings so student can fix it
+              showBdTab('settings');
+              return;
+            }
+          }
+        } catch(e) { /* lot check failed, proceed anyway */ }
+      }
       await fetch(API + '/api/strategy/' + encodeURIComponent(sid) + '/toggle?active=true', { method: 'PUT' });
       // Check for open positions before deploying
       try {
@@ -4058,6 +4089,11 @@ function nbSelectSymbol(symbol, name) {
         _nbCurrentLotSize = lotSize;
         if (lotSize > 1) {
           val.innerHTML += ` <span style="color:#92400E;background:#FEF3C7;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:4px">⚠️ Min lot: ${lotSize} — set Lots ≥ ${lotSize}</span>`;
+          // Auto-fill the lots input if it exists and is still at default
+          const lotsInput = document.getElementById('nb-lot-size');
+          if (lotsInput && (parseInt(lotsInput.value) || 1) < lotSize) {
+            lotsInput.value = lotSize;
+          }
         }
       })
       .catch(() => {});
@@ -4657,6 +4693,7 @@ function _studioShowSymbolConfirm(symbol, name, lot) {
 function studioSymbolClear() {
   STUDIO.symbol = '';
   STUDIO._symbolInfo = '';
+  STUDIO._lotSize = 1;
   const inp = document.getElementById('studio-symbol');
   if (inp) inp.value = '';
   const el = document.getElementById('studio-symbol-confirm');
@@ -4678,6 +4715,7 @@ async function studioValidateSymbol(val) {
     const d = await r.json();
     if (d.valid && d.result) {
       STUDIO.symbol = d.result.symbol;
+      STUDIO._lotSize = d.result.lot || 1;
       const inp = document.getElementById('studio-symbol');
       if (inp) inp.value = d.result.symbol;
       _studioShowSymbolConfirm(d.result.symbol, d.result.name||'', d.result.lot||1);
@@ -4994,7 +5032,7 @@ async function studioDeployFromResults() {
           commission_pct: STUDIO.commission_pct ?? 0.1,
           slippage_pct: STUDIO.slippage_pct ?? 0.05,
         },
-        exit_rules:{}, risk:{lots:1, sl_pct:STUDIO.risk.stop_loss_pct, tp_pct:STUDIO.risk.take_profit_pct},
+        exit_rules:{}, risk:{lots: STUDIO._lotSize || 1, sl_pct:STUDIO.risk.stop_loss_pct, tp_pct:STUDIO.risk.take_profit_pct},
         is_active:true, mode:'studio', library_id:'', broker:'longport'})
     });
     showToast('Strategy saved! Go to Bots to deploy.', 'success');

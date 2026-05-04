@@ -216,19 +216,29 @@ __SIGNAL_FUNCTIONS__
 
 # ── HK tick rounding ──────────────────────────────────────────────────────
 
+def _hk_tick(p):
+    """Return the correct HK tick size for a given price."""
+    if p < 0.25: return 0.001
+    elif p < 0.5: return 0.005
+    elif p < 10: return 0.010
+    elif p < 20: return 0.020
+    elif p < 100: return 0.050
+    elif p < 200: return 0.100
+    elif p < 500: return 0.200
+    elif p < 1000: return 0.500
+    elif p < 2000: return 1.000
+    elif p < 5000: return 2.000
+    else: return 5.000
+
 def hk_tick_round(p):
-    if p < 0.25: tick = 0.001
-    elif p < 0.5: tick = 0.005
-    elif p < 10: tick = 0.010
-    elif p < 20: tick = 0.020
-    elif p < 100: tick = 0.050
-    elif p < 200: tick = 0.100
-    elif p < 500: tick = 0.200
-    elif p < 1000: tick = 0.500
-    elif p < 2000: tick = 1.000
-    elif p < 5000: tick = 2.000
-    else: tick = 5.000
+    """Round DOWN to nearest HK tick (for BUY limit orders)."""
+    tick = _hk_tick(p)
     return round(math.floor(p / tick) * tick, 4)
+
+def hk_tick_round_sell(p):
+    """Round UP to nearest HK tick (for SELL limit orders)."""
+    tick = _hk_tick(p)
+    return round(math.ceil(p / tick) * tick, 4)
 
 
 # ── Trade CSV logging ─────────────────────────────────────────────────────
@@ -412,9 +422,11 @@ def main():
 
             if st.symbol.endswith('.HK'):
                 if action == 'BUY':
-                    limit_price = hk_tick_round(price * 0.998)
+                    limit_price = hk_tick_round(price * 0.998)       # floor to tick
                 else:
-                    limit_price = round(math.ceil(price * 1.002 / 0.01) * 0.01, 4)
+                    limit_price = hk_tick_round_sell(price * 1.002)  # ceil to tick
+            elif st.symbol.endswith('.SG') or st.symbol.endswith('.SI'):
+                limit_price = round(price * (0.998 if action == 'BUY' else 1.002), 3)
             else:
                 limit_price = round(price * (0.998 if action == 'BUY' else 1.002), 2)
 
@@ -470,6 +482,52 @@ def main():
             return ','.join(parts)
         except Exception: return ''
 
+    # ── Position reconciliation ────────────────────────────────────────────
+    # Compare state file positions against actual LongPort positions.
+    # If LongPort shows FLAT but state file says we're in a position (e.g. after
+    # a Railway restart while an order was pending), reset state to FLAT to avoid
+    # ghost SL/TP orders on the next bar.
+    logger.info('Reconciling positions with LongPort...')
+    try:
+        lp_positions = {}
+        stock_positions = trade_ctx.stock_positions()
+        for pos in stock_positions.channels:
+            for p in pos.positions:
+                sym = str(p.symbol)
+                qty = int(p.quantity or 0)
+                lp_positions[sym] = qty
+        logger.info('LongPort positions: %s', lp_positions)
+
+        for st in states:
+            lp_qty = lp_positions.get(st.symbol, 0)
+            if st.current_position == 1 and lp_qty == 0:
+                logger.warning(
+                    '[%s] State says LONG but LongPort shows FLAT -- resetting to FLAT',
+                    st.sid)
+                st.current_position = 0
+                st.entry_price = 0.0
+                st.save_state()
+            elif st.current_position == -1 and lp_qty == 0:
+                logger.warning(
+                    '[%s] State says SHORT but LongPort shows FLAT -- resetting to FLAT',
+                    st.sid)
+                st.current_position = 0
+                st.entry_price = 0.0
+                st.save_state()
+            elif st.current_position == 0 and lp_qty > 0:
+                # LongPort has a position we don't know about — log it but don't auto-set
+                # entry_price is unknown, so we leave state as FLAT and let student decide
+                logger.warning(
+                    '[%s] LongPort shows qty=%d for %s but state is FLAT -- '
+                    'manual review recommended. Bot will not place new entries until resolved.',
+                    st.sid, lp_qty, st.symbol)
+            else:
+                logger.info('[%s] Position OK: state=%d LongPort_qty=%d',
+                            st.sid, st.current_position, lp_qty)
+    except Exception as e:
+        logger.warning('Position reconciliation failed (non-fatal): %s', e)
+        logger.warning('Proceeding with state file positions. Manual verification recommended.')
+
     # Bar polling loop -- fetches new bars for ALL strategies
     def bar_loop():
         logger.info('Bar loop started')
@@ -507,19 +565,19 @@ def main():
                         place_order(st, 'SELL', 'entry_short', bar_dt, ind_ctx, price)
                     elif sig == 'cover' and st.current_position == -1 and st.has_short:
                         place_order(st, 'BUY', 'exit_short', bar_dt, ind_ctx, price)
-
-                    # SL/TP check
-                    if st.current_position != 0 and st.entry_price > 0:
-                        if st.current_position == 1:
-                            if st.sl_pct > 0 and price <= st.entry_price*(1-st.sl_pct):
-                                place_order(st, 'SELL', 'stop_loss', bar_dt, ind_ctx, price)
-                            elif st.tp_pct > 0 and price >= st.entry_price*(1+st.tp_pct):
-                                place_order(st, 'SELL', 'take_profit', bar_dt, ind_ctx, price)
-                        elif st.current_position == -1:
-                            if st.sl_pct > 0 and price >= st.entry_price*(1+st.sl_pct):
-                                place_order(st, 'BUY', 'stop_loss', bar_dt, ind_ctx, price)
-                            elif st.tp_pct > 0 and price <= st.entry_price*(1-st.tp_pct):
-                                place_order(st, 'BUY', 'take_profit', bar_dt, ind_ctx, price)
+                    else:
+                        # Only check SL/TP if no signal order was placed this bar
+                        if st.current_position != 0 and st.entry_price > 0:
+                            if st.current_position == 1:
+                                if st.sl_pct > 0 and price <= st.entry_price*(1-st.sl_pct):
+                                    place_order(st, 'SELL', 'stop_loss', bar_dt, ind_ctx, price)
+                                elif st.tp_pct > 0 and price >= st.entry_price*(1+st.tp_pct):
+                                    place_order(st, 'SELL', 'take_profit', bar_dt, ind_ctx, price)
+                            elif st.current_position == -1:
+                                if st.sl_pct > 0 and price >= st.entry_price*(1+st.sl_pct):
+                                    place_order(st, 'BUY', 'stop_loss', bar_dt, ind_ctx, price)
+                                elif st.tp_pct > 0 and price <= st.entry_price*(1-st.tp_pct):
+                                    place_order(st, 'BUY', 'take_profit', bar_dt, ind_ctx, price)
                 except Exception as e:
                     logger.exception(f'[{st.sid}] Bar loop error: {e}')
 
