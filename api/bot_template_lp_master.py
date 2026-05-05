@@ -339,6 +339,260 @@ class StrategyState:
             logger.warning(f'[{self.sid}] State save failed: {e}')
 
 
+# ── Grid state ─────────────────────────────────────────────────────────────
+
+class GridState:
+    """
+    Event-driven grid bot state.
+    Initializes a buy ladder below CMP on first price tick.
+    On each buy fill → places TP sell above fill price.
+    On each sell fill → replenishes the buy level.
+    On SL boundary breach → flattens all positions.
+    Works in both LIVE and DRY_RUN modes.
+    """
+    def __init__(self, config, trade_ctx, quote_ctx):
+        self.sid       = config['strategy_id']
+        self.symbol    = config['symbol']
+        self.arena     = config.get('arena', 'HK')
+        self.trade_ctx = trade_ctx
+        self.quote_ctx = quote_ctx
+
+        params = config.get('conditions', {}).get('params', {})
+        self.grid_levels_n    = int(params.get('grid_levels', 4))
+        self.grid_spacing_pct = float(params.get('grid_spacing_pct', 0.5))
+        self.tp_pct           = float(params.get('tp_pct', 0.5))
+        self.sl_boundary_pct  = float(params.get('sl_boundary_pct', 3.0))
+
+        risk = config.get('risk', {})
+        self.lots     = int(risk.get('lots', 100))
+        # Enforce minimum board lot
+        min_lot = {'HK': 100, 'HK_ETF': 500, 'SG': 100}.get(self.arena, 1)
+        if self.lots < min_lot:
+            logger.warning('[%s] lots=%d < min_lot=%d for %s — forcing to %d',
+                           self.sid, self.lots, min_lot, self.arena, min_lot)
+            self.lots = min_lot
+
+        self.buy_levels       = []
+        self.cmp_reference    = 0.0
+        self.completed_cycles = 0
+        self.position_qty     = 0
+        self.initialized      = False
+        self._init_lock       = threading.Lock()
+        self.tracked_order_ids = set()
+
+        logger.info('[%s] GridState init: %s levels=%d spacing=%.1f%% tp=%.1f%% sl_boundary=%.1f%% lots=%d',
+                    self.sid, self.symbol, self.grid_levels_n,
+                    self.grid_spacing_pct, self.tp_pct, self.sl_boundary_pct, self.lots)
+
+    # ── Called on every price tick ──────────────────────────────────────────
+
+    def on_tick(self, price):
+        if not self.initialized:
+            with self._init_lock:
+                if not self.initialized:
+                    self._initialize(price)
+            return
+        self._check_sl(price)
+
+    def _initialize(self, cmp):
+        """Place the initial buy ladder below current market price."""
+        self.cmp_reference = cmp
+        self.buy_levels = []
+        spacing = cmp * self.grid_spacing_pct / 100.0
+
+        logger.info('[%s] Building grid around CMP=%.4f', self.sid, cmp)
+        logger.info('[%s]   Spacing: %.2f%% = %.4f | Lots: %d',
+                    self.sid, self.grid_spacing_pct, spacing, self.lots)
+
+        for i in range(1, self.grid_levels_n + 1):
+            raw_entry = cmp - i * spacing
+            if self.arena == 'HK':
+                entry = hk_tick_round(raw_entry)
+                tp    = hk_tick_round_sell(entry * (1 + self.tp_pct / 100))
+            elif self.arena in ('SG', 'SI'):
+                entry = round(raw_entry, 3)
+                tp    = round(entry * (1 + self.tp_pct / 100), 3)
+            else:
+                entry = round(raw_entry, 2)
+                tp    = round(entry * (1 + self.tp_pct / 100), 2)
+
+            self.buy_levels.append({
+                'level_id':        f'BUY_{i}',
+                'entry_price':     entry,
+                'tp_price':        tp,
+                'lots':            self.lots,
+                'filled':          False,
+                'order_id':        '',
+                'tp_order_id':     '',
+                'entry_fill_price': 0.0,
+            })
+            logger.info('[%s]   [BUY_%d] entry=%.4f TP=%.4f', self.sid, i, entry, tp)
+
+        logger.info('[%s] Placing %d buy orders...', self.sid, len(self.buy_levels))
+        for lv in self.buy_levels:
+            oid = self._submit_limit('BUY', lv['lots'], lv['entry_price'])
+            lv['order_id'] = oid
+            if oid:
+                self.tracked_order_ids.add(oid)
+            time.sleep(0.3)  # avoid API rate limit
+
+        active = sum(1 for lv in self.buy_levels if lv['order_id'])
+        logger.info('[%s] Grid placed: %d/%d active. Sells placed on fill.',
+                    self.sid, active, len(self.buy_levels))
+        self.initialized = True
+
+    # ── Called when an order is filled ─────────────────────────────────────
+
+    def on_fill(self, order_id, fill_price, fill_qty, side_str):
+        for lv in self.buy_levels:
+            # BUY fill → place TP SELL
+            if lv['order_id'] == order_id and not lv['filled']:
+                lv['filled'] = True
+                lv['entry_fill_price'] = fill_price
+                self.position_qty += fill_qty
+                self.tracked_order_ids.discard(order_id)
+
+                pnl = 0.0
+                log_trade(self.sid, self.symbol, 'BOT', fill_qty, fill_price, pnl,
+                          signal='grid_entry', bar_date=str(datetime.utcnow()),
+                          indicator_values=f'level={lv["level_id"]},cmp={self.cmp_reference:.4f}',
+                          bar_close=fill_price, order_id=order_id)
+
+                if self.arena == 'HK':
+                    tp_price = hk_tick_round_sell(fill_price * (1 + self.tp_pct / 100))
+                elif self.arena in ('SG', 'SI'):
+                    tp_price = round(fill_price * (1 + self.tp_pct / 100), 3)
+                else:
+                    tp_price = round(fill_price * (1 + self.tp_pct / 100), 2)
+
+                tp_oid = self._submit_limit('SELL', fill_qty, tp_price)
+                lv['tp_order_id'] = tp_oid
+                if tp_oid:
+                    self.tracked_order_ids.add(tp_oid)
+
+                logger.info('[%s] [%s] Bought @ %.4f → TP SELL @ %.4f',
+                            self.sid, lv['level_id'], fill_price, tp_price)
+                return
+
+            # SELL fill → record PnL + replenish buy
+            if lv['tp_order_id'] == order_id and lv['filled']:
+                entry_p = lv['entry_fill_price']
+                pnl = (fill_price - entry_p) * fill_qty
+                self.position_qty -= fill_qty
+                self.completed_cycles += 1
+                self.tracked_order_ids.discard(order_id)
+
+                log_trade(self.sid, self.symbol, 'SLD', fill_qty, fill_price, round(pnl, 4),
+                          signal='grid_exit', bar_date=str(datetime.utcnow()),
+                          indicator_values=f'level={lv["level_id"]},cycle={self.completed_cycles}',
+                          bar_close=fill_price, order_id=order_id)
+
+                logger.info('[%s] [%s] Sold @ %.4f PnL=$%.2f cycle#%d',
+                            self.sid, lv['level_id'], fill_price, pnl, self.completed_cycles)
+
+                # Replenish buy level
+                lv['filled'] = False
+                lv['entry_fill_price'] = 0.0
+                lv['tp_order_id'] = ''
+                new_oid = self._submit_limit('BUY', lv['lots'], lv['entry_price'])
+                lv['order_id'] = new_oid
+                if new_oid:
+                    self.tracked_order_ids.add(new_oid)
+                logger.info('[%s] [%s] Buy replenished @ %.4f',
+                            self.sid, lv['level_id'], lv['entry_price'])
+                return
+
+    # ── SL boundary check ──────────────────────────────────────────────────
+
+    def _check_sl(self, price):
+        if not self.buy_levels:
+            return
+        lowest = self.buy_levels[-1]['entry_price']
+        sl_price = lowest * (1 - self.sl_boundary_pct / 100)
+        if price < sl_price:
+            logger.warning('[%s] SL BOUNDARY HIT: %.4f < %.4f — flattening',
+                           self.sid, price, sl_price)
+            self._flatten('SL boundary')
+
+    def _flatten(self, reason):
+        logger.info('[%s] FLATTEN: %s', self.sid, reason)
+        if DRY_RUN:
+            logger.info('[%s] [DRY RUN] Would cancel all orders and market sell %d shares',
+                        self.sid, self.position_qty)
+            self.buy_levels = []
+            self.position_qty = 0
+            return
+
+        from longport.openapi import OrderType, TimeInForceType
+        for lv in self.buy_levels:
+            for key in ('order_id', 'tp_order_id'):
+                oid = lv.get(key, '')
+                if oid:
+                    try:
+                        self.trade_ctx.cancel_order(oid)
+                    except Exception:
+                        pass
+                    self.tracked_order_ids.discard(oid)
+            lv['filled'] = False
+
+        if self.position_qty > 0:
+            try:
+                from longport.openapi import OrderType, TimeInForceType
+                self.trade_ctx.submit_order(
+                    symbol=self.symbol,
+                    order_type=OrderType.MO,
+                    side=OrderSide.Sell,
+                    submitted_quantity=self.position_qty,
+                    time_in_force=TimeInForceType.Day,
+                )
+                logger.info('[%s] Market sell %d shares submitted', self.sid, self.position_qty)
+            except Exception as e:
+                logger.error('[%s] Flatten close error: %s', self.sid, e)
+
+        self.buy_levels = []
+        self.position_qty = 0
+
+    def shutdown(self):
+        if self.initialized and self.buy_levels:
+            self._flatten('Shutdown')
+
+    # ── Order submission helper ─────────────────────────────────────────────
+
+    def _submit_limit(self, action, qty, price):
+        """Submit a limit order. Returns order_id string, or '' on failure."""
+        if DRY_RUN:
+            fake_oid = f'DRY_{self.sid}_{action}_{datetime.utcnow():%H%M%S%f}'
+            logger.info('[DRY RUN][%s] SIMULATED LIMIT %s %d %s @ %.4f → oid=%s',
+                        self.sid, action, qty, self.symbol, price, fake_oid)
+            # In dry run, simulate immediate fill after a short delay
+            def _simulate_fill():
+                time.sleep(1.5)
+                side_str = 'buy' if action == 'BUY' else 'sell'
+                self.on_fill(fake_oid, price, qty, side_str)
+            threading.Thread(target=_simulate_fill, daemon=True).start()
+            return fake_oid
+
+        from longport.openapi import OrderType, TimeInForceType
+        try:
+            side = OrderSide.Buy if action == 'BUY' else OrderSide.Sell
+            resp = self.trade_ctx.submit_order(
+                symbol=self.symbol,
+                order_type=OrderType.LO,
+                side=side,
+                submitted_quantity=qty,
+                time_in_force=TimeInForceType.Day,
+                submitted_price=decimal.Decimal(str(price)),
+                remark=f'QuantX {self.sid}',
+            )
+            oid = str(resp.order_id)
+            logger.info('[%s] LIMIT %s %d %s @ %.4f | oid=%s',
+                        self.sid, action, qty, self.symbol, price, oid)
+            return oid
+        except Exception as e:
+            logger.error('[%s] Order error: %s', self.sid, e)
+            return ''
+
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def main():
@@ -369,28 +623,43 @@ def main():
         trade_ctx = TradeContext(cfg)
         logger.info('LongPort connected (2 connections: quote + trade)')
 
-    # Build strategy states with their compute_signals functions
+    # ── Classify strategies: signal-based vs grid ──────────────────────────
     # The __SIGNAL_FUNCTIONS_BLOCK__ block defines compute_signals_XXXX for each strategy
-    states = []
-    for s in STRATEGIES:
-        fn_name = f'compute_signals_{s["strategy_id"]}'
-        fn = globals().get(fn_name)
-        if fn is None:
-            logger.warning(f'[{s["strategy_id"]}] No compute function {fn_name}, skipping')
-            continue
-        st = StrategyState(s, fn)
-        states.append(st)
-        logger.info(f'[{st.sid}] {st.symbol} lot={st.lot_size} tp={st.tp_pct*100:.1f}% sl={st.sl_pct*100:.1f}%')
+    signal_states = []   # StrategyState — bar poll loop
+    grid_states   = []   # GridState     — event-driven quote subscription
 
-    if not states:
+    for s in STRATEGIES:
+        library_id = s.get('library_id', '')
+        conditions = s.get('conditions', {})
+        is_grid = (library_id == 'SYMMETRIC_GRID' or
+                   conditions.get('type') == 'SYMMETRIC_GRID')
+
+        if is_grid:
+            gs = GridState(s, trade_ctx, quote_ctx)
+            grid_states.append(gs)
+        else:
+            fn_name = f'compute_signals_{s["strategy_id"]}'
+            fn = globals().get(fn_name)
+            if fn is None:
+                logger.warning('[%s] No compute function %s, skipping', s['strategy_id'], fn_name)
+                continue
+            st = StrategyState(s, fn)
+            signal_states.append(st)
+            logger.info('[%s] %s lot=%d tp=%.1f%% sl=%.1f%%',
+                        st.sid, st.symbol, st.lot_size, st.tp_pct*100, st.sl_pct*100)
+
+    if not signal_states and not grid_states:
         logger.error('No valid strategies. Exiting.')
         return
 
-    # Subscribe ALL symbols at once
-    all_symbols = list(set(st.symbol for st in states))
-    logger.info('Subscribing to %d symbols: %s', len(all_symbols), all_symbols)
+    all_symbols = list(set(
+        [st.symbol for st in signal_states] +
+        [gs.symbol for gs in grid_states]
+    ))
+    logger.info('Symbols: %s | Signal: %d | Grid: %d',
+                all_symbols, len(signal_states), len(grid_states))
 
-    # Fetch initial quotes
+    # ── Initial quotes ─────────────────────────────────────────────────────
     try:
         quotes = quote_ctx.quote(all_symbols)
         for q in quotes:
@@ -398,14 +667,14 @@ def main():
     except Exception as e:
         logger.warning('Initial quote fetch failed: %s', e)
 
-    # Fetch warmup bars for each strategy using candlestick API
+    # ── Warmup bars for signal strategies ─────────────────────────────────
     from longport.openapi import Period, AdjustType
     period_map = {'1min': Period.Min_1, '5min': Period.Min_5,
                   '15min': Period.Min_15, '30min': Period.Min_30,
                   '1hour': Period.Min_60, '4hour': Period.Min_60,
                   '1day': Period.Day, '1week': Period.Week}
 
-    for st in states:
+    for st in signal_states:
         try:
             p = period_map.get(st.timeframe, Period.Day)
             candles = quote_ctx.candlesticks(st.symbol, p, 200, AdjustType.ForwardAdjust)
@@ -414,92 +683,141 @@ def main():
                      'close': float(c.close), 'volume': float(c.volume)}
                     for c in candles]
             st.data_buffer = deque(bars, maxlen=500)
-            logger.info(f'[{st.sid}] Warmup: {len(bars)} bars, last close={bars[-1]["close"]:.4f}')
+            logger.info('[%s] Warmup: %d bars, last close=%.4f',
+                        st.sid, len(bars), bars[-1]['close'])
         except Exception as e:
-            logger.warning(f'[{st.sid}] Warmup failed: {e} -- will start from scratch')
+            logger.warning('[%s] Warmup failed: %s', st.sid, e)
 
-    # Order placement helper using shared trade_ctx
+    # ── Position reconciliation (signal strategies, live only) ────────────
+    if DRY_RUN:
+        logger.info('DRY RUN: skipping position reconciliation')
+    elif signal_states:
+        logger.info('Reconciling positions with LongPort...')
+        try:
+            lp_positions = {}
+            stock_positions = trade_ctx.stock_positions()
+            for pos in stock_positions.channels:
+                for p in pos.positions:
+                    lp_positions[str(p.symbol)] = int(p.quantity or 0)
+            logger.info('LongPort positions: %s', lp_positions)
+            for st in signal_states:
+                lp_qty = lp_positions.get(st.symbol, 0)
+                if st.current_position == 1 and lp_qty == 0:
+                    logger.warning('[%s] State LONG but LP FLAT -- resetting', st.sid)
+                    st.current_position = 0; st.entry_price = 0.0; st.save_state()
+                elif st.current_position == -1 and lp_qty == 0:
+                    logger.warning('[%s] State SHORT but LP FLAT -- resetting', st.sid)
+                    st.current_position = 0; st.entry_price = 0.0; st.save_state()
+                elif st.current_position == 0 and lp_qty > 0:
+                    logger.warning('[%s] LP qty=%d but state FLAT -- manual review needed',
+                                   st.sid, lp_qty)
+                else:
+                    logger.info('[%s] Position OK: state=%d lp_qty=%d',
+                                st.sid, st.current_position, lp_qty)
+        except Exception as e:
+            logger.warning('Position reconciliation failed (non-fatal): %s', e)
+
+    # ── Wire grid event callbacks ──────────────────────────────────────────
+    if grid_states:
+        grid_symbol_map = {}
+        for gs in grid_states:
+            grid_symbol_map.setdefault(gs.symbol, []).append(gs)
+
+        if not DRY_RUN and trade_ctx:
+            def _on_order_changed(event):
+                if event.status not in (OrderStatus.Filled, OrderStatus.PartialFilled):
+                    return
+                oid       = str(event.order_id)
+                fill_price = float(event.executed_price or 0)
+                fill_qty  = int(event.executed_quantity or 0)
+                side_str  = 'buy' if event.side == OrderSide.Buy else 'sell'
+                for gs in grid_states:
+                    if oid in gs.tracked_order_ids:
+                        gs.on_fill(oid, fill_price, fill_qty, side_str)
+                        return
+            trade_ctx.set_on_order_changed(_on_order_changed)
+            trade_ctx.subscribe([TopicType.Private])
+            logger.info('Grid: order fill callbacks wired')
+
+        def _on_quote(symbol, event):
+            price = float(event.last_done or 0)
+            if price > 0:
+                for gs in grid_symbol_map.get(symbol, []):
+                    gs.on_tick(price)
+
+        quote_ctx.set_on_quote(_on_quote)
+        grid_symbols = list(grid_symbol_map.keys())
+        try:
+            quote_ctx.subscribe(grid_symbols, [SubType.Quote])
+            logger.info('Grid: subscribed to real-time quotes: %s', grid_symbols)
+        except Exception as e:
+            logger.warning('Grid quote subscribe failed: %s', e)
+
+        # Kick off grid init with current price
+        try:
+            for q in quote_ctx.quote(grid_symbols):
+                price = float(q.last_done or 0)
+                if price > 0:
+                    logger.info('Grid init tick: %s = %.4f', q.symbol, price)
+                    for gs in grid_symbol_map.get(q.symbol, []):
+                        gs.on_tick(price)
+        except Exception as e:
+            logger.warning('Grid init quote failed: %s -- will init on first tick', e)
+
+    # ── Order placement helper (signal strategies) ─────────────────────────
     def place_order(st, action, signal='', bar_date='', indicator_values='', bar_close=0.0):
-        """Place a limit order (or simulate in DRY RUN mode)."""
         try:
             quotes = quote_ctx.quote([st.symbol])
             price = float(quotes[0].last_done) if quotes else 0
             if price <= 0:
-                logger.warning(f'[{st.sid}] No price for {st.symbol}, cannot place order')
+                logger.warning('[%s] No price, cannot place order', st.sid)
                 return
-
             if st.symbol.endswith('.HK'):
-                if action == 'BUY':
-                    limit_price = hk_tick_round(price * 0.998)       # floor to tick
-                else:
-                    limit_price = hk_tick_round_sell(price * 1.002)  # ceil to tick
+                limit_price = (hk_tick_round(price * 0.998) if action == 'BUY'
+                               else hk_tick_round_sell(price * 1.002))
             elif st.symbol.endswith('.SG') or st.symbol.endswith('.SI'):
                 limit_price = round(price * (0.998 if action == 'BUY' else 1.002), 3)
             else:
                 limit_price = round(price * (0.998 if action == 'BUY' else 1.002), 2)
 
-            # ── DRY RUN: simulate fill, no real order ──────────────────────
             if DRY_RUN:
                 order_id = f'DRY_{st.sid}_{datetime.utcnow():%H%M%S%f}'
-                logger.info(
-                    f'[DRY RUN][{st.sid}] SIMULATED {action} {st.lot_size} '
-                    f'{st.symbol} @ {limit_price} | signal={signal}'
-                )
+                logger.info('[DRY RUN][%s] SIMULATED %s %d %s @ %.4f | signal=%s',
+                            st.sid, action, st.lot_size, st.symbol, limit_price, signal)
                 pnl = 0.0
                 if action == 'SELL' and st.current_position == 1 and st.entry_price > 0:
                     pnl = (limit_price - st.entry_price) * st.lot_size
                 elif action == 'BUY' and st.current_position == -1 and st.entry_price > 0:
                     pnl = (st.entry_price - limit_price) * st.lot_size
-                if action == 'BUY':
-                    st.current_position = 1
-                    st.entry_price = limit_price
-                else:
-                    st.current_position = 0
-                    st.entry_price = 0.0
+                if action == 'BUY': st.current_position = 1; st.entry_price = limit_price
+                else: st.current_position = 0; st.entry_price = 0.0
                 st.save_state()
-                log_trade(st.sid, st.symbol,
-                          'DRY_BOT' if action == 'BUY' else 'DRY_SLD',
-                          st.lot_size, limit_price, pnl, signal,
-                          bar_date=bar_date, indicator_values=indicator_values,
-                          bar_close=bar_close, order_id=order_id)
+                log_trade(st.sid, st.symbol, 'DRY_BOT' if action == 'BUY' else 'DRY_SLD',
+                          st.lot_size, limit_price, pnl, signal, bar_date=bar_date,
+                          indicator_values=indicator_values, bar_close=bar_close, order_id=order_id)
                 return
 
-            # ── LIVE: submit real order ────────────────────────────────────
             side = OrderSide.Buy if action == 'BUY' else OrderSide.Sell
             resp = trade_ctx.submit_order(
-                symbol=st.symbol,
-                order_type=OrderType.LO,
-                side=side,
-                submitted_quantity=st.lot_size,
-                time_in_force=TimeInForceType.Day,
-                submitted_price=decimal.Decimal(str(limit_price)),
-                remark=f'QuantX {st.sid}'
-            )
+                symbol=st.symbol, order_type=OrderType.LO, side=side,
+                submitted_quantity=st.lot_size, time_in_force=TimeInForceType.Day,
+                submitted_price=decimal.Decimal(str(limit_price)), remark=f'QuantX {st.sid}')
             order_id = str(resp.order_id)
-            logger.info(f'[{st.sid}] ORDER {action} {st.lot_size} {st.symbol} @ {limit_price} | oid={order_id} | signal={signal}')
-
-            # Update position state
+            logger.info('[%s] ORDER %s %d %s @ %.4f | oid=%s | signal=%s',
+                        st.sid, action, st.lot_size, st.symbol, limit_price, order_id, signal)
             pnl = 0.0
             if action == 'SELL' and st.current_position == 1 and st.entry_price > 0:
                 pnl = (price - st.entry_price) * st.lot_size
             elif action == 'BUY' and st.current_position == -1 and st.entry_price > 0:
                 pnl = (st.entry_price - price) * st.lot_size
-            if action == 'BUY':
-                st.current_position = 1
-                st.entry_price = price
-            else:
-                st.current_position = 0
-                st.entry_price = 0.0
+            if action == 'BUY': st.current_position = 1; st.entry_price = price
+            else: st.current_position = 0; st.entry_price = 0.0
             st.save_state()
-
-            log_trade(st.sid, st.symbol,
-                      'BOT' if action == 'BUY' else 'SLD',
-                      st.lot_size, price, pnl, signal,
-                      bar_date=bar_date, indicator_values=indicator_values,
-                      bar_close=bar_close, order_id=order_id)
-
+            log_trade(st.sid, st.symbol, 'BOT' if action == 'BUY' else 'SLD',
+                      st.lot_size, price, pnl, signal, bar_date=bar_date,
+                      indicator_values=indicator_values, bar_close=bar_close, order_id=order_id)
         except Exception as e:
-            logger.error(f'[{st.sid}] Order failed: {e}')
+            logger.error('[%s] Order failed: %s', st.sid, e)
 
     def capture_indicator_context(buf_list):
         if not buf_list: return ''
@@ -517,61 +835,18 @@ def main():
             return ','.join(parts)
         except Exception: return ''
 
-    # ── Position reconciliation ────────────────────────────────────────────
-    # Compare state file positions against actual LongPort positions.
-    # If LongPort shows FLAT but state file says we're in a position (e.g. after
-    # a Railway restart while an order was pending), reset state to FLAT to avoid
-    # ghost SL/TP orders on the next bar.
-    if DRY_RUN:
-        logger.info('DRY RUN: skipping position reconciliation (no TradeContext)')
-    else:
-        logger.info('Reconciling positions with LongPort...')
-        try:
-            lp_positions = {}
-            stock_positions = trade_ctx.stock_positions()
-            for pos in stock_positions.channels:
-                for p in pos.positions:
-                    sym = str(p.symbol)
-                    qty = int(p.quantity or 0)
-                    lp_positions[sym] = qty
-            logger.info('LongPort positions: %s', lp_positions)
-
-            for st in states:
-                lp_qty = lp_positions.get(st.symbol, 0)
-                if st.current_position == 1 and lp_qty == 0:
-                    logger.warning(
-                        '[%s] State says LONG but LongPort shows FLAT -- resetting to FLAT',
-                        st.sid)
-                    st.current_position = 0
-                    st.entry_price = 0.0
-                    st.save_state()
-                elif st.current_position == -1 and lp_qty == 0:
-                    logger.warning(
-                        '[%s] State says SHORT but LongPort shows FLAT -- resetting to FLAT',
-                        st.sid)
-                    st.current_position = 0
-                    st.entry_price = 0.0
-                    st.save_state()
-                elif st.current_position == 0 and lp_qty > 0:
-                    logger.warning(
-                        '[%s] LongPort shows qty=%d for %s but state is FLAT -- '
-                        'manual review recommended. Bot will not place new entries until resolved.',
-                        st.sid, lp_qty, st.symbol)
-                else:
-                    logger.info('[%s] Position OK: state=%d LongPort_qty=%d',
-                                st.sid, st.current_position, lp_qty)
-        except Exception as e:
-            logger.warning('Position reconciliation failed (non-fatal): %s', e)
-            logger.warning('Proceeding with state file positions. Manual verification recommended.')
-
-    # Bar polling loop -- fetches new bars for ALL strategies
+    # ── Bar poll loop (signal strategies only) ─────────────────────────────
     def bar_loop():
-        logger.info('Bar loop started')
-        last_dates = {st.sid: (list(st.data_buffer)[-1]['date'] if st.data_buffer else '') for st in states}
+        if not signal_states:
+            logger.info('Bar loop: no signal strategies, exiting loop')
+            return
+        logger.info('Bar loop started for %d signal strategies', len(signal_states))
+        last_dates = {st.sid: (list(st.data_buffer)[-1]['date'] if st.data_buffer else '')
+                      for st in signal_states}
         while not _shutdown.is_set():
-            _shutdown.wait(60)  # poll every 60s
+            _shutdown.wait(60)
             if _shutdown.is_set(): break
-            for st in states:
+            for st in signal_states:
                 try:
                     p = period_map.get(st.timeframe, Period.Day)
                     candles = quote_ctx.candlesticks(st.symbol, p, 10, AdjustType.ForwardAdjust)
@@ -583,16 +858,15 @@ def main():
                     if not new: continue
                     st.data_buffer.extend(new)
                     last_dates[st.sid] = new[-1]['date']
-                    logger.info(f'[{st.sid}] Bar: {new[-1]["date"]} close={new[-1]["close"]:.4f}')
-
+                    logger.info('[%s] Bar: %s close=%.4f',
+                                st.sid, new[-1]['date'], new[-1]['close'])
                     buf_list = list(st.data_buffer)
                     sigs = st.compute_fn(buf_list)
                     if not sigs or sigs[-1] is None: continue
-                    sig = sigs[-1]
-                    price = buf_list[-1]['close']
-                    bar_dt = buf_list[-1]['date']
+                    sig     = sigs[-1]
+                    price   = buf_list[-1]['close']
+                    bar_dt  = buf_list[-1]['date']
                     ind_ctx = capture_indicator_context(buf_list)
-
                     if sig == 'buy' and st.current_position == 0:
                         place_order(st, 'BUY', 'entry_long', bar_dt, ind_ctx, price)
                     elif sig == 'sell' and st.current_position == 1:
@@ -602,7 +876,6 @@ def main():
                     elif sig == 'cover' and st.current_position == -1 and st.has_short:
                         place_order(st, 'BUY', 'exit_short', bar_dt, ind_ctx, price)
                     else:
-                        # Only check SL/TP if no signal order was placed this bar
                         if st.current_position != 0 and st.entry_price > 0:
                             if st.current_position == 1:
                                 if st.sl_pct > 0 and price <= st.entry_price*(1-st.sl_pct):
@@ -615,26 +888,29 @@ def main():
                                 elif st.tp_pct > 0 and price <= st.entry_price*(1-st.tp_pct):
                                     place_order(st, 'BUY', 'take_profit', bar_dt, ind_ctx, price)
                 except Exception as e:
-                    logger.exception(f'[{st.sid}] Bar loop error: {e}')
+                    logger.exception('[%s] Bar loop error: %s', st.sid, e)
 
-    # Heartbeat
+    # ── Heartbeat ──────────────────────────────────────────────────────────
     def heartbeat_loop():
         while not _shutdown.is_set():
             _shutdown.wait(HEARTBEAT_INTERVAL)
             if _shutdown.is_set(): break
-            for st in states:
+            for st in signal_states:
                 d = {1:'LONG',-1:'SHORT',0:'FLAT'}.get(st.current_position,'?')
-                logger.info(f'[HB][{st.sid}] pos={d} entry={st.entry_price:.4f}')
+                logger.info('[HB][%s] pos=%s entry=%.4f', st.sid, d, st.entry_price)
+            for gs in grid_states:
+                logger.info('[HB][%s] initialized=%s position=%d cycles=%d',
+                            gs.sid, gs.initialized, gs.position_qty, gs.completed_cycles)
 
-    # Start threads
+    # ── Start ──────────────────────────────────────────────────────────────
     bar_t = threading.Thread(target=bar_loop, daemon=True)
-    hb_t = threading.Thread(target=heartbeat_loop, daemon=True)
+    hb_t  = threading.Thread(target=heartbeat_loop, daemon=True)
     bar_t.start()
     hb_t.start()
 
     mode_str = 'DRY RUN' if DRY_RUN else 'LIVE'
-    logger.info('Bot is %s. %d strategies, %d symbols, %s.',
-                mode_str, len(states), len(all_symbols),
+    logger.info('Bot is %s. %d signal + %d grid strategies, %d symbols, %s.',
+                mode_str, len(signal_states), len(grid_states), len(all_symbols),
                 '1 LP connection (quote only)' if DRY_RUN else '2 LP connections')
 
     try:
@@ -644,8 +920,10 @@ def main():
         pass
 
     logger.info('Shutting down...')
-    for st in states:
+    for st in signal_states:
         st.save_state()
+    for gs in grid_states:
+        gs.shutdown()
     logger.info('Bot stopped.')
 
 
