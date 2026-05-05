@@ -366,14 +366,11 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
     <div class="nav-item" data-page="bots" onclick="navigate('bots')">
       <span class="nav-icon">🤖</span><span class="nav-label">Bots</span>
     </div>
-    <div class="nav-item" data-page="backtester" onclick="navigate('backtester')" style="display:none">
-      <span class="nav-icon">📊</span><span class="nav-label">Backtester</span>
+    <div class="nav-item" data-page="backtester" onclick="navigate('backtester')">
+      <span class="nav-icon">📊</span><span class="nav-label">Backtest</span>
     </div>
     <div class="nav-item" data-page="options-studio" onclick="navigate('options-studio')">
-      <span class="nav-icon">📐</span><span class="nav-label">Options Studio</span>
-    </div>
-    <div class="nav-item" data-page="studio" onclick="navigate('studio')">
-      <span class="nav-icon">🪄</span><span class="nav-label">Studio</span>
+      <span class="nav-icon">📐</span><span class="nav-label">Options</span>
     </div>
     <div class="nav-item" data-page="brokers" onclick="navigate('brokers')">
       <span class="nav-icon">🔗</span><span class="nav-label">Brokers</span>
@@ -632,7 +629,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 <div class="page" id="page-backtester">
   <div class="page-header">
     <div style="display:flex;align-items:center;gap:10px">
-      <h1 class="page-title">Backtester</h1>
+      <h1 class="page-title">Backtest</h1>
       <span id="bt-source-badge" style="font-size:11px;padding:3px 10px;border-radius:10px"></span>
     </div>
     <button class="btn btn-primary" onclick="openNewBacktest()">+ New Backtest</button>
@@ -643,7 +640,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <h3 style="font-size:15px;margin:0">Run Backtest</h3>
       <div style="display:flex;gap:4px">
         <span class="filter-pill active" id="bt-mode-lib" onclick="setBtMode('library')">📚 Library</span>
-        <span class="filter-pill" id="bt-mode-builder" onclick="setBtMode('builder')">🔧 Builder</span>
+        <span class="filter-pill" id="bt-mode-builder" onclick="setBtMode('builder')">🔧 Custom Builder</span>
       </div>
     </div>
     <!-- Step 1: Broker -->
@@ -846,7 +843,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 <!-- ══════════════════════════════════════ OPTIMIZE ══════════════════════════════════════ -->
 <div class="page" id="page-optimize">
   <div style="margin-bottom:16px">
-    <button class="btn btn-outline btn-sm" onclick="navigate('studio')" style="margin-bottom:8px">&larr; Back to Studio</button>
+    <button class="btn btn-outline btn-sm" onclick="navigate('backtester');setBtMode('builder')" style="margin-bottom:8px">&larr; Back to Backtest</button>
     <h2 style="font-size:20px;font-weight:500;margin:0" id="opt-title">Optimize Strategy</h2>
     <p style="font-size:13px;color:var(--text-muted);margin:4px 0 0">Find the best parameter combination for your strategy</p>
   </div>
@@ -1943,7 +1940,7 @@ let _savedBacktests = JSON.parse(localStorage.getItem('qx_backtests') || '[]');
         _readOnly: true,
         _sharedBy: shared.name || 'Unknown',
       });
-      navigate('studio');
+      navigate('backtester'); setBtMode('builder');
       // Clean the URL without reloading
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -1971,6 +1968,12 @@ function activateLicense() {
 
 /* ── Navigation ────────────────────────────────────────────────────── */
 function navigate(page) {
+  // Redirect studio → backtester in builder mode
+  if (page === 'studio') {
+    navigate('backtester');
+    setTimeout(() => setBtMode('builder'), 50);
+    return;
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const el = document.getElementById('page-' + page);
@@ -1982,14 +1985,14 @@ function navigate(page) {
   if (page === 'bots') loadBots();
   if (page === 'home') loadHome();
   if (page === 'brokers') loadBrokerAccounts();
-  // Custom indicators now managed in Studio page, not Settings
-  if (page === 'studio') { studioLoadCustomInds().then(() => { _studioRebuildIndDropdowns(); studioRender(); }); }
   if (page === 'options-studio') optsInit();
   if (page === 'optimize') studioInitOptimize();
   if (page === 'backtester') {
     populateStrategySelects(); renderSavedBacktests();
     updateDataDepth();
     updateBacktestBadge();
+    // Init custom indicators for Builder mode
+    studioLoadCustomInds().then(() => { _studioRebuildIndDropdowns(); });
   }
   // Stop log polling when leaving bot detail
   if (page !== 'bot-detail' && _logInterval) { clearInterval(_logInterval); _logInterval = null; }
@@ -3047,7 +3050,7 @@ function bdEditInStudio() {
   STUDIO._readOnly = false;
   STUDIO._editingBotId = b.strategy_id;
   showToast('Strategy loaded in Studio. Make changes and re-deploy.', 'info');
-  navigate('studio');
+  navigate('backtester'); setBtMode('builder');
   if (typeof studioRender === 'function') studioRender();
 }
 
@@ -3549,8 +3552,21 @@ function setBtMode(mode) {
   document.getElementById('bt-mode-builder').classList.toggle('active', mode === 'builder');
   document.getElementById('bt-lib-strat').style.display = mode === 'library' ? '' : 'none';
   document.getElementById('bt-builder').style.display = mode === 'builder' ? '' : 'none';
-  if (mode === 'builder' && BLDR.entry_long.conditions.length === 0) loadBuilderTemplate('ema_cross');
-  if (mode === 'builder') { switchBldrTab('entry_long'); bldrRender(); }
+  // Hide library params when switching to builder and vice versa
+  const paramsContainer = document.getElementById('bt-params-container');
+  if (paramsContainer) paramsContainer.style.display = mode === 'library' ? '' : 'none';
+  if (mode === 'builder') {
+    if (BLDR.entry_long.conditions.length === 0) loadBuilderTemplate('ema_cross');
+    switchBldrTab('entry_long');
+    bldrRender();
+    // Render studio right panel (strategy summary + backtest button)
+    if (typeof studioRenderRight === 'function') studioRenderRight();
+  }
+  if (mode === 'library') {
+    if (paramsContainer) paramsContainer.style.display = '';
+    const btSel = document.getElementById('bt-strategy');
+    if (btSel) btOnStrategyChange(btSel.value);
+  }
 }
 
 function switchBldrTab(tab) {
@@ -5940,8 +5956,8 @@ function _optLoadResult(idx) {
       }
     }
   }
-  showToast('Parameters loaded! Returning to Studio.', 'success');
-  navigate('studio');
+  showToast('Parameters loaded! Returning to Backtest.', 'success');
+  navigate('backtester'); setBtMode('builder');
 }
 
 function studioOpenOptimize() {
