@@ -1728,7 +1728,14 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       </div>
       <div id="nb-params-container"></div>
       <div class="form-group"><label>Timeframe</label><select id="nb-timeframe"><option value="1min">1m</option><option value="5min">5m</option><option value="15min">15m</option><option value="1hour">1h</option><option value="4hour">4h</option><option value="1day" selected>1d</option></select></div>
-      <div class="form-group"><label>Allocation ($)</label><input type="number" id="nb-alloc" value="1000"></div>
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <div class="form-group">
+          <label>Lots (shares per trade)</label>
+          <input type="number" id="nb-lot-size" value="1" min="1" step="1">
+          <div id="nb-lot-warning" style="font-size:11px;color:#92400E;min-height:14px;margin-top:2px"></div>
+        </div>
+        <div class="form-group"><label>Allocation ($)</label><input type="number" id="nb-alloc" value="1000"></div>
+      </div>
       <div class="form-group"><label>Bot Name</label><input type="text" id="nb-name" placeholder="My Bot"></div>
       <div id="nb-error" style="color:var(--red);font-size:12px;min-height:18px;margin-bottom:8px"></div>
       <div style="display:flex;gap:8px">
@@ -3079,6 +3086,10 @@ function openNewBot() {
   document.getElementById('nb-name').value = '';
   document.getElementById('nb-symbol').value = '';
   document.getElementById('nb-sym-validation').innerHTML = '';
+  const lotWarn = document.getElementById('nb-lot-warning');
+  if (lotWarn) lotWarn.textContent = '';
+  const lotsInput = document.getElementById('nb-lot-size');
+  if (lotsInput) lotsInput.value = '1';
   nbRenderQuicktags(document.getElementById('nb-broker').value || 'longport');
   openModal('newbot-modal');
 }
@@ -3090,6 +3101,7 @@ async function createBot(andDeploy = false) {
   const strat = document.getElementById('nb-strategy').value;
   const tf = document.getElementById('nb-timeframe').value;
   const alloc = document.getElementById('nb-alloc').value;
+  const lots = parseInt(document.getElementById('nb-lot-size')?.value) || 1;
   const broker = document.getElementById('nb-broker').value || 'longport';
   const name = document.getElementById('nb-name').value.trim() || (strat === '__TEST__' ? 'Quick Test ' + sym : strat + ' ' + sym);
   const isDryRun = document.getElementById('nb-mode-dry')?.checked !== false;
@@ -3118,7 +3130,7 @@ async function createBot(andDeploy = false) {
       arena: sym.endsWith('.HK') ? 'HK' : sym.endsWith('.SI') ? 'SG' : 'US',
       timeframe: tf,
       conditions: conditions,
-      exit_rules: {}, risk: isTest ? {lots: 100, tp_pct: 1, sl_pct: 2} : (lib ? lib.default_risk || {} : {}),
+      exit_rules: {}, risk: isTest ? {lots: 100, tp_pct: 1, sl_pct: 2} : Object.assign({}, lib ? lib.default_risk || {} : {}, {lots}),
       is_active: false, mode: 'library', library_id: isTest ? 'QUICK_TEST' : strat,
       custom_script: '',
       broker: broker,
@@ -4696,13 +4708,17 @@ function nbSelectSymbol(symbol, name) {
       .then(info => {
         const lotSize = info.lot_size || 1;
         _nbCurrentLotSize = lotSize;
+        const lotWarn = document.getElementById('nb-lot-warning');
         if (lotSize > 1) {
-          val.innerHTML += ` <span style="color:#92400E;background:#FEF3C7;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:4px">⚠️ Min lot: ${lotSize} — set Lots ≥ ${lotSize}</span>`;
-          // Auto-fill the lots input if it exists and is still at default
+          val.innerHTML += ` <span style="color:#92400E;background:#FEF3C7;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:4px">⚠️ Min lot: ${lotSize}</span>`;
+          if (lotWarn) lotWarn.textContent = `Min board lot for ${symbol}: ${lotSize} shares`;
+          // Auto-fill lots if still at default 1
           const lotsInput = document.getElementById('nb-lot-size');
-          if (lotsInput && (parseInt(lotsInput.value) || 1) < lotSize) {
+          if (lotsInput && parseInt(lotsInput.value) < lotSize) {
             lotsInput.value = lotSize;
           }
+        } else {
+          if (lotWarn) lotWarn.textContent = '';
         }
       })
       .catch(() => {});
