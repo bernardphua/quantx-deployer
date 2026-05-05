@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form, BackgroundTasks
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
@@ -2051,6 +2051,43 @@ async def stop(req: StopReq):
     if not stopped and email not in _running_processes:
         return {"status": "stopped", "message": "No running bot found"}
     return {"status": "stopped", "brokers_stopped": stopped}
+
+
+@app.post("/api/admin/nuke-scripts")
+async def nuke_scripts(request: Request):
+    """Delete stale bot scripts from disk and reset processes DB. Emergency use only."""
+    import glob, signal as _sig
+    body = await request.json()
+    if body.get("pin") != os.environ.get("ADMIN_PIN", "quantx2025"):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    email = body.get("email", "").lower().strip()
+    email_safe = email.replace("@", "_at_").replace(".", "_")
+
+    # Kill running processes
+    killed = []
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT pid FROM processes WHERE email=? AND status='running'", (email,)
+        ).fetchall()
+        for row in rows:
+            if row["pid"]:
+                try: os.kill(row["pid"], _sig.SIGTERM)
+                except Exception: pass
+                killed.append(row["pid"])
+        # Mark all stopped
+        conn.execute("UPDATE processes SET status='stopped', pid=NULL WHERE email=?", (email,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Delete script files
+    deleted = []
+    for f in glob.glob(str(BOTS_DIR / f"{email_safe}*.py")):
+        try: os.remove(f); deleted.append(f)
+        except Exception: pass
+
+    return {"killed": killed, "deleted": deleted}
 
 
 def _kill_process_by_db(email: str):
