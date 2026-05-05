@@ -613,6 +613,45 @@ def _bt_cache_key(strategy: str, symbol: str, timeframe: str,
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def _options_bt_cache_key(config: dict) -> str:
+    """Deterministic cache key for an options backtest config.
+
+    Covers every field that affects trade outcomes.  Fields that are purely
+    cosmetic (e.g. 'dry_run', UI labels) are excluded so two students who
+    pick the same real params share the same cache entry.
+    """
+    import json
+    # Canonical subset — sorted keys so dict ordering never matters
+    canonical = {
+        "symbol":                   config.get("symbol", ""),
+        "strategy_type":            config.get("strategy_type", ""),
+        "start_date":               config.get("start_date", ""),
+        "end_date":                 config.get("end_date", ""),
+        "target_dte":               config.get("target_dte", 0),
+        "dte_tolerance":            config.get("dte_tolerance", 0),
+        "short_strike_method":      config.get("short_strike_method", ""),
+        "short_strike_value":       config.get("short_strike_value", 0),
+        "short_call_strike_method": config.get("short_call_strike_method", ""),
+        "short_call_strike_value":  config.get("short_call_strike_value", 0),
+        "wing_width_method":        config.get("wing_width_method", ""),
+        "wing_width_value":         config.get("wing_width_value", 0),
+        "call_wing_width_value":    config.get("call_wing_width_value", 0),
+        "profit_target_pct":        config.get("profit_target_pct", 0),
+        "stop_loss_mult":           config.get("stop_loss_mult", 0),
+        "entry_time_et":            config.get("entry_time_et", "09:45"),
+        "exit_time_et":             config.get("exit_time_et", "15:45"),
+        "entry_days":               sorted(config.get("entry_days") or []),
+        "entry_frequency":          config.get("entry_frequency", "DAILY"),
+        "check_exit_times":         sorted(config.get("check_exit_times") or []),
+        "contracts":                config.get("contracts", 1),
+        "commission_per_contract":  config.get("commission_per_contract", 0.65),
+        "slippage_pct":             config.get("slippage_pct", 0.0),
+        "starting_capital":         config.get("starting_capital", 10000),
+    }
+    payload = json.dumps(canonical, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def get_backtest_cache(cache_key: str, ttl_hours: int = 24):
     """Return cached result dict or None if missing/expired."""
     conn = get_db()
