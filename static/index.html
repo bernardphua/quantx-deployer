@@ -644,6 +644,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       </div>
     </div>
     <!-- Step 1: Broker -->
+    <div id="bt-library-controls">
     <div style="margin-bottom:12px">
       <label>Data Source</label>
       <div style="display:flex;gap:6px;align-items:center">
@@ -685,33 +686,24 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
     <!-- Step 3: Smart period pills -->
     <div id="bt-period-pills" style="display:flex;gap:8px;margin-bottom:12px"></div>
     <div id="bt-params-container"></div>
+    </div><!-- end bt-library-controls -->
     <!-- Strategy Builder (hidden by default) -->
+    <!-- Custom Builder = full Strategy Studio interface -->
     <div id="bt-builder" style="display:none;margin-bottom:12px">
-      <div class="form-row" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
-        <div class="form-group"><label>Strategy Name</label><input type="text" id="bldr-name" placeholder="My Strategy" value="Custom Strategy"></div>
-        <div class="form-group"><label>Template</label><select id="bldr-tpl" onchange="loadBuilderTemplate(this.value)"><option value="">— Select template —</option><option value="ema_cross">EMA Crossover</option><option value="rsi_revert">RSI Oversold/Overbought</option><option value="macd_cross">MACD Signal Cross</option><option value="bb_bounce">Bollinger Band Bounce</option><option value="momentum">Momentum Breakout</option></select></div>
+      <!-- Studio toolbar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:600;color:var(--text-secondary)">Custom Strategy Builder</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" onclick="studioLoadMySaved()">My strategies</button>
+          <button class="btn btn-outline btn-sm" onclick="studioNew()">+ New</button>
+          <button class="btn btn-sm" style="background:#5B21B6;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit" onclick="studioOpenOptimize()">⚡ Optimize</button>
+        </div>
       </div>
-      <!-- Tabs -->
-      <div style="display:flex;border-bottom:2px solid var(--border);margin-bottom:4px">
-        <button class="bldr-tab active" onclick="switchBldrTab('entry_long')">Long entry</button>
-        <button class="bldr-tab" onclick="switchBldrTab('exit_long')">Long exit</button>
-        <button class="bldr-tab" onclick="switchBldrTab('entry_short')">Short entry</button>
-        <button class="bldr-tab" onclick="switchBldrTab('exit_short')">Short exit</button>
+      <div id="studio-banner"></div>
+      <div style="display:grid;grid-template-columns:1fr 290px;gap:12px" id="studio-layout">
+        <div id="studio-left"></div>
+        <div id="studio-right"></div>
       </div>
-      <div id="bldr-tab-desc" style="font-size:12px;color:var(--text-muted);font-style:italic;margin-bottom:10px;padding:4px 0">Open a long position at bar open when ALL rules below are satisfied.</div>
-      <!-- Rule cards -->
-      <div id="bldr-rules"></div>
-      <!-- Logic + Add -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0">
-        <button onclick="bldrAddCondition(_bldrTab)" style="background:none;border:none;color:#1565C0;font-size:13px;cursor:pointer;font-family:inherit;padding:4px 0">+ Add a new rule</button>
-        <div style="font-size:12px;color:var(--text-muted)">When <label style="cursor:pointer"><input type="radio" name="bldr-logic" value="AND" checked onchange="BLDR[_bldrTab].logic='AND';bldrPreview()"> ALL</label> <label style="cursor:pointer"><input type="radio" name="bldr-logic" value="OR" onchange="BLDR[_bldrTab].logic='OR';bldrPreview()"> ANY</label> rules match</div>
-      </div>
-      <!-- Risk -->
-      <div style="background:var(--surface-2);padding:10px 14px;border-radius:6px;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">⚙️ Risk Management</div>
-        <div style="display:flex;gap:16px"><div class="form-group" style="margin:0"><label style="font-size:11px">Stop Loss %</label><input type="number" id="bldr-sl" value="5" step="0.5" style="width:80px" onchange="BLDR.risk.stop_loss_pct=parseFloat(this.value)"></div><div class="form-group" style="margin:0"><label style="font-size:11px">Take Profit %</label><input type="number" id="bldr-tp" value="10" step="0.5" style="width:80px" onchange="BLDR.risk.take_profit_pct=parseFloat(this.value)"></div></div>
-      </div>
-      <details style="margin-bottom:8px"><summary style="font-size:12px;color:var(--text-muted);cursor:pointer">Generated Strategy Code</summary><pre id="bldr-preview" style="background:#1e1e2e;color:#cdd6f4;font-family:monospace;font-size:11px;padding:12px;border-radius:6px;max-height:250px;overflow-y:auto;margin-top:6px;white-space:pre-wrap"></pre></details>
     </div>
     <!-- Rule edit modal -->
     <div id="bldr-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:2000;align-items:center;justify-content:center" onclick="if(event.target===this)closeBldrModal()">
@@ -3550,20 +3542,20 @@ function setBtMode(mode) {
   _btMode = mode;
   document.getElementById('bt-mode-lib').classList.toggle('active', mode === 'library');
   document.getElementById('bt-mode-builder').classList.toggle('active', mode === 'builder');
-  document.getElementById('bt-lib-strat').style.display = mode === 'library' ? '' : 'none';
+  // Library controls: symbol, strategy, timeframe, capital, period pills, params, run btn, realism
+  const libControls = document.getElementById('bt-library-controls');
+  if (libControls) libControls.style.display = mode === 'library' ? '' : 'none';
+  const runBtn = document.getElementById('bt-run-btn');
+  if (runBtn) runBtn.style.display = mode === 'library' ? '' : 'none';
+  // Builder: full Studio interface
   document.getElementById('bt-builder').style.display = mode === 'builder' ? '' : 'none';
-  // Hide library params when switching to builder and vice versa
-  const paramsContainer = document.getElementById('bt-params-container');
-  if (paramsContainer) paramsContainer.style.display = mode === 'library' ? '' : 'none';
   if (mode === 'builder') {
-    if (BLDR.entry_long.conditions.length === 0) loadBuilderTemplate('ema_cross');
-    switchBldrTab('entry_long');
-    bldrRender();
-    // Render studio right panel (strategy summary + backtest button)
-    if (typeof studioRenderRight === 'function') studioRenderRight();
+    studioLoadCustomInds().then(() => {
+      _studioRebuildIndDropdowns();
+      studioRender();
+    });
   }
   if (mode === 'library') {
-    if (paramsContainer) paramsContainer.style.display = '';
     const btSel = document.getElementById('bt-strategy');
     if (btSel) btOnStrategyChange(btSel.value);
   }
