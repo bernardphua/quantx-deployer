@@ -7424,7 +7424,7 @@ async function optsRunBacktest() {
   _optsAbortController = new AbortController();
 
   try {
-    const r = await fetch(API + '/api/options/backtest', {
+    const r = await fetch(API + '/api/options/backtest-fast', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(config),
