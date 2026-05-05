@@ -533,6 +533,7 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
       <h1 class="page-title" id="bd-name">Bot Detail</h1>
       <span class="badge badge-blue" id="bd-broker">LongPort</span>
       <span class="badge" id="bd-symbol" style="background:var(--surface-2);color:var(--text-secondary)">—</span>
+      <span id="bd-mode-badge" style="display:none"></span>
     </div>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="bd-toggle-btn"></span>
@@ -559,7 +560,10 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
     <div class="chart-container"><canvas id="bd-chart"></canvas></div>
     <!-- Live P/L -->
     <div class="card" style="margin-top:16px">
-      <h4 style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text-secondary)">Live Trading</h4>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h4 style="font-size:13px;font-weight:600;margin:0;color:var(--text-secondary)">Live Trading</h4>
+        <span id="bd-live-mode-label"></span>
+      </div>
       <div class="stat-row" style="grid-template-columns:repeat(3,1fr)">
         <div class="stat-card"><div class="stat-label">Total P/L</div><div class="stat-value" id="bd-live-pnl">—</div></div>
         <div class="stat-card"><div class="stat-label">Trade Count</div><div class="stat-value" id="bd-live-count">0</div></div>
@@ -3305,10 +3309,37 @@ function bdEditInStudio() {
 
 async function loadBotLiveTrades() {
   if (!_currentBot || !EMAIL) return;
+  const isDry = !!_currentBot.dry_run;
+
+  // Update mode badge in header
+  const modeBadge = document.getElementById('bd-mode-badge');
+  if (modeBadge) {
+    if (_currentBot.is_active) {
+      modeBadge.style.display = '';
+      modeBadge.innerHTML = isDry
+        ? '<span style="background:#EDE9FE;color:#6D28D9;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">🧪 Dry Run</span>'
+        : '<span style="background:#DCFCE7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">🔴 Live</span>';
+    } else {
+      modeBadge.style.display = 'none';
+    }
+  }
+
+  // Update Live Trading card label
+  const modeLabel = document.getElementById('bd-live-mode-label');
+  if (modeLabel) {
+    modeLabel.innerHTML = isDry && _currentBot.is_active
+      ? '<span style="background:#EDE9FE;color:#6D28D9;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600">SIMULATED — no real orders</span>'
+      : '';
+  }
+
   try {
     const r = await fetch(API + '/api/trades/' + encodeURIComponent(EMAIL));
     const all = await r.json();
-    const trades = (Array.isArray(all) ? all : []).filter(t => t.strategy_id === _currentBot.strategy_id);
+    // API returns {trades: [...], by_strategy: {...}} — not a plain array
+    const allTrades = all.trades || (Array.isArray(all) ? all : []);
+    const trades = allTrades.filter(t => t.strategy_id === _currentBot.strategy_id);
+    // Only count sells (pnl > 0 entries) for P/L — skip buys (pnl=0)
+    const sellTrades = trades.filter(t => ['sld','sell','DRY_SLD'].includes((t.side||'').toLowerCase()) || t.pnl > 0);
     if (trades.length === 0) {
       document.getElementById('bd-live-empty').style.display = '';
       document.getElementById('bd-live-pnl').textContent = '—';
@@ -3316,11 +3347,14 @@ async function loadBotLiveTrades() {
       document.getElementById('bd-live-last').textContent = '—';
     } else {
       document.getElementById('bd-live-empty').style.display = 'none';
-      const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+      const totalPnl = sellTrades.reduce((s, t) => s + (t.pnl || 0), 0);
       document.getElementById('bd-live-pnl').textContent = '$' + totalPnl.toFixed(2);
       document.getElementById('bd-live-pnl').className = 'stat-value ' + (totalPnl >= 0 ? 'green' : 'red');
       document.getElementById('bd-live-count').textContent = trades.length;
-      document.getElementById('bd-live-last').textContent = trades[0].timestamp || '—';
+      // Format last trade timestamp nicely
+      const ts = trades[0].timestamp || '';
+      const lastTs = ts ? new Date(ts).toLocaleTimeString('en-SG', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+      document.getElementById('bd-live-last').textContent = lastTs;
     }
   } catch (e) {
     document.getElementById('bd-live-empty').style.display = '';
@@ -3380,6 +3414,19 @@ function updateBdToggleBtn() {
   const el = document.getElementById('bd-toggle-btn');
   if (!el || !_currentBot) return;
   el.innerHTML = _renderDeployBtn(_currentBot);
+  // Refresh mode badge
+  const modeBadge = document.getElementById('bd-mode-badge');
+  if (modeBadge) {
+    const isDry = !!_currentBot.dry_run;
+    if (_currentBot.is_active) {
+      modeBadge.style.display = '';
+      modeBadge.innerHTML = isDry
+        ? '<span style="background:#EDE9FE;color:#6D28D9;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">🧪 Dry Run</span>'
+        : '<span style="background:#DCFCE7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">🔴 Live</span>';
+    } else {
+      modeBadge.style.display = 'none';
+    }
+  }
 }
 
 async function saveBotSettings() {
