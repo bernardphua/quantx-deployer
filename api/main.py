@@ -1980,16 +1980,12 @@ async def deploy(req: DeployReq):
     dry_run = bool(getattr(req, "dry_run", False))
     try:
         script_path, log_path = generate_lp_master_bot(
-            email, lp_strats, lp_creds, initial_states=existing_states, dry_run=dry_run)
+            email, lp_strats, lp_creds, dry_run=dry_run)
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
         _log.error("[DEPLOY] LP master gen failed: %s\n%s", e, tb)
-        return {
-            "status": "error",
-            "error": f"Bot script generation failed: {e}",
-            "detail": tb,
-        }
+        raise HTTPException(400, f"Bot script generation failed: {e}\n\n{tb}")
 
     _log.info("[DEPLOY] Running LP master: %s | Log: %s", script_path, log_path)
 

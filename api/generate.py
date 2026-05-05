@@ -391,7 +391,8 @@ def generate_ibkr_bot_prod(email: str, strategy_config: dict,
 # ── LongPort master bot generator (shared connections) ─────────────────────
 
 def generate_lp_master_bot(email: str, strategies: list[dict],
-                           lp_credentials: dict) -> tuple[str, str]:
+                           lp_credentials: dict,
+                           dry_run: bool = False) -> tuple[str, str]:
     """Generate one LP master bot handling multiple strategies with shared connections.
     Returns (script_path, log_path)."""
     BOTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -467,6 +468,7 @@ def generate_lp_master_bot(email: str, strategies: list[dict],
         '__STRATEGY_COUNT__': str(len(strategies_meta)),
         '__STRATEGIES_LIST__': strats_json,
         '__SIGNAL_FUNCTIONS__': "\n".join(signal_functions),
+        '__DRY_RUN__': 'True' if dry_run else 'False',
     }
 
     for placeholder, value in replacements.items():
