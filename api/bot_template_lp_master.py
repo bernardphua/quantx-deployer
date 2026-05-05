@@ -243,7 +243,19 @@ def hk_tick_round_sell(p):
     return round(math.ceil(p / tick) * tick, 4)
 
 
-# ── Trade CSV logging ─────────────────────────────────────────────────────
+def calc_hk_fees(price, qty, side):
+    """
+    LongBridge HK stock fees. side: 'buy' or 'sell'.
+    HK abolished sell-side stamp duty Oct 2023 — buys only.
+    """
+    value      = price * qty
+    brokerage  = max(value * 0.0003, 3.0)        # 0.03% min HKD 3
+    platform   = min(15.0, value * 0.0003)        # HKD 15 capped at 0.03%
+    sfc_levy   = value * 0.000027                 # SFC levy 0.0027%
+    hkex_fee   = value * 0.00005                  # HKEX trading fee 0.005%
+    ccass      = min(value * 0.00002, 100.0)      # CCASS 0.002% max HKD100
+    stamp      = value * 0.001 if side == 'buy' else 0.0  # stamp duty buy only
+    return round(brokerage + platform + sfc_levy + hkex_fee + ccass + stamp, 2)
 
 CSV_FIELDS = ['execId','order_id','datetime','bar_date','strategy','symbol',
               'side','quantity','price','commission','pnl','signal',
@@ -379,6 +391,7 @@ class GridState:
         self.initialized      = False
         self._init_lock       = threading.Lock()
         self.tracked_order_ids = set()
+        self._processed_oids  = set()   # guard against duplicate on_fill calls
 
         logger.info('[%s] GridState init: %s levels=%d spacing=%.1f%% tp=%.1f%% sl_boundary=%.1f%% lots=%d',
                     self.sid, self.symbol, self.grid_levels_n,
@@ -444,6 +457,14 @@ class GridState:
     # ── Called when an order is filled ─────────────────────────────────────
 
     def on_fill(self, order_id, fill_price, fill_qty, side_str):
+        # Guard against duplicate callbacks (dry run threads + quote ticks)
+        if order_id in self._processed_oids:
+            return
+        self._processed_oids.add(order_id)
+        # Prevent set growing unbounded
+        if len(self._processed_oids) > 2000:
+            self._processed_oids = set(list(self._processed_oids)[-500:])
+
         for lv in self.buy_levels:
             # BUY fill → place TP SELL
             if lv['order_id'] == order_id and not lv['filled']:
@@ -452,10 +473,12 @@ class GridState:
                 self.position_qty += fill_qty
                 self.tracked_order_ids.discard(order_id)
 
-                pnl = 0.0
+                # Fee deduction (HK stocks only for now)
+                buy_fees = calc_hk_fees(fill_price, fill_qty, 'buy') if self.arena == 'HK' else 0.0
+                pnl = -buy_fees  # cost of entry
                 log_trade(self.sid, self.symbol, 'BOT', fill_qty, fill_price, pnl,
                           signal='grid_entry', bar_date=str(datetime.utcnow()),
-                          indicator_values=f'level={lv["level_id"]},cmp={self.cmp_reference:.4f}',
+                          indicator_values=f'level={lv["level_id"]},cmp={self.cmp_reference:.4f},fees={buy_fees:.2f}',
                           bar_close=fill_price, order_id=order_id)
 
                 if self.arena == 'HK':
@@ -470,25 +493,28 @@ class GridState:
                 if tp_oid:
                     self.tracked_order_ids.add(tp_oid)
 
-                logger.info('[%s] [%s] Bought @ %.4f → TP SELL @ %.4f',
-                            self.sid, lv['level_id'], fill_price, tp_price)
+                logger.info('[%s] [%s] Bought @ %.4f → TP SELL @ %.4f (buy fees HKD%.2f)',
+                            self.sid, lv['level_id'], fill_price, tp_price, buy_fees)
                 return
 
             # SELL fill → record PnL + replenish buy
             if lv['tp_order_id'] == order_id and lv['filled']:
                 entry_p = lv['entry_fill_price']
-                pnl = (fill_price - entry_p) * fill_qty
+                sell_fees = calc_hk_fees(fill_price, fill_qty, 'sell') if self.arena == 'HK' else 0.0
+                gross_pnl = (fill_price - entry_p) * fill_qty
+                net_pnl   = gross_pnl - sell_fees
                 self.position_qty -= fill_qty
                 self.completed_cycles += 1
                 self.tracked_order_ids.discard(order_id)
 
-                log_trade(self.sid, self.symbol, 'SLD', fill_qty, fill_price, round(pnl, 4),
+                log_trade(self.sid, self.symbol, 'SLD', fill_qty, fill_price, round(net_pnl, 4),
                           signal='grid_exit', bar_date=str(datetime.utcnow()),
-                          indicator_values=f'level={lv["level_id"]},cycle={self.completed_cycles}',
+                          indicator_values=f'level={lv["level_id"]},cycle={self.completed_cycles},gross={gross_pnl:.2f},fees={sell_fees:.2f}',
                           bar_close=fill_price, order_id=order_id)
 
-                logger.info('[%s] [%s] Sold @ %.4f PnL=$%.2f cycle#%d',
-                            self.sid, lv['level_id'], fill_price, pnl, self.completed_cycles)
+                logger.info('[%s] [%s] Sold @ %.4f Gross=$%.2f Fees=HKD%.2f Net=$%.2f cycle#%d',
+                            self.sid, lv['level_id'], fill_price,
+                            gross_pnl, sell_fees, net_pnl, self.completed_cycles)
 
                 # Replenish buy level
                 lv['filled'] = False
