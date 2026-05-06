@@ -1262,7 +1262,7 @@ async def options_backtest_fast(request: Request):
                 _os.environ.setdefault("MODAL_TOKEN_SECRET", _os.environ.get("MODAL_TOKEN_SECRET", ""))
                 _log.warning("[Modal] token_id present: %s", bool(_os.environ.get("MODAL_TOKEN_ID")))
                 import modal as _modal
-                run_backtest_slice = _modal.Function.lookup("quantx-precompute", "run_backtest_slice")
+                run_backtest_slice = _modal.Function.from_name("quantx-precompute", "run_backtest_slice")
                 _log.warning("[Modal] looked up run_backtest_slice OK, dispatching %d slices", len(slices))
                 results = list(run_backtest_slice.map(slices, return_exceptions=True))
                 _log.warning("[Modal] map complete, %d results", len(results))
