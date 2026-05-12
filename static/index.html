@@ -3811,6 +3811,12 @@ const PERIOD_DEFS = [
   {key:"10Y", bars:2520,  months:120},
   {key:"Max", bars:99999, months:0},
 ];
+// Bars per trading day by timeframe (used to scale PERIOD_DEFS for intraday)
+const BARS_PER_DAY = {
+  "1min": 390, "3min": 130, "5min": 78, "10min": 39,
+  "15min": 26, "30min": 13, "1hour": 7, "2hour": 4,
+  "4hour": 2,  "1day": 1,  "1week": 0.2,
+};
 let _btBroker = 'longport';
 
 function setBtBroker(broker) {
@@ -3864,12 +3870,14 @@ function updatePeriodPills() {
   const container = document.getElementById('bt-period-pills');
   if (!container) return;
 
+  // Scale bar counts for intraday timeframes
+  const _bpd = BARS_PER_DAY[tf] || 1;
   let bestEnabled = null;
   const pills = PERIOD_DEFS.map(p => {
     const enabled = p.months === 0 || depth.months >= p.months;
     if (enabled && p.key !== 'Max') bestEnabled = p;
     const label = p.key === 'Max' ? 'Max (' + _monthsLabel(depth.months) + ')' : p.key;
-    const limit = p.key === 'Max' ? depth.bars : p.bars;
+    const limit = p.key === 'Max' ? depth.bars : Math.min(depth.bars, Math.round(p.bars * _bpd));
     const cls = enabled ? 'filter-pill has-data' : 'filter-pill disabled';
     const tip = enabled ? '' : ' title="Only ' + depth.label + ' available for this timeframe"';
     return {html: '<span class="' + cls + '" data-limit="' + limit + '"' + tip
@@ -3880,8 +3888,9 @@ function updatePeriodPills() {
 
   // Auto-select largest enabled non-Max
   if (bestEnabled) {
-    _btLimit = bestEnabled.bars;
-    const active = container.querySelector('[data-limit="' + bestEnabled.bars + '"]');
+    const _autoLimit = Math.min(depth.bars, Math.round(bestEnabled.bars * _bpd));
+    _btLimit = _autoLimit;
+    const active = container.querySelector('[data-limit="' + _autoLimit + '"]');
     if (active) active.classList.add('active');
   } else {
     // Only Max available
