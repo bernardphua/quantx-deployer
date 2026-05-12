@@ -953,6 +953,96 @@ async def backtest_optimize(body: OptimizeReq):
         raise HTTPException(400, str(e))
 
 
+
+
+@app.post("/api/backtest/optimize-stream-lib")
+async def backtest_optimize_stream_lib(request: Request):
+    import itertools as _it
+    body = await request.json()
+    symbol      = body.get("symbol", "")
+    timeframe   = body.get("timeframe", "1day")
+    strategy    = body.get("strategy", "")
+    param_grid  = body.get("param_grid", {})
+    initial_capital = float(body.get("initial_capital", 10000))
+    limit       = int(body.get("limit", 1260))
+    email       = body.get("email", "")
+    enable_wf   = body.get("enable_walk_forward", True)
+    enable_mc   = body.get("enable_monte_carlo", True)
+    broker_hint = (body.get("broker_hint") or "").lower()
+
+    if not symbol or not strategy or not param_grid:
+        raise HTTPException(400, "symbol, strategy, param_grid required")
+
+    keys   = list(param_grid.keys())
+    combos = [dict(zip(keys, c)) for c in _it.product(*param_grid.values())]
+    total  = len(combos)
+
+    from api.data_manager import fetch_bars_waterfall_sync
+    from api.backtest import run_backtest, _walk_forward_test, _monte_carlo_test
+
+    def _get_bars():
+        lp_creds = None
+        if email and broker_hint != "yahoo":
+            student = get_student(email.lower().strip())
+            if student and student.get("app_key"):
+                lp_creds = {"app_key": student["app_key"],
+                            "app_secret": student["app_secret"],
+                            "access_token": student["access_token"]}
+        return fetch_bars_waterfall_sync(
+            symbol=symbol, timeframe=timeframe, limit=limit,
+            db_path=str(DB_PATH), lp_credentials=lp_creds)
+
+    bars_result = await asyncio.get_event_loop().run_in_executor(_executor, _get_bars)
+    bars = bars_result.get("bars", [])
+    if len(bars) < 50:
+        raise HTTPException(400, "Insufficient data: %d bars" % len(bars))
+
+    def event_stream():
+        import time as _t
+        t0 = _t.time()
+        yield "data: " + json.dumps({"type": "start", "total": total,
+            "message": "Starting %d combinations..." % total}) + "\n\n"
+        results = []
+        for idx, params in enumerate(combos):
+            elapsed = round(_t.time() - t0, 1)
+            eta = round((elapsed / max(idx, 1)) * (total - idx), 1) if idx > 0 else 0
+            pstr = ", ".join("%s=%s" % (k, v) for k, v in list(params.items())[:3])
+            yield "data: " + json.dumps({"type": "progress", "done": idx,
+                "total": total, "pct": int(idx / total * 100),
+                "message": "Testing %d/%d: %s" % (idx+1, total, pstr),
+                "elapsed": elapsed, "eta": eta}) + "\n\n"
+            try:
+                r = run_backtest(bars, strategy, params, initial_capital)
+                entry = {"params": params, "metrics": r["metrics"],
+                         "walk_forward": None, "monte_carlo": None}
+                if enable_wf:
+                    entry["walk_forward"] = _walk_forward_test(
+                        bars, strategy, params, initial_capital)
+                if enable_mc:
+                    entry["monte_carlo"] = _monte_carlo_test(
+                        r.get("trades", []), initial_capital)
+                results.append(entry)
+                yield "data: " + json.dumps({"type": "result", "index": idx,
+                    "params": entry["params"], "metrics": entry["metrics"],
+                    "walk_forward": entry["walk_forward"],
+                    "monte_carlo": entry["monte_carlo"]}) + "\n\n"
+            except Exception as exc:
+                yield "data: " + json.dumps({"type": "combo_error", "index": idx,
+                    "params": params, "error": str(exc)}) + "\n\n"
+
+        elapsed = round(_t.time() - t0, 1)
+        results.sort(key=lambda x: (
+            0 if (x.get("walk_forward") or {}).get("pass") else 1,
+            -(x["metrics"].get("sharpe_ratio", 0) or 0)))
+        yield "data: " + json.dumps({"type": "complete",
+            "total_results": len(results), "elapsed": elapsed,
+            "results": results,
+            "message": "Done! %d combinations in %.1fs" % (total, elapsed)}) + "\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/api/backtest/run-script")
 async def backtest_run_script(body: ScriptBacktestReq):
     from api.backtest import run_backtest_script

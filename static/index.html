@@ -2349,8 +2349,9 @@ async function libRunOptimize() {
   let mi = 0;
   if (progMsg) progMsg.textContent = msgs[0];
   const msgInt = setInterval(() => { mi = (mi+1) % msgs.length; if (progMsg) progMsg.textContent = msgs[mi]; }, 3000);
+  clearInterval(msgInt);
   try {
-    const r = await fetch(API + '/api/backtest/optimize', {
+    const resp = await fetch(API + '/api/backtest/optimize-stream-lib', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         symbol: sym, timeframe: tf, strategy: strat,
@@ -2360,9 +2361,39 @@ async function libRunOptimize() {
         email: EMAIL || '', broker_hint: document.getElementById('bt-broker-yahoo')?.classList.contains('active') ? 'yahoo' : 'longport',
       })
     });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || 'Optimization failed');
-    _libOptRenderResults(d, enableWF, enableMC);
+    if (!resp.ok) throw new Error('Optimization failed: ' + resp.status);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let _sseBuffer = '';
+    const _libAllResults = [];
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      _sseBuffer += decoder.decode(value, {stream: true});
+      const _sseLines = _sseBuffer.split('\n');
+      _sseBuffer = _sseLines.pop();
+      for (const _sseLine of _sseLines) {
+        if (!_sseLine.startsWith('data: ')) continue;
+        try {
+          const ev = JSON.parse(_sseLine.slice(6));
+          if (ev.type === 'start') {
+            if (progMsg) progMsg.textContent = ev.message || '';
+          } else if (ev.type === 'progress') {
+            const _eta = ev.eta > 0 ? ' · ETA ~' + Math.round(ev.eta) + 's' : '';
+            if (progMsg) progMsg.textContent = ev.done + ' / ' + ev.total + ' combinations' + _eta;
+          } else if (ev.type === 'result') {
+            _libAllResults.push(ev);
+          } else if (ev.type === 'complete') {
+            const _allR = (ev.results || _libAllResults).map(function(r) {
+              return {params:r.params, metrics:r.metrics, walk_forward:r.walk_forward, monte_carlo:r.monte_carlo};
+            });
+            _libOptRenderResults({results: _allR, total: ev.total_results}, enableWF, enableMC);
+          } else if (ev.type === 'error') {
+            throw new Error(ev.message);
+          }
+        } catch(_pe) { if (_pe.message && !_pe.message.includes('JSON')) throw _pe; }
+      }
+    }
   } catch(e) {
     showToast('Optimization error: ' + e.message, 'error');
   } finally {
