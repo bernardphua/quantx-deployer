@@ -1,3 +1,5 @@
+# DEPRECATED: IBKR support removed. This file is kept for reference only.
+# QuantX Deployer now supports LongPort only.
 """QuantX — IBKR connector wrapping ib_insync."""
 
 try:

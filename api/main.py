@@ -20,8 +20,8 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form, BackgroundTasks
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form, BackgroundTasks, Body
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
@@ -35,14 +35,12 @@ from api.database import (
     get_db, save_student, get_student, save_strategy, get_strategies,
     delete_strategy, toggle_strategy, save_process, update_process_status,
     get_latest_process, log_trade, get_trades, decrypt,
-    save_ibkr_config, get_ibkr_config,
     get_broker_accounts, get_broker_account, save_broker_account,
     update_broker_account_status, delete_broker_account, get_broker_credentials,
 )
 # Dual-mode init: PostgreSQL when DATABASE_URL is set, SQLite otherwise.
 from api.db_postgres import init_db, USE_POSTGRES
-from api.generate import (generate_master_bot, generate_ibkr_bot, generate_simple_lp_bot,
-                          generate_simple_ibkr_bot, generate_ibkr_bot_prod,
+from api.generate import (generate_master_bot, generate_simple_lp_bot,
                           generate_lp_master_bot, library_id_to_conditions)
 
 _log = _logging.getLogger("quantx-deployer")
@@ -164,13 +162,7 @@ class StrategyReq(BaseModel):
     library_id: str = ""
     custom_script: str = ""
     broker: str = "longport"
-
-
-class IBKRConfigReq(BaseModel):
-    email: str
-    host: str = "127.0.0.1"
-    port: int = 7497
-    client_id: int = 1
+    is_dry_run: bool = False
 
 
 class ValidateScriptReq(BaseModel):
@@ -179,6 +171,7 @@ class ValidateScriptReq(BaseModel):
 
 class DeployReq(BaseModel):
     email: str
+    dry_run: bool = False
 
 
 class StopReq(BaseModel):
@@ -201,7 +194,6 @@ class BacktestReq(BaseModel):
     commission_pct: float = 0.0
     slippage_pct: float = 0.0
     email: str = ""
-    use_ibkr: bool = False
     skip_cache: bool = False
     broker_hint: str = ""
 
@@ -213,6 +205,8 @@ class OptimizeReq(BaseModel):
     param_grid: dict = {}
     initial_capital: float = 10000
     limit: int = 1260
+    email: str = ""
+    broker_hint: str = ""
 
 
 class ScriptBacktestReq(BaseModel):
@@ -223,7 +217,6 @@ class ScriptBacktestReq(BaseModel):
     limit: int = 1260
     params: dict = {}
     email: str = ""
-    use_ibkr: bool = False
     skip_cache: bool = False
     broker_hint: str = ""
 
@@ -246,17 +239,6 @@ class ScreenNowReq(BaseModel):
     bot_type: str
     arena: str = "US"
     custom_tickers: list = []
-
-
-class DownloadScriptReq(BaseModel):
-    email: str
-    library_id: str
-    strategy_id: str = ""
-    symbol: str = "TQQQ.US"
-    arena: str = "US"
-    timeframe: str = "5m"
-    params: dict = {}
-    risk: dict = {}
 
 
 class TradeReq(BaseModel):
@@ -304,6 +286,13 @@ def _auto_restart_bots():
     restarted = 0
     for row in rows:
         script = row["master_script_path"]
+        # Skip if already running in this server instance
+        if row["email"] in _running_processes:
+            existing = _running_processes[row["email"]]
+            if existing.poll() is None:  # still alive
+                _log.info("[STARTUP] Bot for %s already running (PID %s), skipping",
+                          row["email"], existing.pid)
+                continue
         if script and Path(script).exists():
             try:
                 proc = _launch_bot(script, row["log_path"])
@@ -735,32 +724,6 @@ async def me(email: str = Query("")):
     }
 
 
-@app.post("/api/download-script")
-async def download_script(req: DownloadScriptReq):
-    email = req.email.lower().strip()
-    student = get_student(email)
-    if not student:
-        raise HTTPException(404, "Student not found. Register first.")
-    strat = {
-        "strategy_id": req.strategy_id or f"{req.library_id}_DL",
-        "strategy_name": req.library_id.replace("_", " ").title(),
-        "symbol": req.symbol, "arena": req.arena.upper(),
-        "timeframe": req.timeframe, "mode": "library",
-        "library_id": req.library_id,
-        "conditions": {"type": req.library_id, "params": req.params},
-        "exit_rules": {}, "risk": req.risk or {"tp_pct": 0.5, "sl_pct": 0.3, "lots": 1},
-        "is_active": True, "custom_script": "",
-    }
-    path = generate_master_bot(email, [strat], student)
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-    from datetime import date
-    header = f'#!/usr/bin/env python3\n# QuantX Strategy Bot - {req.library_id}\n# Symbol: {req.symbol} | Generated: {date.today()} | Student: {email}\n# Run: pip install longport httpx && python this_file.py\n\n'
-    filename = f"quantx_{req.library_id.lower()}_{req.symbol.replace('.','_').lower()}_{date.today()}.py"
-    return Response(content=header + content, media_type="text/plain",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
-
-
 def _safe_json(row, key):
     """Safely parse a JSON column from sqlite3.Row."""
     try:
@@ -867,12 +830,21 @@ async def log_bot_trade(strategy_id: str, body: dict):
 async def backtest_run(body: BacktestReq):
     from api.backtest import run_backtest
     from api.data_manager import fetch_bars_waterfall_sync
+    from api.database import _bt_cache_key, get_backtest_cache, set_backtest_cache
+
+    # ── Cache check (skip if user explicitly asked to skip) ──
+    if not body.skip_cache:
+        ck = _bt_cache_key(body.strategy, body.symbol, body.timeframe,
+                           body.params, body.limit,
+                           body.commission_pct, body.slippage_pct)
+        cached = get_backtest_cache(ck)
+        if cached:
+            cached["_cached"] = True
+            return cached
+
     def _run():
         # Get credentials if email provided, respecting broker_hint
         hint = (body.broker_hint or "").lower()
-        ibkr_cfg = None
-        if body.email and (body.use_ibkr or hint == "ibkr"):
-            ibkr_cfg = get_ibkr_config(body.email.lower().strip())
         lp_creds = None
         if body.email and hint != "yahoo":
             student = get_student(body.email.lower().strip())
@@ -882,12 +854,11 @@ async def backtest_run(body: BacktestReq):
                             "access_token": student["access_token"]}
         # If user explicitly chose Yahoo, skip broker data sources
         if hint == "yahoo":
-            ibkr_cfg = None
             lp_creds = None
         # Waterfall fetch
         data = fetch_bars_waterfall_sync(
             symbol=body.symbol, timeframe=body.timeframe, limit=body.limit,
-            db_path=str(DB_PATH), ibkr_config=ibkr_cfg, lp_credentials=lp_creds,
+            db_path=str(DB_PATH), lp_credentials=lp_creds,
             skip_cache=body.skip_cache)
         if data["error"]:
             return {"status": "error", "message": data["error"],
@@ -913,6 +884,12 @@ async def backtest_run(body: BacktestReq):
         return result
     try:
         result = await asyncio.get_event_loop().run_in_executor(_executor, _run)
+        # Store in cache if successful (don't cache errors)
+        if not body.skip_cache and result.get("status") != "error":
+            ck = _bt_cache_key(body.strategy, body.symbol, body.timeframe,
+                               body.params, body.limit,
+                               body.commission_pct, body.slippage_pct)
+            set_backtest_cache(ck, result, strategy=body.strategy, symbol=body.symbol)
         return result
     except Exception as e:
         raise HTTPException(400, str(e))
@@ -920,18 +897,150 @@ async def backtest_run(body: BacktestReq):
 
 @app.post("/api/backtest/optimize")
 async def backtest_optimize(body: OptimizeReq):
-    from api.backtest import fetch_ohlcv, run_optimization
+    from api.backtest import run_optimization
+    from api.data_manager import fetch_bars_waterfall_sync
+    from api.database import _bt_cache_key, get_backtest_cache, set_backtest_cache
+
+    # ── Cache check for optimize ──
+    opt_cache_key = _bt_cache_key(
+        body.strategy, body.symbol, body.timeframe,
+        body.param_grid, body.limit
+    )
+    cached = get_backtest_cache(opt_cache_key, ttl_hours=24)
+    if cached:
+        cached["_cached"] = True
+        return cached
+
     def _run():
-        bars, source = fetch_ohlcv(body.symbol, body.timeframe, body.limit)
+        # Resolve LongPort credentials (same pattern as /api/backtest/run)
+        hint = (body.broker_hint or "").lower()
+        lp_creds = None
+        if body.email and hint != "yahoo":
+            student = get_student(body.email.lower().strip())
+            if student and student.get("app_key"):
+                lp_creds = {
+                    "app_key": student["app_key"],
+                    "app_secret": student["app_secret"],
+                    "access_token": student["access_token"],
+                }
+        if hint == "yahoo":
+            lp_creds = None
+
+        # Waterfall: LongPort → R2 → Yahoo → FMP
+        data = fetch_bars_waterfall_sync(
+            symbol=body.symbol, timeframe=body.timeframe, limit=body.limit,
+            db_path=str(DB_PATH), lp_credentials=lp_creds)
+        if data["error"]:
+            raise ValueError(data["error"])
+        bars = data["bars"]
+        if len(bars) < 50:
+            raise ValueError(f"Only {len(bars)} bars available for {body.symbol}/{body.timeframe}, need 50+.")
+
         result = run_optimization(bars, body.strategy, body.param_grid, body.initial_capital)
-        result["source"] = source
+        result["source"] = data["source"]
+        result["source_message"] = data["source_message"]
         result["symbol"] = body.symbol
         return result
+
     try:
         result = await asyncio.get_event_loop().run_in_executor(_executor, _run)
+        # Cache successful optimization results
+        if result.get("results"):
+            set_backtest_cache(opt_cache_key, result,
+                               strategy=body.strategy, symbol=body.symbol)
         return result
     except Exception as e:
         raise HTTPException(400, str(e))
+
+
+
+
+@app.post("/api/backtest/optimize-stream-lib")
+async def backtest_optimize_stream_lib(request: Request):
+    import itertools as _it
+    body = await request.json()
+    symbol      = body.get("symbol", "")
+    timeframe   = body.get("timeframe", "1day")
+    strategy    = body.get("strategy", "")
+    param_grid  = body.get("param_grid", {})
+    initial_capital = float(body.get("initial_capital", 10000))
+    limit       = int(body.get("limit", 1260))
+    email       = body.get("email", "")
+    enable_wf   = body.get("enable_walk_forward", True)
+    enable_mc   = body.get("enable_monte_carlo", True)
+    broker_hint = (body.get("broker_hint") or "").lower()
+
+    if not symbol or not strategy or not param_grid:
+        raise HTTPException(400, "symbol, strategy, param_grid required")
+
+    keys   = list(param_grid.keys())
+    combos = [dict(zip(keys, c)) for c in _it.product(*param_grid.values())]
+    total  = len(combos)
+
+    from api.data_manager import fetch_bars_waterfall_sync
+    from api.backtest import run_backtest, _walk_forward_test, _monte_carlo_test
+
+    def _get_bars():
+        lp_creds = None
+        if email and broker_hint != "yahoo":
+            student = get_student(email.lower().strip())
+            if student and student.get("app_key"):
+                lp_creds = {"app_key": student["app_key"],
+                            "app_secret": student["app_secret"],
+                            "access_token": student["access_token"]}
+        return fetch_bars_waterfall_sync(
+            symbol=symbol, timeframe=timeframe, limit=limit,
+            db_path=str(DB_PATH), lp_credentials=lp_creds)
+
+    bars_result = await asyncio.get_event_loop().run_in_executor(_executor, _get_bars)
+    bars = bars_result.get("bars", [])
+    if len(bars) < 50:
+        raise HTTPException(400, "Insufficient data: %d bars" % len(bars))
+
+    def event_stream():
+        import time as _t
+        t0 = _t.time()
+        yield "data: " + json.dumps({"type": "start", "total": total,
+            "message": "Starting %d combinations..." % total}) + "\n\n"
+        results = []
+        for idx, params in enumerate(combos):
+            elapsed = round(_t.time() - t0, 1)
+            eta = round((elapsed / max(idx, 1)) * (total - idx), 1) if idx > 0 else 0
+            pstr = ", ".join("%s=%s" % (k, v) for k, v in list(params.items())[:3])
+            yield "data: " + json.dumps({"type": "progress", "done": idx,
+                "total": total, "pct": int(idx / total * 100),
+                "message": "Testing %d/%d: %s" % (idx+1, total, pstr),
+                "elapsed": elapsed, "eta": eta}) + "\n\n"
+            try:
+                r = run_backtest(bars, strategy, params, initial_capital)
+                entry = {"params": params, "metrics": r["metrics"],
+                         "walk_forward": None, "monte_carlo": None}
+                if enable_wf:
+                    entry["walk_forward"] = _walk_forward_test(
+                        bars, strategy, params, initial_capital)
+                if enable_mc:
+                    entry["monte_carlo"] = _monte_carlo_test(
+                        r.get("trades", []), initial_capital)
+                results.append(entry)
+                yield "data: " + json.dumps({"type": "result", "index": idx,
+                    "params": entry["params"], "metrics": entry["metrics"],
+                    "walk_forward": entry["walk_forward"],
+                    "monte_carlo": entry["monte_carlo"]}) + "\n\n"
+            except Exception as exc:
+                yield "data: " + json.dumps({"type": "combo_error", "index": idx,
+                    "params": params, "error": str(exc)}) + "\n\n"
+
+        elapsed = round(_t.time() - t0, 1)
+        results.sort(key=lambda x: (
+            0 if (x.get("walk_forward") or {}).get("pass") else 1,
+            -(x["metrics"].get("sharpe_ratio", 0) or 0)))
+        yield "data: " + json.dumps({"type": "complete",
+            "total_results": len(results), "elapsed": elapsed,
+            "results": results,
+            "message": "Done! %d combinations in %.1fs" % (total, elapsed)}) + "\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/backtest/run-script")
@@ -940,9 +1049,6 @@ async def backtest_run_script(body: ScriptBacktestReq):
     from api.data_manager import fetch_bars_waterfall_sync
     def _run():
         hint = (body.broker_hint or "").lower()
-        ibkr_cfg = None
-        if body.email and (body.use_ibkr or hint == "ibkr"):
-            ibkr_cfg = get_ibkr_config(body.email.lower().strip())
         lp_creds = None
         if body.email and hint != "yahoo":
             student = get_student(body.email.lower().strip())
@@ -951,11 +1057,10 @@ async def backtest_run_script(body: ScriptBacktestReq):
                             "app_secret": student["app_secret"],
                             "access_token": student["access_token"]}
         if hint == "yahoo":
-            ibkr_cfg = None
             lp_creds = None
         data = fetch_bars_waterfall_sync(
             symbol=body.symbol, timeframe=body.timeframe, limit=body.limit,
-            db_path=str(DB_PATH), ibkr_config=ibkr_cfg, lp_credentials=lp_creds,
+            db_path=str(DB_PATH), lp_credentials=lp_creds,
             skip_cache=body.skip_cache)
         if data["error"]:
             return {"status": "error", "message": data["error"],
@@ -1103,16 +1208,269 @@ async def options_backtest_stream(request: Request):
     """SSE streaming backtest for options strategies (vertical spreads, condors, etc.)."""
     config = await request.json()
 
+    # ── Cache check (non-streaming fast path) ─────────────────────────────
+    from api.database import _options_bt_cache_key, get_backtest_cache, set_backtest_cache
+    _cache_key = _options_bt_cache_key(config)
+    _cached = get_backtest_cache(_cache_key, ttl_hours=24)
+    if _cached is not None:
+        # Replay the cached result as SSE: start -> trades -> complete
+        def _cached_stream():
+            trade_log = _cached.get("trade_log", [])
+            metrics = _cached.get("metrics", {})
+            yield f"data: {json.dumps({'type': 'start', 'total': len(trade_log), 'cached': True})}\n\n"
+            for trade in trade_log:
+                yield f"data: {json.dumps({'type': 'trade', 'trade': trade}, default=str)}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'metrics': metrics, 'trade_log': trade_log, '_cached': True}, default=str)}\n\n"
+        return StreamingResponse(_cached_stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # ── Live compute path ─────────────────────────────────────────────────
     def event_stream():
         from api.options_backtest import run_options_backtest_stream
+        collected_trades: list = []
         try:
             for event in run_options_backtest_stream(config):
+                if event.get("type") == "trade":
+                    collected_trades.append(event.get("trade"))
+                elif event.get("type") == "complete":
+                    try:
+                        set_backtest_cache(
+                            _cache_key,
+                            {"metrics": event.get("metrics", {}),
+                             "trade_log": event.get("trade_log", collected_trades)},
+                            strategy=config.get("strategy_type", ""),
+                            symbol=config.get("symbol", ""),
+                        )
+                    except Exception:
+                        pass
                 yield f"data: {json.dumps(event, default=str)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── /api/options/backtest-fast  (Modal parallel slices) ─────────────────────
+
+@app.post("/api/options/backtest-fast")
+async def options_backtest_fast(request: Request):
+    """Options backtest accelerated via Modal parallel monthly slices.
+
+    For periods <= 60 days, falls back to the local engine (Modal cold-start
+    overhead exceeds any parallelism benefit for short windows).
+
+    Falls back to local engine if MODAL_TOKEN_ID is not set, or on any
+    Modal error (so the UI never shows a dead spinner).
+
+    Returns a standard SSE stream identical to /api/options/backtest so
+    the frontend needs no changes -- just point the request at this URL.
+    """
+    from datetime import date, timedelta, datetime as _dt
+    from api.database import _options_bt_cache_key, get_backtest_cache, set_backtest_cache
+
+    config = await request.json()
+
+    # ── Cache check (same key as slow route -- shared cache) ─────────────────
+    _cache_key = _options_bt_cache_key(config)
+    _cached = get_backtest_cache(_cache_key, ttl_hours=24)
+    if _cached is not None:
+        async def _cached_stream():
+            trade_log = _cached.get("trade_log", [])
+            metrics   = _cached.get("metrics", {})
+            yield f"data: {json.dumps({'type': 'start', 'total': len(trade_log), 'cached': True})}\n\n"
+            for trade in trade_log:
+                yield f"data: {json.dumps({'type': 'trade', 'trade': trade}, default=str)}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'metrics': metrics, 'trade_log': trade_log, '_cached': True}, default=str)}\n\n"
+        return StreamingResponse(_cached_stream(), media_type="text/event-stream")
+
+    # ── Decide: Modal or local fallback ──────────────────────────────────────
+    modal_token_id = os.environ.get("MODAL_TOKEN_ID", "")
+    start_str = config.get("start_date", "")
+    end_str   = config.get("end_date", "")
+
+    use_modal = False
+    if modal_token_id and start_str and end_str:
+        try:
+            start_dt = _dt.strptime(start_str, "%Y-%m-%d").date()
+            end_dt   = _dt.strptime(end_str,   "%Y-%m-%d").date()
+            period_days = (end_dt - start_dt).days
+            use_modal = period_days > 60
+        except ValueError:
+            use_modal = False
+
+    if not use_modal:
+        # Delegate entirely to the local streaming engine
+        from api.options_backtest import run_options_backtest_stream
+        _collected_trades: list = []
+        _collected_metrics: dict = {}
+
+        def _local_stream():
+            nonlocal _collected_trades, _collected_metrics
+            for event in run_options_backtest_stream(config):
+                if event.get("type") == "trade":
+                    _collected_trades.append(event["trade"])
+                elif event.get("type") == "complete":
+                    _collected_metrics = event.get("metrics", {})
+                    try:
+                        set_backtest_cache(
+                            _cache_key,
+                            {"metrics": _collected_metrics, "trade_log": _collected_trades},
+                            strategy=config.get("strategy_type", ""),
+                            symbol=config.get("symbol", ""),
+                        )
+                    except Exception:
+                        pass
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+
+        return StreamingResponse(_local_stream(), media_type="text/event-stream")
+
+    # ── Modal path ────────────────────────────────────────────────────────────
+    # Build monthly slices.  Each slice gets start_date/end_date narrowed to
+    # one calendar month.  We add max_dte days of lookahead to end_date so a
+    # trade entered on the last day of the month can still find its exit dates.
+    import calendar
+
+    def _month_slices(start: date, end: date, max_dte: int = 30) -> list[dict]:
+        slices = []
+        cur = date(start.year, start.month, 1)
+        idx = 0
+        while cur <= end:
+            last_day = calendar.monthrange(cur.year, cur.month)[1]
+            slice_start = max(start, cur)
+            slice_end_entry = min(end, date(cur.year, cur.month, last_day))
+            # Extend end by max_dte so exit-phase reads don't fall off a cliff
+            slice_end_data  = min(end + timedelta(days=max_dte),
+                                  date(cur.year, cur.month, last_day) + timedelta(days=max_dte))
+            slice_cfg = {**config,
+                         "start_date": slice_start.isoformat(),
+                         "end_date":   slice_end_entry.isoformat(),
+                         "_data_end":  slice_end_data.isoformat(),
+                         "_slice_index": idx}
+            slices.append(slice_cfg)
+            # Advance to next month
+            if cur.month == 12:
+                cur = date(cur.year + 1, 1, 1)
+            else:
+                cur = date(cur.year, cur.month + 1, 1)
+            idx += 1
+        return slices
+
+    start_dt = _dt.strptime(start_str, "%Y-%m-%d").date()
+    end_dt   = _dt.strptime(end_str,   "%Y-%m-%d").date()
+    target_dte = int(config.get("target_dte", 7))
+    slices = _month_slices(start_dt, end_dt, max_dte=max(target_dte + 5, 10))
+
+    total_months = len(slices)
+
+    async def _modal_stream():
+        import asyncio
+
+        yield f"data: {json.dumps({'type': 'start', 'total': total_months, 'message': f'Dispatching {total_months} parallel workers via Modal...'})}\n\n"
+
+        # Run Modal in a thread so we don't block the async event loop
+        loop = asyncio.get_event_loop()
+
+        def _run_modal():
+            try:
+                import os as _os
+                import logging as _logging
+                _log = _logging.getLogger("quantx-modal")
+                _os.environ.setdefault("MODAL_TOKEN_ID",     _os.environ.get("MODAL_TOKEN_ID", ""))
+                _os.environ.setdefault("MODAL_TOKEN_SECRET", _os.environ.get("MODAL_TOKEN_SECRET", ""))
+                _log.warning("[Modal] token_id present: %s", bool(_os.environ.get("MODAL_TOKEN_ID")))
+                import modal as _modal
+                run_backtest_slice = _modal.Function.from_name("quantx-precompute", "run_backtest_slice")
+                _log.warning("[Modal] looked up run_backtest_slice OK, dispatching %d slices", len(slices))
+                results = list(run_backtest_slice.map(slices, return_exceptions=True))
+                _log.warning("[Modal] map complete, %d results", len(results))
+                return results
+            except Exception as e:
+                import logging as _logging
+                _logging.getLogger("quantx-modal").error("[Modal] FAILED: %s: %s", type(e).__name__, e)
+                return e
+
+        try:
+            results = await loop.run_in_executor(None, _run_modal)
+        except Exception as e:
+            # Modal failed entirely -- fall back to local engine
+            yield f"data: {json.dumps({'type': 'progress', 'done': 0, 'total': 0, 'message': f'Modal unavailable ({e}), running locally...'})}\n\n"
+            from api.options_backtest import run_options_backtest_stream
+            for event in run_options_backtest_stream(config):
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+            return
+
+        # Modal returned an exception object (whole call failed)
+        if isinstance(results, Exception):
+            yield f"data: {json.dumps({'type': 'progress', 'done': 0, 'total': 0, 'message': f'Modal error ({results}), running locally...'})}\n\n"
+            from api.options_backtest import run_options_backtest_stream
+            for event in run_options_backtest_stream(config):
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+            return
+
+        # Merge all slice trade lists, sorted by entry_date
+        all_trades = []
+        errors = []
+        for r in results:
+            if isinstance(r, Exception):
+                errors.append(str(r))
+            elif isinstance(r, dict):
+                if r.get("status") == "ok":
+                    all_trades.extend(r.get("trades", []))
+                else:
+                    errors.append(r.get("error", "unknown slice error"))
+
+        if errors:
+            yield f"data: {json.dumps({'type': 'progress', 'done': 0, 'total': 0, 'message': f'{len(errors)} slice(s) failed, results may be partial'})}\n\n"
+
+        # Sort by entry_date and remove any cross-boundary overlap
+        all_trades.sort(key=lambda t: t.get("entry_date", ""))
+        deduped = []
+        last_exit = ""
+        for t in all_trades:
+            if t.get("entry_date", "") > last_exit:
+                deduped.append(t)
+                last_exit = t.get("exit_date", t.get("entry_date", ""))
+
+        # Emit trades to frontend
+        for trade in deduped:
+            yield f"data: {json.dumps({'type': 'trade', 'trade': trade}, default=str)}\n\n"
+
+        # Recompute metrics over merged full timeline
+        try:
+            from api.options_backtest import _compute_metrics
+            starting = float(config.get("starting_capital", 10000))
+            capital = starting
+            equity = [{"date": start_str, "capital": capital}]
+            for t in deduped:
+                capital += t.get("pnl_net", 0)
+                equity.append({"date": t["exit_date"], "capital": round(capital, 2)})
+            skipped = {}
+            metrics = _compute_metrics(deduped, config, skipped, equity)
+        except Exception as e:
+            # Fallback: basic metrics if _compute_metrics import fails
+            pnls = [t.get("pnl_net", 0) for t in deduped]
+            metrics = {
+                "total_trades": len(deduped),
+                "total_pnl": round(sum(pnls), 2),
+                "win_rate": round(sum(1 for p in pnls if p > 0) / len(pnls) * 100, 2) if pnls else 0,
+                "_metrics_error": str(e),
+            }
+
+        # Store in SQLite cache
+        try:
+            set_backtest_cache(
+                _cache_key,
+                {"metrics": metrics, "trade_log": deduped},
+                strategy=config.get("strategy_type", ""),
+                symbol=config.get("symbol", ""),
+            )
+        except Exception:
+            pass
+
+        yield f"data: {json.dumps({'type': 'complete', 'metrics': metrics, 'trade_log': deduped, '_modal': True}, default=str)}\n\n"
+
+    return StreamingResponse(_modal_stream(), media_type="text/event-stream")
 
 
 @app.get("/api/options/cache/stats")
@@ -1782,7 +2140,7 @@ async def add_strategy(req: StrategyReq):
         email, req.strategy_id, req.strategy_name, req.symbol, req.arena,
         req.timeframe, req.conditions, req.exit_rules, req.risk, req.is_active,
         mode=req.mode, library_id=req.library_id, custom_script=req.custom_script,
-        broker=req.broker,
+        broker=req.broker, is_dry_run=req.is_dry_run,
     )
     return {"status": "saved", "strategy_id": req.strategy_id}
 
@@ -1798,6 +2156,29 @@ async def remove_strategy(strategy_id: str):
 async def toggle_strat(strategy_id: str, active: bool = Query(True)):
     toggle_strategy(strategy_id, active)
     return {"status": "toggled", "strategy_id": strategy_id, "is_active": active}
+
+
+@app.post("/api/strategy/{strategy_id}/clone")
+async def clone_strategy(strategy_id: str, body: dict = Body(...)):
+    """Clone a strategy with a new ID and optionally flip dry_run mode."""
+    from api.database import get_strategies
+    import random, string
+    email = body.get("email", "").lower().strip()
+    strategies = get_strategies(email)
+    src = next((s for s in strategies if s["strategy_id"] == strategy_id), None)
+    if not src:
+        raise HTTPException(404, "Strategy not found")
+    new_id = src["strategy_id"].rsplit("_", 1)[0] + "_" + "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    new_dry_run = body.get("is_dry_run", not src.get("is_dry_run", False))
+    new_name = src["strategy_name"] + (" [DRY]" if new_dry_run else " [LIVE]")
+    save_strategy(
+        email, new_id, new_name, src["symbol"], src["arena"],
+        src["timeframe"], src["conditions"], src["exit_rules"], src["risk"],
+        is_active=False, mode=src["mode"], library_id=src.get("library_id",""),
+        custom_script=src.get("custom_script",""), broker=src.get("broker","longport"),
+        is_dry_run=new_dry_run,
+    )
+    return {"status": "cloned", "new_strategy_id": new_id, "is_dry_run": new_dry_run}
 
 
 @app.get("/api/strategies/{email}")
@@ -1968,6 +2349,13 @@ async def deploy(req: DeployReq):
     if email in _running_processes:
         _stop_process(email)
 
+    # Clear any stale 'running' process records so _auto_restart_bots
+    # doesn't re-launch the old broken script on next restart
+    conn_clear = get_db()
+    conn_clear.execute("UPDATE processes SET status='stopped' WHERE email=?", (email,))
+    conn_clear.commit()
+    conn_clear.close()
+
     # Cancel all existing open orders on LongPort (clean slate)
     old_cancelled = _cancel_student_orders(student)
 
@@ -1984,9 +2372,8 @@ async def deploy(req: DeployReq):
 
     _log.info("Deploying with central API: %s", central_url)
 
-    # Split strategies by broker and type
-    lp_strats = [s for s in strategies if s.get("broker", "longport") != "ibkr"]
-    ibkr_strats = [s for s in strategies if s.get("broker") == "ibkr"]
+    # All strategies are LongPort
+    lp_strats = list(strategies)
 
     # Check for simple/quick_test strategies — deploy as individual simple bots
     deployed_simple = []
@@ -1997,92 +2384,17 @@ async def deploy(req: DeployReq):
                     s.get("mode") == "quick_test")
         if is_quick:
             sym = s.get("symbol", "700.HK")
-            broker = s.get("broker", "longport")
             try:
-                if broker == "ibkr":
-                    ibkr_cfg = get_ibkr_config(email) or {"host": "127.0.0.1", "port": 7497, "client_id": 1}
-                    sp, lp = generate_simple_ibkr_bot(email, sym, ibkr_cfg, student)
-                else:
-                    sp, lp = generate_simple_lp_bot(email, sym, student)
+                sp, lp = generate_simple_lp_bot(email, sym, student)
                 proc = _launch_bot(sp, lp)
                 save_process(email, proc.pid, "running", sp, lp)
-                deployed_simple.append({"strategy_id": s["strategy_id"], "pid": proc.pid, "broker": broker})
-                _log.info("[DEPLOY] Simple %s bot PID: %s for %s", broker, proc.pid, sym)
+                deployed_simple.append({"strategy_id": s["strategy_id"], "pid": proc.pid, "broker": "longport"})
+                _log.info("[DEPLOY] Simple longport bot PID: %s for %s", proc.pid, sym)
             except Exception as e:
                 import traceback
                 _log.error("[DEPLOY] Simple bot FAILED for %s: %s\n%s", sym, e, traceback.format_exc())
-            # Remove from regular deploy lists
+            # Remove from regular deploy list
             lp_strats = [x for x in lp_strats if x["strategy_id"] != s["strategy_id"]]
-            ibkr_strats = [x for x in ibkr_strats if x["strategy_id"] != s["strategy_id"]]
-
-    # Deploy options bots (sec_type=OPT)
-    for s in list(ibkr_strats):
-        conds = s.get("conditions", {})
-        if conds.get("sec_type") == "OPT" or s.get("mode") == "options":
-            try:
-                from api.generate import generate_options_bot
-                ibkr_cfg = get_ibkr_config(email) or {"host": "127.0.0.1", "port": 7497, "client_id": 1}
-                ibkr_cfg["central_api_url"] = central_url
-                ibkr_cfg["account_id"] = ibkr_cfg.get("account_id", "")
-                ibkr_cfg["port"] = conds.get("port", ibkr_cfg.get("port", 7497))
-                sp, lp, tp = generate_options_bot(email, conds, ibkr_cfg)
-                proc = _launch_bot(sp, lp)
-                save_process(email, proc.pid, "running", sp, lp)
-                _log.info("[DEPLOY] Options bot PID: %s for %s", proc.pid, s["strategy_id"])
-            except Exception as e:
-                import traceback
-                _log.error("[DEPLOY] Options bot FAILED: %s\n%s", e, traceback.format_exc())
-            ibkr_strats = [x for x in ibkr_strats if x["strategy_id"] != s["strategy_id"]]
-
-    # If there are IBKR strategies, deploy each via production bot generator
-    if ibkr_strats:
-        ibkr_cfg = get_ibkr_config(email) or {"host": "127.0.0.1", "port": 7497, "client_id": 1}
-        ibkr_cfg["central_api_url"] = central_url
-        ibkr_cfg["account_id"] = ibkr_cfg.get("account_id", "")
-        for s in ibkr_strats:
-            try:
-                # Build strategy config for generate_ibkr_bot_prod
-                conds = s.get("conditions", {})
-                # If library strategy, convert to Builder conditions
-                if not conds.get("entry_long") and s.get("library_id"):
-                    conds = library_id_to_conditions(s["library_id"])
-                risk = s.get("risk", {})
-                strat_config = {
-                    "strategy_id": s["strategy_id"],
-                    "symbol": s["symbol"],
-                    "sec_type": conds.get("sec_type", "STK"),
-                    "exchange": conds.get("exchange", "SMART"),
-                    "currency": conds.get("currency", "USD"),
-                    "lot_size": int(risk.get("lots", 1)),
-                    "max_capital": float(s.get("allocation", 1000)),
-                    "bar_size": conds.get("bar_size", "1 min"),
-                    "interval_minutes": int(conds.get("interval_minutes", 1)),
-                    "stop_loss_pct": float(risk.get("sl_pct", 2)) / 100 if float(risk.get("sl_pct", 2)) > 1 else float(risk.get("sl_pct", 0.02)),
-                    "take_profit_pct": float(risk.get("tp_pct", 5)) / 100 if float(risk.get("tp_pct", 5)) > 1 else float(risk.get("tp_pct", 0.05)),
-                    "has_short": bool(conds.get("entry_short")),
-                    "entry_long": conds.get("entry_long", []),
-                    "exit_long": conds.get("exit_long", []),
-                    "entry_short": conds.get("entry_short", []),
-                    "exit_short": conds.get("exit_short", []),
-                    "entry_long_logic": conds.get("entry_long_logic", "AND"),
-                    "exit_long_logic": conds.get("exit_long_logic", "OR"),
-                }
-                sp, lp, tp = generate_ibkr_bot_prod(email, strat_config, ibkr_cfg)
-                proc = _launch_bot(sp, lp)
-                save_process(email, proc.pid, "running", sp, lp)
-                _log.info("[DEPLOY] IBKR prod bot PID: %s for %s %s", proc.pid, s["strategy_id"], s["symbol"])
-            except Exception as e:
-                import traceback
-                _log.error("[DEPLOY] IBKR prod bot FAILED for %s: %s\n%s", s["strategy_id"], e, traceback.format_exc())
-
-    # If no LP strategies remain, we're done (all IBKR)
-    if not lp_strats and ibkr_strats:
-        return {
-            "status": "deployed",
-            "broker": "ibkr",
-            "strategies_count": len(ibkr_strats),
-            "central_api_url": central_url,
-        }
 
     if not lp_strats:
         return {"status": "deployed", "strategies_count": 0, "central_api_url": central_url}
@@ -2101,18 +2413,19 @@ async def deploy(req: DeployReq):
     for pos in read_open_positions(email):
         existing_states[pos["strategy_id"]] = pos
 
+    dry_run = bool(getattr(req, "dry_run", False))
+    # If request didn't set dry_run, fall back to any active strategy's is_dry_run flag
+    if not dry_run:
+        if any(s.get("is_dry_run") for s in lp_strats):
+            dry_run = True
     try:
         script_path, log_path = generate_lp_master_bot(
-            email, lp_strats, lp_creds, initial_states=existing_states)
+            email, lp_strats, lp_creds, dry_run=dry_run)
     except Exception as e:
         import traceback
-        _log.error("[DEPLOY] LP master gen failed: %s\n%s", e, traceback.format_exc())
-        # Fallback to old master bot
-        script_path = generate_master_bot(email, lp_strats, student)
-        email_safe = email.replace("@", "_at_").replace(".", "_")
-        logs_dir = Path(script_path).parent.parent / "logs"
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        log_path = str(logs_dir / f"{email_safe}_master.log")
+        tb = traceback.format_exc()
+        _log.error("[DEPLOY] LP master gen failed: %s\n%s", e, tb)
+        raise HTTPException(400, f"Bot script generation failed: {e}\n\n{tb}")
 
     _log.info("[DEPLOY] Running LP master: %s | Log: %s", script_path, log_path)
 
@@ -2120,7 +2433,8 @@ async def deploy(req: DeployReq):
         proc = _launch_bot(script_path, log_path)
         _running_processes[email] = proc
         save_process(email, proc.pid, "running", script_path, log_path)
-        _log.info("[DEPLOY] LP master PID: %s (%d strategies, 2 connections)", proc.pid, len(lp_strats))
+        _log.info("[DEPLOY] LP master PID: %s (%d strategies, 2 connections, dry_run=%s)",
+                  proc.pid, len(lp_strats), dry_run)
 
         # Wait 3 seconds to check for immediate crash
         time.sleep(3)
@@ -2133,12 +2447,16 @@ async def deploy(req: DeployReq):
                 log_excerpt = Path(log_path).read_text(encoding="utf-8", errors="replace").splitlines()[-20:]
             except Exception:
                 pass
-            return {
-                "status": "error",
-                "error": f"Bot crashed on startup (exit code {exit_code})",
-                "log_excerpt": log_excerpt,
-                "pid": proc.pid,
-            }
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "error": f"Bot crashed on startup (exit code {exit_code})",
+                    "log_excerpt": log_excerpt,
+                    "pid": proc.pid,
+                }
+            )
 
         return {
             "status": "deployed",
@@ -2147,10 +2465,10 @@ async def deploy(req: DeployReq):
             "log_path": log_path,
             "strategies_count": len(strategies),
             "lp_strategies": len(lp_strats),
-            "ibkr_strategies": len(ibkr_strats),
             "lp_connections": 2,
             "central_api_url": central_url,
             "old_orders_cancelled": old_cancelled,
+            "dry_run": dry_run,
         }
     except Exception as e:
         raise HTTPException(500, f"Failed to launch bot: {e}")
@@ -2159,35 +2477,62 @@ async def deploy(req: DeployReq):
 @app.post("/api/stop")
 async def stop(req: StopReq):
     email = req.email.lower().strip()
-    broker = req.broker or "all"
     stopped = []
-    # Stop by broker type using psutil
-    if broker in ("all", "longport"):
-        if email in _running_processes:
-            _stop_process(email)
-            stopped.append("longport")
-        else:
-            # Try killing from DB PID
-            _kill_process_by_db(email, ibkr=False)
-            stopped.append("longport")
-    if broker in ("all", "ibkr"):
-        _kill_process_by_db(email, ibkr=True)
-        stopped.append("ibkr")
+    if email in _running_processes:
+        _stop_process(email)
+        stopped.append("longport")
+    else:
+        _kill_process_by_db(email)
+        stopped.append("longport")
     if not stopped and email not in _running_processes:
         return {"status": "stopped", "message": "No running bot found"}
     return {"status": "stopped", "brokers_stopped": stopped}
 
 
-def _kill_process_by_db(email: str, ibkr: bool = False):
+@app.post("/api/admin/nuke-scripts")
+async def nuke_scripts(request: Request):
+    """Delete stale bot scripts from disk and reset processes DB. Emergency use only."""
+    import glob, signal as _sig
+    body = await request.json()
+    if body.get("pin") != os.environ.get("ADMIN_PIN", "quantx2025"):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    email = body.get("email", "").lower().strip()
+    email_safe = email.replace("@", "_at_").replace(".", "_")
+
+    # Kill running processes
+    killed = []
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT pid FROM processes WHERE email=? AND status='running'", (email,)
+        ).fetchall()
+        for row in rows:
+            if row["pid"]:
+                try: os.kill(row["pid"], _sig.SIGTERM)
+                except Exception: pass
+                killed.append(row["pid"])
+        # Mark all stopped
+        conn.execute("UPDATE processes SET status='stopped', pid=NULL WHERE email=?", (email,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Delete script files
+    deleted = []
+    for f in glob.glob(str(BOTS_DIR / f"{email_safe}*.py")):
+        try: os.remove(f); deleted.append(f)
+        except Exception: pass
+
+    return {"killed": killed, "deleted": deleted}
+
+
+def _kill_process_by_db(email: str):
     """Kill a process found in the DB by its PID."""
     conn = get_db()
     try:
-        pattern = '%ibkr%' if ibkr else '%master%'
-        not_pattern = '%ibkr%'
-        if ibkr:
-            row = conn.execute("SELECT pid FROM processes WHERE email=? AND master_script_path LIKE '%ibkr%' AND status='running' ORDER BY id DESC LIMIT 1", (email,)).fetchone()
-        else:
-            row = conn.execute("SELECT pid FROM processes WHERE email=? AND master_script_path NOT LIKE '%ibkr%' AND status='running' ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+        row = conn.execute(
+            "SELECT pid FROM processes WHERE email=? AND status='running' ORDER BY id DESC LIMIT 1",
+            (email,)).fetchone()
     finally:
         conn.close()
     if not row:
@@ -2212,50 +2557,6 @@ async def restart(req: DeployReq):
     if email in _running_processes:
         _stop_process(email)
     return await deploy(req)
-
-
-@app.post("/api/ibkr-config")
-async def set_ibkr_config(req: IBKRConfigReq):
-    email = req.email.lower().strip()
-    save_ibkr_config(email, req.host, req.port, req.client_id)
-    return {"status": "saved", "host": req.host, "port": req.port, "client_id": req.client_id}
-
-
-@app.get("/api/ibkr-config")
-async def get_ibkr_config_endpoint(email: str):
-    cfg = get_ibkr_config(email.lower().strip())
-    if not cfg:
-        return {"configured": False}
-    return {"configured": True, **cfg}
-
-
-@app.post("/api/test-ibkr-connection")
-async def test_ibkr_connection(req: IBKRConfigReq):
-    def _test_sync():
-        import asyncio as _asyncio
-        # Create event loop for this thread BEFORE importing ib_insync
-        _loop = _asyncio.new_event_loop()
-        _asyncio.set_event_loop(_loop)
-        try:
-            from ib_insync import IB
-            ib = IB()
-            ib.connect(req.host, req.port, clientId=req.client_id + 50, timeout=10)
-            connected = ib.isConnected()
-            accounts = list(ib.managedAccounts()) if connected else []
-            ib.disconnect()
-            if connected:
-                return {"ok": True, "message": "Connected to IBKR",
-                        "account": accounts[0] if accounts else "unknown"}
-            return {"ok": False, "message": "Connection returned but isConnected=False"}
-        except Exception as e:
-            return {"ok": False, "message": str(e)}
-        finally:
-            _loop.close()
-    try:
-        result = await asyncio.get_event_loop().run_in_executor(_executor, _test_sync)
-        return result
-    except Exception as e:
-        return {"ok": False, "message": f"Server error: {e}"}
 
 
 # ── Broker accounts ──────────────────────────────────────────────────────────
@@ -2283,8 +2584,6 @@ async def add_broker_account(request: Request):
         app_key=body.get("app_key", ""),
         app_secret=body.get("app_secret", ""),
         access_token=body.get("access_token", ""),
-        ibkr_host=body.get("ibkr_host", "127.0.0.1"),
-        ibkr_port=int(body.get("ibkr_port", 7497)),
     )
     # Also save to legacy tables for backward compat
     if broker == "longport" and body.get("app_key"):
@@ -2293,9 +2592,6 @@ async def add_broker_account(request: Request):
             save_student(email, student.get("name", ""), body["app_key"],
                         body["app_secret"], body["access_token"],
                         student.get("central_api_url", ""))
-    elif broker == "ibkr":
-        save_ibkr_config(email, body.get("ibkr_host", "127.0.0.1"),
-                        int(body.get("ibkr_port", 7497)), 1)
     return {"status": "saved", "id": aid}
 
 
@@ -2326,40 +2622,6 @@ async def test_broker_account(account_id: int):
                 return {"ok": True, "message": "Connected (no quote data)"}
             except Exception as e:
                 update_broker_account_status(account_id, False, str(e))
-                return {"ok": False, "message": str(e)}
-        elif broker == "ibkr":
-            try:
-                import asyncio as _aio
-                _loop = _aio.new_event_loop()
-                _aio.set_event_loop(_loop)
-                try:
-                    from ib_insync import IB
-                    ib = IB()
-                    ib.connect(acct.get("ibkr_host", "127.0.0.1"),
-                              int(acct.get("ibkr_port", 7497)),
-                              clientId=int(acct.get("id", 1)) + 50, timeout=10)
-                    connected = ib.isConnected()
-                    accounts = list(ib.managedAccounts()) if connected else []
-                    ib.disconnect()
-                    if connected:
-                        aid_str = accounts[0] if accounts else ""
-                        if aid_str:
-                            # Update account_id in DB
-                            conn = get_db()
-                            conn.execute("UPDATE broker_accounts SET account_id=? WHERE id=?",
-                                        (aid_str, account_id))
-                            conn.commit(); conn.close()
-                        update_broker_account_status(account_id, True)
-                        return {"ok": True, "message": f"Connected to IBKR",
-                                "account": aid_str}
-                    update_broker_account_status(account_id, False, "isConnected=False")
-                    return {"ok": False, "message": "Connection returned but isConnected=False"}
-                except Exception as e:
-                    update_broker_account_status(account_id, False, str(e))
-                    return {"ok": False, "message": str(e)}
-                finally:
-                    _loop.close()
-            except Exception as e:
                 return {"ok": False, "message": str(e)}
         return {"ok": False, "message": f"Unknown broker: {broker}"}
     try:
@@ -2398,11 +2660,8 @@ async def data_prefetch(request: Request):
         return {"ok": False, "message": "symbol required"}
     def _fetch():
         from api.data_manager import fetch_bars_waterfall_sync
-        ibkr_cfg = None
-        if email:
-            ibkr_cfg = get_ibkr_config(email.lower().strip())
         result = fetch_bars_waterfall_sync(symbol=symbol, timeframe=timeframe, limit=limit,
-                                           db_path=str(DB_PATH), ibkr_config=ibkr_cfg)
+                                           db_path=str(DB_PATH))
         _log.info("Prefetch %s/%s: %s (%d bars)", symbol, timeframe, result["source"], result["bar_count"])
     asyncio.get_event_loop().run_in_executor(_executor, _fetch)
     return {"ok": True, "message": f"Fetching {symbol}/{timeframe} in background..."}
@@ -2629,15 +2888,11 @@ async def indicators_import(file: UploadFile = File(...), email: str = Form(""),
 async def status(email: str):
     email = email.lower().strip()
 
-    # Check DB for LP and IBKR processes
+    # Check DB for LP process
     conn = get_db()
     try:
         lp_proc = conn.execute(
-            "SELECT pid, status FROM processes WHERE email=? AND master_script_path NOT LIKE '%ibkr%' ORDER BY id DESC LIMIT 1",
-            (email,)
-        ).fetchone()
-        ibkr_proc = conn.execute(
-            "SELECT pid, status FROM processes WHERE email=? AND master_script_path LIKE '%ibkr%' ORDER BY id DESC LIMIT 1",
+            "SELECT pid, status FROM processes WHERE email=? ORDER BY id DESC LIMIT 1",
             (email,)
         ).fetchone()
     finally:
@@ -2655,7 +2910,6 @@ async def status(email: str):
 
     # Also check in-memory processes
     lp_running = _is_alive(lp_proc)
-    ibkr_running = _is_alive(ibkr_proc)
 
     # Fallback: check _running_processes dict
     if not lp_running and email in _running_processes:
@@ -2669,16 +2923,28 @@ async def status(email: str):
     for t in trades:
         strat_pnl[t["strategy_id"]] += t["pnl"]
 
+    # Detect dry_run by reading the running bot script
+    dry_run_active = False
+    if lp_running:
+        try:
+            from api.config import BOTS_DIR
+            email_safe = email.replace("@", "_at_").replace(".", "_")
+            script_path = BOTS_DIR / f"{email_safe}_lp_master.py"
+            if script_path.exists():
+                head = script_path.read_text(encoding="utf-8", errors="replace")[:4000]
+                dry_run_active = "DRY_RUN    = True" in head or "DRY_RUN = True" in head
+        except Exception:
+            pass
+
     return {
         "email": email,
-        "status": "running" if (lp_running or ibkr_running) else "stopped",
+        "status": "running" if lp_running else "stopped",
         "lp_running": lp_running,
         "lp_pid": lp_proc["pid"] if lp_proc and lp_running else None,
-        "ibkr_running": ibkr_running,
-        "ibkr_pid": ibkr_proc["pid"] if ibkr_proc and ibkr_running else None,
-        "pid": (lp_proc["pid"] if lp_running else None) or (ibkr_proc["pid"] if ibkr_running else None),
-        "is_running": lp_running or ibkr_running,
-        "bot_status": "running" if (lp_running or ibkr_running) else "stopped",
+        "pid": lp_proc["pid"] if lp_running else None,
+        "is_running": lp_running,
+        "bot_status": "running" if lp_running else "stopped",
+        "dry_run": dry_run_active,
         "strategies": [
             {**s, "total_pnl": round(strat_pnl.get(s["strategy_id"], 0), 4)}
             for s in strategies
@@ -2693,12 +2959,12 @@ async def strategy_logs(email: str, strategy_id: str, lines: int = Query(50, ge=
     email = email.lower().strip()
     email_safe = email.replace("@", "_at_").replace(".", "_")
     safe_sid = strategy_id.replace("/", "_")
-    logs_dir = Path(__file__).parent.parent / "logs"
+    logs_dir = LOGS_DIR
     # Search for log file in order of specificity
     candidates = [
-        f"{email_safe}_{safe_sid}.log",       # strategy-specific
+        f"{email_safe}_lp_master.log",         # LongPort LP master (Railway)
+        f"{email_safe}_{safe_sid}.log",        # strategy-specific
         f"{email_safe}_master.log",            # LongPort master
-        f"{email_safe}_ibkr_master.log",       # IBKR master
     ]
     for fname in candidates:
         log_path = logs_dir / fname
@@ -2714,13 +2980,215 @@ async def strategy_logs(email: str, strategy_id: str, lines: int = Query(50, ge=
 async def logs(email: str, lines: int = Query(50, ge=1, le=500)):
     email = email.lower().strip()
     email_safe = email.replace("@", "_at_").replace(".", "_")
-    logs_dir = Path(__file__).parent.parent / "logs"
-    for fname in [f"{email_safe}_master.log", f"{email_safe}_ibkr_master.log"]:
+    logs_dir = LOGS_DIR
+    for fname in [f"{email_safe}_lp_master.log",
+                  f"{email_safe}_master.log"]:
         log_path = logs_dir / fname
         if log_path.exists():
             all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
             return {"lines": all_lines[-lines:], "total": len(all_lines), "filename": fname}
     return {"lines": [], "total": 0, "filename": ""}
+
+
+@app.get("/api/debug/bot-script")
+async def debug_bot_script(email: str, key: str = ""):
+    """Return the generated bot script for debugging. Admin-key protected."""
+    from api.config import ADMIN_PIN, BOTS_DIR
+    if key != ADMIN_PIN:
+        raise HTTPException(403, "Forbidden")
+    email = email.lower().strip()
+    email_safe = email.replace("@", "_at_").replace(".", "_")
+    candidates = [
+        BOTS_DIR / f"{email_safe}_lp_master.py",
+        BOTS_DIR / f"{email_safe}_master.py",
+    ]
+    for path in candidates:
+        if path.exists():
+            content = path.read_text(encoding="utf-8", errors="replace")
+            return {
+                "filename": path.name,
+                "lines": len(content.splitlines()),
+                "content": content,
+            }
+    return {"filename": "", "lines": 0, "content": "No bot script found. Deploy first."}
+
+
+@app.get("/api/debug/deploy-test")
+async def debug_deploy_test(email: str, key: str = ""):
+    """Test-run the generated bot script to surface import/syntax errors."""
+    from api.config import ADMIN_PIN, BOTS_DIR, PYTHON_EXE
+    if key != ADMIN_PIN:
+        raise HTTPException(403, "Forbidden")
+    email = email.lower().strip()
+    email_safe = email.replace("@", "_at_").replace(".", "_")
+    candidates = [
+        BOTS_DIR / f"{email_safe}_lp_master.py",
+        BOTS_DIR / f"{email_safe}_master.py",
+    ]
+    for path in candidates:
+        if path.exists():
+            import subprocess, sys
+            result = subprocess.run(
+                [PYTHON_EXE, "-c", f"import ast; ast.parse(open(r'{path}').read()); print('syntax_ok')"],
+                capture_output=True, text=True, timeout=10
+            )
+            # Also try a compile check
+            result2 = subprocess.run(
+                [PYTHON_EXE, "-m", "py_compile", str(path)],
+                capture_output=True, text=True, timeout=10
+            )
+            return {
+                "filename": path.name,
+                "ast_check": result.stdout.strip(),
+                "ast_error": result.stderr.strip(),
+                "compile_check": "ok" if result2.returncode == 0 else "failed",
+                "compile_error": result2.stderr.strip(),
+            }
+    return {"error": "No bot script found"}
+
+
+@app.get("/api/debug/fs-inspect")
+async def debug_fs_inspect(key: str = ""):
+    from api.config import ADMIN_PIN, BOTS_DIR, LOGS_DIR, DATA_DIR
+    import hashlib
+    if key != ADMIN_PIN:
+        raise HTTPException(403, "Forbidden")
+
+    result = {}
+
+    # Check what bot scripts exist and their sizes/mtimes
+    bots = []
+    if BOTS_DIR.exists():
+        for f in sorted(BOTS_DIR.rglob("*.py")):
+            try:
+                stat = f.stat()
+                # Read first and last 5 lines to confirm content
+                lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+                bots.append({
+                    "path": str(f),
+                    "size": stat.st_size,
+                    "lines": len(lines),
+                    "mtime": stat.st_mtime,
+                    "first_line": lines[0] if lines else "",
+                    "line_419": lines[418] if len(lines) > 418 else "N/A",
+                    "last_line": lines[-1] if lines else "",
+                })
+            except Exception as e:
+                bots.append({"path": str(f), "error": str(e)})
+    result["bots"] = bots
+
+    # Check what log files exist and their sizes
+    logs = []
+    if LOGS_DIR.exists():
+        for f in sorted(LOGS_DIR.glob("*.log")):
+            try:
+                stat = f.stat()
+                lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+                logs.append({
+                    "filename": f.name,
+                    "size": stat.st_size,
+                    "lines": len(lines),
+                    "mtime": stat.st_mtime,
+                    "last_3": lines[-3:] if lines else [],
+                })
+            except Exception as e:
+                logs.append({"filename": f.name, "error": str(e)})
+    result["logs"] = logs
+
+    # Check DB processes table
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT email, pid, status, master_script_path, log_path FROM processes ORDER BY id DESC LIMIT 5"
+    ).fetchall()
+    conn.close()
+    result["db_processes"] = [dict(r) for r in rows]
+
+    return result
+
+
+@app.post("/api/debug/clear-process")
+async def debug_clear_process(email: str, key: str = ""):
+    """Clear stale running process records for a student. Admin only."""
+    from api.config import ADMIN_PIN
+    if key != ADMIN_PIN:
+        raise HTTPException(403, "Forbidden")
+    email = email.lower().strip()
+    conn = get_db()
+    conn.execute("UPDATE processes SET status='stopped' WHERE email=?", (email,))
+    conn.commit()
+    conn.close()
+    return {"cleared": True, "email": email}
+
+
+@app.post("/api/admin/clear-bot-scripts")
+async def clear_bot_scripts(request: Request):
+    """Emergency cleanup: kill processes, delete stale scripts, reset DB."""
+    from fastapi.responses import JSONResponse
+    body = await request.json()
+    pin = body.get("pin", "")
+    if pin != os.environ.get("ADMIN_PIN", "quantx2025"):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    email = body.get("email", "")
+    import glob, signal as _sig
+
+    conn = get_db()
+    deleted_files = []
+    killed_pids = []
+
+    try:
+        # Kill running processes
+        if email:
+            rows = conn.execute(
+                "SELECT pid, master_script_path FROM processes WHERE email=? AND status='running'",
+                (email,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT pid, master_script_path FROM processes WHERE status='running'"
+            ).fetchall()
+
+        for row in rows:
+            pid = row["pid"]
+            if pid:
+                try:
+                    os.kill(pid, _sig.SIGTERM)
+                    killed_pids.append(pid)
+                except Exception:
+                    pass
+
+        # Delete stale bot script files
+        email_safe = email.replace("@", "_at_").replace(".", "_") if email else "*"
+        pattern = str(BOTS_DIR / f"{email_safe}_lp_master.py")
+        for f in glob.glob(pattern):
+            try:
+                os.remove(f)
+                deleted_files.append(f)
+            except Exception:
+                pass
+
+        # Also delete any other bot scripts for this email
+        for f in glob.glob(str(BOTS_DIR / f"{email_safe}*.py")):
+            try:
+                os.remove(f)
+                deleted_files.append(f)
+            except Exception:
+                pass
+
+        # Reset processes table
+        if email:
+            conn.execute("UPDATE processes SET status='stopped', pid=NULL WHERE email=?", (email,))
+        else:
+            conn.execute("UPDATE processes SET status='stopped', pid=NULL")
+        conn.commit()
+
+        return {
+            "killed_pids": killed_pids,
+            "deleted_files": deleted_files,
+            "message": f"Cleared {len(killed_pids)} processes and {len(deleted_files)} files"
+        }
+    finally:
+        conn.close()
 
 
 @app.get("/api/trades/{email}")
@@ -2739,6 +3207,46 @@ async def trade_report(req: TradeReq):
     email = req.email.lower().strip()
     # Log locally
     cum_pnl = log_trade(email, req.strategy_id, req.symbol, req.side, req.price, req.qty, req.pnl)
+
+    # Update strategy live_results + trade_log if this is a closed trade (pnl is set)
+    if req.strategy_id and req.pnl != 0.0:
+        try:
+            conn_live = get_db()
+            row = conn_live.execute(
+                "SELECT trade_log_json, allocation FROM strategies WHERE strategy_id = ?",
+                (req.strategy_id,)).fetchone()
+            if row:
+                log = json.loads(row["trade_log_json"]) if row["trade_log_json"] else []
+                log.append({
+                    "date": "",
+                    "side": req.side, "symbol": req.symbol,
+                    "price": req.price, "qty": req.qty, "pnl": req.pnl,
+                })
+                alloc = float(row["allocation"]) if row["allocation"] else 10000
+                pnls = [t.get("pnl", 0) for t in log]
+                total_pnl = sum(pnls)
+                wins = sum(1 for p in pnls if p > 0)
+                total_ret = total_pnl / alloc * 100 if alloc > 0 else 0
+                wr = wins / len(pnls) * 100 if pnls else 0
+                cum = 0; peak = 0; max_dd = 0
+                for p in pnls:
+                    cum += p; peak = max(peak, cum)
+                    dd = (peak - cum) / alloc * 100 if alloc > 0 else 0
+                    max_dd = max(max_dd, dd)
+                live = {
+                    "total_return_pct": round(total_ret, 2),
+                    "win_rate_pct": round(wr, 1),
+                    "max_drawdown_pct": round(max_dd, 2),
+                    "total_trades": len(pnls),
+                    "total_pnl": round(total_pnl, 2),
+                }
+                conn_live.execute(
+                    "UPDATE strategies SET trade_log_json = ?, live_results_json = ? WHERE strategy_id = ?",
+                    (json.dumps(log), json.dumps(live), req.strategy_id))
+                conn_live.commit()
+            conn_live.close()
+        except Exception as _e:
+            _log.warning("[TRADE] Failed to update strategy live_results: %s", _e)
 
     # Forward to central API
     student = get_student(email)

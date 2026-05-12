@@ -1,3 +1,5 @@
+# DEPRECATED: IBKR support removed. This file is kept for reference only.
+# QuantX Deployer now supports LongPort only.
 """QuantX — Production IBKR bot template.
 Uses __PLACEHOLDER__ substitution for safe code generation.
 """
@@ -54,9 +56,10 @@ os.makedirs(STATE_DIR, exist_ok=True)
 TRADES_FILE   = os.path.join(TRADES_DIR, f'trades_{STRATEGY_NAME}_all.csv')
 RISK_FILE     = os.path.join(STATE_DIR, f'risk_{STRATEGY_NAME}.json')
 POSITION_FILE = os.path.join(STATE_DIR, f'pos_{STRATEGY_NAME}.json')
-CSV_FIELDS = ['execId','datetime','strategy','symbol','secType','exchange',
-              'currency','side','quantity','price','commission','pnl',
-              'orderRef','bar_size','signal']
+CSV_FIELDS = ['execId','order_id','datetime','bar_date','strategy','symbol',
+              'secType','exchange','currency','side','quantity','price',
+              'commission','pnl','signal','indicator_values','bar_close',
+              'orderRef']
 
 logger = logging.getLogger(STRATEGY_NAME)
 logger.setLevel(logging.INFO)
@@ -93,16 +96,21 @@ def ensure_csv():
         with open(TRADES_FILE, 'w', newline='') as f:
             csv.DictWriter(f, fieldnames=CSV_FIELDS).writeheader()
 
-def log_trade(side, qty, price, commission, exec_id, pnl=0.0, signal=''):
+def log_trade(side, qty, price, commission, exec_id, pnl=0.0, signal='',
+              bar_date='', indicator_values='', bar_close=0.0, order_id=''):
     ensure_csv()
     with open(TRADES_FILE, 'a', newline='') as f:
         csv.DictWriter(f, fieldnames=CSV_FIELDS).writerow({
-            'execId': exec_id, 'datetime': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-            'strategy': STRATEGY_NAME, 'symbol': SYMBOL, 'secType': SEC_TYPE,
+            'execId': exec_id, 'order_id': order_id or exec_id,
+            'datetime': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+            'bar_date': bar_date, 'strategy': STRATEGY_NAME,
+            'symbol': SYMBOL, 'secType': SEC_TYPE,
             'exchange': EXCHANGE, 'currency': CURRENCY, 'side': side,
             'quantity': qty, 'price': round(price, 6), 'commission': round(commission, 4),
-            'pnl': round(pnl, 2), 'orderRef': STRATEGY_NAME, 'bar_size': BAR_SIZE, 'signal': signal})
-    logger.info(f'[TRADE] {side} {qty} {SYMBOL} @ {price:.6f} | pnl=${pnl:+.2f} | signal={signal}')
+            'pnl': round(pnl, 2), 'signal': signal,
+            'indicator_values': indicator_values,
+            'bar_close': round(bar_close, 6), 'orderRef': STRATEGY_NAME})
+    logger.info(f'[TRADE] {side} {qty} {SYMBOL} @ {price:.6f} | pnl=${pnl:+.2f} | signal={signal} | bar={bar_date} | {indicator_values}')
     _trade_payload = {'email': EMAIL, 'strategy_id': STRATEGY_NAME, 'symbol': SYMBOL,
                       'side': 'buy' if side=='BOT' else 'sell', 'price': float(price),
                       'qty': float(qty), 'pnl': float(pnl)}
@@ -149,7 +157,7 @@ def check_risk():
         return True, f'Max orders ({MAX_ORDERS_DAY})'
     return False, ''
 
-async def place_order(action, signal=''):
+async def place_order(action, signal='', bar_date='', indicator_values='', bar_close=0.0):
     global current_position, entry_price, entry_time
     halt, reason = check_risk()
     if halt:
@@ -177,6 +185,7 @@ async def place_order(action, signal=''):
     comm = sum(float(f.commissionReport.commission) for f in trade.fills
                if f.commissionReport and f.commissionReport.commission and f.commissionReport.commission > 0)
     eid = trade.fills[0].execution.execId if trade.fills else f'{STRATEGY_NAME}_{datetime.utcnow():%Y%m%d%H%M%S%f}'
+    oid = str(trade.order.orderId) if trade.order else eid
     pnl = 0.0
     if action == 'SELL' and current_position == 1 and entry_price > 0:
         pnl = (fp - entry_price) * fq
@@ -190,7 +199,9 @@ async def place_order(action, signal=''):
     risk_state['session_pnl'] = risk_state.get('session_pnl', 0.0) + pnl
     risk_state['order_count'] = risk_state.get('order_count', 0) + 1
     risk_state['date'] = datetime.now(EST).strftime('%Y-%m-%d')
-    log_trade('BOT' if action == 'BUY' else 'SLD', fq, fp, comm, eid, pnl, signal)
+    log_trade('BOT' if action == 'BUY' else 'SLD', fq, fp, comm, eid, pnl, signal,
+              bar_date=bar_date, indicator_values=indicator_values,
+              bar_close=bar_close, order_id=oid)
     save_state()
     return fp, comm, eid
 
@@ -346,6 +357,30 @@ async def fetch_bars(duration=None):
              'volume':float(b.volume) if b.volume!=-1 else 0.0} for b in bars]
 
 # ── Bar loop ────────────────────────────────────────────────────────────────
+def capture_indicator_context(buf_list):
+    """Capture indicator values at the latest bar for audit trail."""
+    if not buf_list:
+        return ''
+    try:
+        close = [b['close'] for b in buf_list]
+        parts = [f'bar_close={close[-1]:.4f}']
+        # Try to capture key indicators used by compute_signals
+        try:
+            ema20 = calc_ema(close, 20)
+            if ema20[-1] is not None: parts.append(f'ema_20={ema20[-1]:.4f}')
+        except Exception: pass
+        try:
+            ema50 = calc_ema(close, 50)
+            if ema50[-1] is not None: parts.append(f'ema_50={ema50[-1]:.4f}')
+        except Exception: pass
+        try:
+            rsi14 = calc_rsi(close, 14)
+            if rsi14[-1] is not None: parts.append(f'rsi_14={rsi14[-1]:.2f}')
+        except Exception: pass
+        return ','.join(parts)
+    except Exception:
+        return ''
+
 async def bar_loop():
     global current_position, data_buffer
     logger.info(f'Bar loop: polling every {INTERVAL_MINS}m')
@@ -362,29 +397,32 @@ async def bar_loop():
             data_buffer.extend(new)
             last_date = new[-1]['date']
             logger.info(f'Bar: {new[-1]["date"]} close={new[-1]["close"]:.5f}')
-            sigs = compute_signals(list(data_buffer))
+            buf_list = list(data_buffer)
+            sigs = compute_signals(buf_list)
             if not sigs or sigs[-1] is None: continue
-            sig, price = sigs[-1], list(data_buffer)[-1]['close']
+            sig, price = sigs[-1], buf_list[-1]['close']
+            bar_dt = buf_list[-1]['date']
+            ind_ctx = capture_indicator_context(buf_list)
             if sig == 'buy' and current_position == 0:
-                await place_order('BUY', 'entry_long')
+                await place_order('BUY', 'entry_long', bar_date=bar_dt, indicator_values=ind_ctx, bar_close=price)
             elif sig == 'sell' and current_position == 1:
-                await place_order('SELL', 'exit_long')
+                await place_order('SELL', 'exit_long', bar_date=bar_dt, indicator_values=ind_ctx, bar_close=price)
             elif sig == 'short' and current_position == 0 and HAS_SHORT:
-                await place_order('SELL', 'entry_short')
+                await place_order('SELL', 'entry_short', bar_date=bar_dt, indicator_values=ind_ctx, bar_close=price)
             elif sig == 'cover' and current_position == -1 and HAS_SHORT:
-                await place_order('BUY', 'exit_short')
+                await place_order('BUY', 'exit_short', bar_date=bar_dt, indicator_values=ind_ctx, bar_close=price)
             # SL/TP
             if current_position != 0 and entry_price > 0:
                 if current_position == 1:
                     if STOP_LOSS_PCT > 0 and price <= entry_price*(1-STOP_LOSS_PCT):
-                        await place_order('SELL', 'stop_loss')
+                        await place_order('SELL', 'stop_loss', bar_date=bar_dt, indicator_values=ind_ctx, bar_close=price)
                     elif TAKE_PROFIT_PCT > 0 and price >= entry_price*(1+TAKE_PROFIT_PCT):
-                        await place_order('SELL', 'take_profit')
+                        await place_order('SELL', 'take_profit', bar_date=bar_dt, indicator_values=ind_ctx, bar_close=price)
                 elif current_position == -1:
                     if STOP_LOSS_PCT > 0 and price >= entry_price*(1+STOP_LOSS_PCT):
-                        await place_order('BUY', 'stop_loss')
+                        await place_order('BUY', 'stop_loss', bar_date=bar_dt, indicator_values=ind_ctx, bar_close=price)
                     elif TAKE_PROFIT_PCT > 0 and price <= entry_price*(1-TAKE_PROFIT_PCT):
-                        await place_order('BUY', 'take_profit')
+                        await place_order('BUY', 'take_profit', bar_date=bar_dt, indicator_values=ind_ctx, bar_close=price)
         except Exception as e:
             logger.exception(f'Bar loop error: {e}')
             await asyncio.sleep(10)
@@ -411,6 +449,35 @@ async def connect_retry():
             w = 2**a; logger.warning(f'Attempt {a} failed: {e}. Retry {w}s...'); await asyncio.sleep(w)
     return False
 
+async def reconcile_positions():
+    """Compare local state vs broker actual positions at startup."""
+    global current_position, entry_price
+    try:
+        if SEC_TYPE == 'STK':
+            positions = ib.positions()
+            broker_qty = 0
+            for p in positions:
+                if p.contract.symbol == SYMBOL:
+                    broker_qty = int(p.position)
+                    break
+            our_qty = current_position * LOT_SIZE
+            if our_qty != broker_qty:
+                logger.warning(f'[RECONCILE] State mismatch: local={our_qty} broker={broker_qty}. Syncing to broker.')
+                if broker_qty == 0:
+                    current_position = 0
+                    entry_price = 0.0
+                elif broker_qty > 0:
+                    current_position = 1
+                else:
+                    current_position = -1
+                save_state()
+            else:
+                logger.info(f'[RECONCILE] Position confirmed: {broker_qty} shares of {SYMBOL}')
+        else:
+            logger.info(f'[RECONCILE] Skipped for {SEC_TYPE} (non-STK)')
+    except Exception as e:
+        logger.warning(f'[RECONCILE] Failed: {e}')
+
 async def main():
     global contract, data_buffer
     logger.info('='*72)
@@ -432,6 +499,7 @@ async def main():
     data_buffer = deque(warmup, maxlen=500)
     logger.info(f'Warmup: {len(warmup)} bars | last={warmup[-1]["date"]} close={warmup[-1]["close"]:.5f}')
     ensure_csv()
+    await reconcile_positions()
     if current_position != 0:
         logger.warning(f'[RESTORED] {"LONG" if current_position==1 else "SHORT"} @ {entry_price:.5f}')
     try:

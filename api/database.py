@@ -137,7 +137,7 @@ def init_db():
         cols = {r[1] for r in conn.execute("PRAGMA table_info(strategies)").fetchall()}
         for col, default in [("allocation", "'10000'"), ("backtest_results_json", "NULL"),
                               ("live_results_json", "NULL"), ("trade_log_json", "NULL"),
-                              ("broker", "'longport'")]:
+                              ("broker", "'longport'"), ("is_dry_run", "0")]:
             if col not in cols:
                 conn.execute(f"ALTER TABLE strategies ADD COLUMN {col} TEXT DEFAULT {default}")
         conn.commit()
@@ -179,16 +179,6 @@ def init_db():
         seed_builtin_indicators(conn)
     except Exception:
         pass
-    # Indicator table migrations
-    try:
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(indicators)").fetchall()}
-        if "source" not in cols:
-            conn.execute("ALTER TABLE indicators ADD COLUMN source TEXT DEFAULT ''")
-        if "inputs" not in cols:
-            conn.execute("ALTER TABLE indicators ADD COLUMN inputs TEXT DEFAULT '[\"closes\"]'")
-        conn.commit()
-    except Exception:
-        pass
     # Broker accounts table
     try:
         conn.executescript("""
@@ -214,6 +204,20 @@ def init_db():
         conn.commit()
         # Migrate existing LongPort credentials
         _migrate_broker_accounts(conn)
+        # Backtest result cache table (idempotent)
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS backtest_cache (
+                    cache_key  TEXT PRIMARY KEY,
+                    result_json TEXT NOT NULL,
+                    strategy   TEXT DEFAULT '',
+                    symbol     TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
+            conn.commit()
+        except Exception:
+            pass
     except Exception:
         pass
     conn.close()
@@ -299,14 +303,14 @@ def save_strategy(email: str, strategy_id: str, strategy_name: str, symbol: str,
                   arena: str, timeframe: str, conditions: dict, exit_rules: dict,
                   risk: dict, is_active: bool = True, mode: str = "library",
                   library_id: str = "", custom_script: str = "",
-                  broker: str = "longport"):
+                  broker: str = "longport", is_dry_run: bool = False):
     conn = get_db()
     try:
         conn.execute(
             """INSERT INTO strategies (email, strategy_id, strategy_name, symbol, arena, timeframe,
                                       conditions_json, exit_rules_json, risk_json, is_active,
-                                      mode, library_id, custom_script, broker)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                      mode, library_id, custom_script, broker, is_dry_run)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(strategy_id) DO UPDATE SET
                  strategy_name=excluded.strategy_name,
                  symbol=excluded.symbol,
@@ -319,10 +323,12 @@ def save_strategy(email: str, strategy_id: str, strategy_name: str, symbol: str,
                  mode=excluded.mode,
                  library_id=excluded.library_id,
                  custom_script=excluded.custom_script,
-                 broker=excluded.broker""",
+                 broker=excluded.broker,
+                 is_dry_run=excluded.is_dry_run""",
             (email, strategy_id, strategy_name, symbol, arena, timeframe,
              json.dumps(conditions), json.dumps(exit_rules), json.dumps(risk),
-             1 if is_active else 0, mode, library_id, custom_script, broker),
+             1 if is_active else 0, mode, library_id, custom_script, broker,
+             1 if is_dry_run else 0),
         )
         conn.commit()
     finally:
@@ -354,6 +360,7 @@ def get_strategies(email: str, active_only: bool = False) -> list[dict]:
                 "library_id": r["library_id"] if "library_id" in rk else "",
                 "custom_script": r["custom_script"] if "custom_script" in rk else "",
                 "broker": r["broker"] if "broker" in rk else "longport",
+                "is_dry_run": bool(r["is_dry_run"]) if "is_dry_run" in rk else False,
                 "allocation": float(r["allocation"]) if "allocation" in rk and r["allocation"] else 10000,
                 "backtest_results": json.loads(r["backtest_results_json"]) if "backtest_results_json" in rk and r["backtest_results_json"] else None,
                 "live_results": json.loads(r["live_results_json"]) if "live_results_json" in rk and r["live_results_json"] else None,
@@ -592,45 +599,108 @@ def get_broker_credentials(account_id: int) -> dict | None:
         conn.close()
 
 
-# ── Custom indicator helpers ───────────────────────────────────────────────
+# ── Backtest result cache ──────────────────────────────────────────────────
 
-def register_custom_indicator(conn, data: dict, email: str,
-                              overwrite: bool = False) -> str:
-    """Register a custom indicator from .quantx file data. Returns indicator_id."""
-    ind_id = data["indicator_id"]
-    calc_code = "\n".join(data["calc_code"]) if isinstance(data.get("calc_code"), list) else data.get("calc_code", "")
-    if overwrite:
-        conn.execute("DELETE FROM indicators WHERE indicator_id = ? AND is_builtin = 0", (ind_id,))
-    conn.execute(
-        """INSERT OR REPLACE INTO indicators
-           (indicator_id, name, display_name, category, description,
-            output_type, output_labels, params, calc_code, usage_example,
-            inputs, source, created_by, is_builtin, is_approved)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,1)""",
-        (ind_id, data.get("name", ind_id), data.get("display_name", data.get("name", ind_id)),
-         data.get("category", "custom"), data.get("description", ""),
-         data.get("output_type", "single"),
-         json.dumps(data.get("output_labels", ["main"])),
-         json.dumps(data.get("params", [])),
-         calc_code,
-         data.get("usage_example", f"calc_{ind_id.lower()}(closes, ...)"),
-         json.dumps(data.get("inputs", ["closes"])),
-         data.get("source", ""),
-         email))
-    conn.commit()
-    return ind_id
+import hashlib
+
+def _bt_cache_key(strategy: str, symbol: str, timeframe: str,
+                  params: dict, limit: int,
+                  commission_pct: float = 0.0, slippage_pct: float = 0.0) -> str:
+    """Deterministic cache key for a backtest run."""
+    import json
+    payload = json.dumps({
+        "strategy": strategy, "symbol": symbol, "timeframe": timeframe,
+        "params": dict(sorted((params or {}).items())),
+        "limit": limit, "commission_pct": commission_pct, "slippage_pct": slippage_pct,
+    }, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def get_custom_indicators(conn, email: str = None) -> list:
-    """Return all non-builtin indicators as dicts.
-    On a local app there's no multi-tenancy, so return all custom indicators."""
-    rows = conn.execute(
-        "SELECT * FROM indicators WHERE is_builtin = 0 ORDER BY name").fetchall()
-    result = []
-    for r in rows:
-        d = dict(r)
-        d["output_labels"] = json.loads(d.get("output_labels") or "[]")
-        d["params"] = json.loads(d.get("params") or "[]")
-        d["inputs"] = json.loads(d.get("inputs") or '["closes"]')
-        result.append(d)
-    return result
+def _options_bt_cache_key(config: dict) -> str:
+    """Deterministic cache key for an options backtest config.
+
+    Covers every field that affects trade outcomes.  Fields that are purely
+    cosmetic (e.g. 'dry_run', UI labels) are excluded so two students who
+    pick the same real params share the same cache entry.
+    """
+    import json
+    # Canonical subset — sorted keys so dict ordering never matters
+    canonical = {
+        "symbol":                   config.get("symbol", ""),
+        "strategy_type":            config.get("strategy_type", ""),
+        "start_date":               config.get("start_date", ""),
+        "end_date":                 config.get("end_date", ""),
+        "target_dte":               config.get("target_dte", 0),
+        "dte_tolerance":            config.get("dte_tolerance", 0),
+        "short_strike_method":      config.get("short_strike_method", ""),
+        "short_strike_value":       config.get("short_strike_value", 0),
+        "short_call_strike_method": config.get("short_call_strike_method", ""),
+        "short_call_strike_value":  config.get("short_call_strike_value", 0),
+        "wing_width_method":        config.get("wing_width_method", ""),
+        "wing_width_value":         config.get("wing_width_value", 0),
+        "call_wing_width_value":    config.get("call_wing_width_value", 0),
+        "profit_target_pct":        config.get("profit_target_pct", 0),
+        "stop_loss_mult":           config.get("stop_loss_mult", 0),
+        "entry_time_et":            config.get("entry_time_et", "09:45"),
+        "exit_time_et":             config.get("exit_time_et", "15:45"),
+        "entry_days":               sorted(config.get("entry_days") or []),
+        "entry_frequency":          config.get("entry_frequency", "DAILY"),
+        "check_exit_times":         sorted(config.get("check_exit_times") or []),
+        "contracts":                config.get("contracts", 1),
+        "commission_per_contract":  config.get("commission_per_contract", 0.65),
+        "slippage_pct":             config.get("slippage_pct", 0.0),
+        "starting_capital":         config.get("starting_capital", 10000),
+    }
+    payload = json.dumps(canonical, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def get_backtest_cache(cache_key: str, ttl_hours: int = 24):
+    """Return cached result dict or None if missing/expired."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            """SELECT result_json, created_at FROM backtest_cache
+               WHERE cache_key = ?
+               AND created_at > datetime('now', ?)""",
+            (cache_key, f'-{ttl_hours} hours')
+        ).fetchone()
+        if row:
+            import json
+            return json.loads(row["result_json"])
+        return None
+    finally:
+        conn.close()
+
+
+def set_backtest_cache(cache_key: str, result: dict,
+                       strategy: str = '', symbol: str = '') -> None:
+    """Store a backtest result in the cache."""
+    import json
+    conn = get_db()
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO backtest_cache
+               (cache_key, result_json, strategy, symbol, created_at)
+               VALUES (?, ?, ?, ?, datetime('now'))""",
+            (cache_key, json.dumps(result), strategy, symbol)
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
+def prune_backtest_cache(max_age_hours: int = 48) -> int:
+    """Delete cache entries older than max_age_hours. Returns rows deleted."""
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "DELETE FROM backtest_cache WHERE created_at < datetime('now', ?)",
+            (f'-{max_age_hours} hours',)
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()

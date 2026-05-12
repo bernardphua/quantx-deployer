@@ -1,9 +1,6 @@
 """QuantX Deployer — Unified master bot script generator."""
 
 import json
-import re
-from datetime import datetime
-from .bot_template_lp_options import LP_OPTIONS_BOT_TEMPLATE
 import hashlib
 from pathlib import Path
 
@@ -395,9 +392,8 @@ def generate_ibkr_bot_prod(email: str, strategy_config: dict,
 
 def generate_lp_master_bot(email: str, strategies: list[dict],
                            lp_credentials: dict,
-                           initial_states: dict = None) -> tuple[str, str]:
+                           dry_run: bool = False) -> tuple[str, str]:
     """Generate one LP master bot handling multiple strategies with shared connections.
-    initial_states: {strategy_id: {position, entry_price, side}} for position preservation.
     Returns (script_path, log_path)."""
     BOTS_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -414,38 +410,42 @@ def generate_lp_master_bot(email: str, strategies: list[dict],
     for s in strategies:
         sid = s.get("strategy_id", "CUSTOM")
         conds = s.get("conditions", {})
-        # If library strategy, convert to Builder conditions
-        if not conds.get("entry_long") and s.get("library_id"):
-            conds = library_id_to_conditions(s["library_id"])
+        library_id = s.get("library_id", "")
+        timeframe = s.get("timeframe", "1day")
 
-        fn_code = generate_signal_code(
-            entry_long=conds.get("entry_long", []),
-            exit_long=conds.get("exit_long", []),
-            entry_short=conds.get("entry_short", []),
-            exit_short=conds.get("exit_short", []),
-            entry_long_logic=conds.get("entry_long_logic", "AND"),
-            exit_long_logic=conds.get("exit_long_logic", "OR"),
-            has_short=bool(conds.get("entry_short")),
-        )
-        # Rename compute_signals -> compute_signals_XXXX
-        fn_code = fn_code.replace("def compute_signals(", f"def compute_signals_{sid}(")
-        signal_functions.append(f"# Strategy: {sid} ({s.get('symbol', '?')})")
-        signal_functions.append(fn_code)
-        signal_functions.append("")
+        # Grid strategies are event-driven — no signal function needed
+        is_grid = (library_id == "SYMMETRIC_GRID" or
+                   conds.get("type") == "SYMMETRIC_GRID")
+
+        if not is_grid:
+            # If library strategy without entry_long, convert to Builder conditions
+            if not conds.get("entry_long") and library_id:
+                conds = library_id_to_conditions(library_id)
+
+            fn_code = generate_signal_code(
+                entry_long=conds.get("entry_long", []),
+                exit_long=conds.get("exit_long", []),
+                entry_short=conds.get("entry_short", []),
+                exit_short=conds.get("exit_short", []),
+                entry_long_logic=conds.get("entry_long_logic", "AND"),
+                exit_long_logic=conds.get("exit_long_logic", "OR"),
+                has_short=bool(conds.get("entry_short")),
+            )
+            fn_code = fn_code.replace("def compute_signals(", f"def compute_signals_{sid}(")
+            signal_functions.append(f"# Strategy: {sid} ({s.get('symbol', '?')})")
+            signal_functions.append(fn_code)
+            signal_functions.append("")
 
         risk = s.get("risk", {})
-        from .config import normalize_timeframe
-        tf = normalize_timeframe(s.get("timeframe", "1d"))
-        state = (initial_states or {}).get(sid, {})
         strategies_meta.append({
             "strategy_id": sid,
             "symbol": s.get("symbol", ""),
             "arena": s.get("arena", "HK"),
-            "timeframe": tf,
+            "timeframe": timeframe,
+            "library_id": library_id,
+            "conditions": conds,
             "risk": risk,
             "has_short": bool(conds.get("entry_short")),
-            "initial_position": int(state.get("position", state.get("current_position", 0))),
-            "initial_entry_price": float(state.get("entry_price", 0.0)),
         })
 
     # Build strategies list as Python literal
@@ -453,26 +453,6 @@ def generate_lp_master_bot(email: str, strategies: list[dict],
     strats_json = strats_json.replace(": true", ": True")
     strats_json = strats_json.replace(": false", ": False")
     strats_json = strats_json.replace(": null", ": None")
-
-    # Load custom indicators from DB and inject into generated script
-    custom_code_blocks = []
-    try:
-        from .database import get_db, get_custom_indicators
-        conn = get_db()
-        customs = get_custom_indicators(conn, email)
-        conn.close()
-        for ind in customs:
-            code = ind.get("calc_code", "")
-            if code:
-                custom_code_blocks.append(f"# Custom indicator: {ind.get('name', ind['indicator_id'])}")
-                custom_code_blocks.append(code)
-                custom_code_blocks.append("")
-    except Exception as e:
-        import logging
-        logging.getLogger("quantx-generate").warning("Custom indicator load failed: %s", e)
-
-    if custom_code_blocks:
-        signal_functions = custom_code_blocks + [""] + signal_functions
 
     content = LP_MASTER_TEMPLATE
     replacements = {
@@ -488,6 +468,7 @@ def generate_lp_master_bot(email: str, strategies: list[dict],
         '__STRATEGY_COUNT__': str(len(strategies_meta)),
         '__STRATEGIES_LIST__': strats_json,
         '__SIGNAL_FUNCTIONS__': "\n".join(signal_functions),
+        '__DRY_RUN__': 'True' if dry_run else 'False',
     }
 
     for placeholder, value in replacements.items():
@@ -588,224 +569,3 @@ def generate_options_bot(email: str, options_config: dict,
     assert not remaining, f"Unfilled placeholders: {remaining}"
 
     return str(script_path.resolve()), str(LOGS_DIR / log_name), trades_path
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# LongPort Options Bot Generator (Options Studio -> deployable bot)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def generate_lp_options_bot(config: dict, student: dict, paths: dict) -> str:
-    """
-    Generate a LongPort options bot script from Options Studio config.
-
-    config  -- Options Studio backtest config (same keys as run_options_backtest)
-    student -- {email, app_key, app_secret, access_token, central_api_url}
-    paths   -- {log_dir, trades_dir, state_dir, script_path}
-    Returns -- the generated Python script as a string.
-    """
-    import json
-    from pathlib import Path
-
-    template_path = Path(__file__).parent / "bot_template_lp_options.py"
-    if not template_path.exists():
-        raise FileNotFoundError(f"Template not found: {template_path}")
-
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("tpl_lp_opt", template_path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    template = mod.LP_OPTIONS_BOT_TEMPLATE
-
-    strategy_type = config.get("strategy_type", "SHORT_PUT_SPREAD")
-    strike_method = config.get("short_strike_method", "DELTA")
-
-    custom_legs = config.get("custom_legs", [])
-    custom_legs_repr = json.dumps(custom_legs, indent=2) if custom_legs else "[]"
-
-    entry_days = config.get("entry_days", ["Mon", "Tue", "Wed", "Thu", "Fri"])
-    entry_days_repr = repr(entry_days)
-
-    profit_target_pct = float(config.get("profit_target_pct", 50)) / 100.0
-    stop_loss_pct = float(config.get("stop_loss_pct", 200)) / 100.0
-    contracts = int(config.get("contracts", 1))
-    starting_capital = float(config.get("starting_capital", 10000))
-    max_daily_loss = starting_capital * 0.05  # 5% of capital
-
-    symbol_clean = config.get("symbol", "SPY").replace(".", "_")
-    strategy_name = (
-        f"{symbol_clean}_{strategy_type}_{config.get('target_dte', 7)}DTE"
-        .replace("__", "_").upper()
-    )
-
-    subs = {
-        "__STRATEGY_NAME__":       strategy_name,
-        "__EMAIL__":               student.get("email", ""),
-        "__CENTRAL_API_URL__":     student.get("central_api_url", ""),
-        "__APP_KEY__":             student.get("app_key", ""),
-        "__APP_SECRET__":          student.get("app_secret", ""),
-        "__ACCESS_TOKEN__":        student.get("access_token", ""),
-        "__UNDERLYING__":          config.get("symbol", "SPY") + ".US",
-        "__STRATEGY_TYPE__":       strategy_type,
-        "__STRIKE_METHOD__":       strike_method,
-        "__TARGET_DTE__":          str(int(config.get("target_dte", 7))),
-        "__DTE_TOLERANCE__":       str(int(config.get("dte_tolerance", 2))),
-        "__PUT_DELTA__":           str(float(config.get("short_strike_value", -0.30))),
-        "__CALL_DELTA__":          str(float(config.get("short_call_strike_value", 0.30))),
-        "__PUT_WING_WIDTH__":      str(float(config.get("wing_width_value", 5.0))),
-        "__CALL_WING_WIDTH__":     str(float(config.get("call_wing_width_value", 5.0))),
-        "__CUSTOM_LEGS__":         custom_legs_repr,
-        "__ENTRY_TIME_ET__":       config.get("entry_time", "09:45"),
-        "__EXIT_TIME_ET__":        config.get("exit_time", "15:45"),
-        "__ENTRY_DAYS__":          entry_days_repr,
-        "__PROFIT_TARGET_PCT__":   str(profit_target_pct),
-        "__STOP_LOSS_MULT__":      str(stop_loss_pct),
-        "__CONTRACTS__":           str(contracts),
-        "__MAX_DAILY_LOSS__":      str(max_daily_loss),
-        "__DRY_RUN__":             "True",  # always paper first
-        "__LOG_DIR__":             str(paths.get("log_dir", "./logs")),
-        "__TRADES_DIR__":          str(paths.get("trades_dir", "./trades")),
-        "__STATE_DIR__":           str(paths.get("state_dir", "./state")),
-    }
-
-    script = template
-    for placeholder, value in subs.items():
-        script = script.replace(placeholder, value)
-
-    remaining = [p for p in subs if p in script]
-    if remaining:
-        raise ValueError(f"Unsubstituted placeholders: {remaining}")
-    return script
-
-
-def save_lp_options_bot(config: dict, student: dict, output_path) -> str:
-    """Generate and save the bot script. Returns the script path as a string."""
-    from pathlib import Path
-    symbol_clean = config.get("symbol", "SPY").replace(".", "_")
-    strategy_type = config.get("strategy_type", "SHORT_PUT_SPREAD")
-    dte = config.get("target_dte", 7)
-
-    out = Path(output_path)
-    out.mkdir(parents=True, exist_ok=True)
-
-    script_name = f"bot_{symbol_clean}_{strategy_type}_{dte}DTE.py"
-    script_path = out / script_name
-
-    paths = {
-        "log_dir":    str(out / "logs"),
-        "trades_dir": str(out / "trades"),
-        "state_dir":  str(out / "state"),
-        "script_path": str(script_path),
-    }
-
-    script = generate_lp_options_bot(config, student, paths)
-    script_path.write_text(script, encoding="utf-8")
-    return str(script_path)
-# ─────────────────────────────────────────────────────────────────────────────
-# INSTRUCTIONS: make two changes to api/generate.py
-#
-# 1. Add these imports near the top (after "import json"):
-#
-#       import re
-#       from datetime import datetime
-#       from .bot_template_lp_options import LP_OPTIONS_BOT_TEMPLATE
-#
-# 2. Paste the function below at the END of the file.
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def save_lp_options_bot(config: dict, student: dict, output_path: str) -> str:
-    """Generate a LongPort options bot from an Options Studio config.
-
-    Writes two files to output_path/:
-      bot_{symbol}_{strategy}_{dte}DTE.py   — the runnable bot
-      bot_{symbol}_{strategy}_{dte}DTE.json — metadata for the orchestrator
-
-    Returns the absolute path to the .py script.
-    """
-    email        = student["email"]
-    app_key      = student["app_key"]
-    app_secret   = student["app_secret"]
-    access_token = student["access_token"]
-    central_url  = student.get("central_api_url", "")
-
-    symbol        = config["symbol"]
-    strategy_type = config["strategy_type"]
-    target_dte    = int(config.get("target_dte", 7))
-
-    # LP options need ".US" suffix
-    underlying   = symbol if symbol.endswith(".US") else f"{symbol}.US"
-    symbol_clean = symbol.replace(".US", "")
-    strategy_id  = f"OPT_{symbol_clean}_{strategy_type}_{target_dte}DTE"
-
-    out_dir = Path(output_path)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    script_path = out_dir / f"bot_{symbol_clean}_{strategy_type}_{target_dte}DTE.py"
-    meta_path   = out_dir / f"bot_{symbol_clean}_{strategy_type}_{target_dte}DTE.json"
-
-    dry_run     = config.get("dry_run", True)
-    custom_legs = config.get("custom_legs", [])
-
-    replacements = {
-        # String placeholders (template wraps in quotes already)
-        "__STRATEGY_NAME__":   strategy_id,
-        "__EMAIL__":           email,
-        "__CENTRAL_API_URL__": central_url,
-        "__APP_KEY__":         app_key,
-        "__APP_SECRET__":      app_secret,
-        "__ACCESS_TOKEN__":    access_token,
-        "__UNDERLYING__":      underlying,
-        "__STRATEGY_TYPE__":   strategy_type,
-        "__STRIKE_METHOD__":   config.get("strike_method", "DELTA"),
-        "__ENTRY_TIME_ET__":   config.get("entry_time_et", "09:45"),
-        "__EXIT_TIME_ET__":    config.get("exit_time_et", "15:45"),
-        "__LOG_DIR__":         str(LOGS_DIR).replace("\\", "/"),
-        "__TRADES_DIR__":      str(TRADES_DIR).replace("\\", "/"),
-        "__STATE_DIR__":       str(STATE_DIR).replace("\\", "/"),
-        # Python literal placeholders (no quotes in template)
-        "__TARGET_DTE__":        str(target_dte),
-        "__DTE_TOLERANCE__":     str(int(config.get("dte_tolerance", 2))),
-        "__PUT_DELTA__":         str(float(config.get("put_delta", -0.30))),
-        "__CALL_DELTA__":        str(float(config.get("call_delta",  0.30))),
-        "__PUT_WING_WIDTH__":    str(float(config.get("put_wing_width", 5.0))),
-        "__CALL_WING_WIDTH__":   str(float(config.get("call_wing_width", 5.0))),
-        "__PROFIT_TARGET_PCT__": str(float(config.get("profit_target_pct", 0.50))),
-        "__STOP_LOSS_MULT__":    str(float(config.get("stop_loss_mult", 2.0))),
-        "__CONTRACTS__":         str(int(config.get("contracts", 1))),
-        "__MAX_DAILY_LOSS__":    str(float(config.get("max_daily_loss", 5000))),
-        "__DRY_RUN__":           "True" if dry_run else "False",
-        "__ENTRY_DAYS__":        repr(config.get("entry_days", ["Mon","Tue","Wed","Thu","Fri"])),
-        "__CUSTOM_LEGS__":       repr(custom_legs),
-    }
-
-    content = LP_OPTIONS_BOT_TEMPLATE
-    for placeholder, value in replacements.items():
-        content = content.replace(placeholder, value)
-
-    remaining = re.findall(r'__[A-Z_]{3,}__', content)
-    if remaining:
-        raise ValueError(f"Unfilled placeholders in LP options template: {remaining}")
-
-    script_path.write_text(content, encoding="utf-8")
-
-    # Metadata JSON — orchestrator reads this to decide what to run
-    meta = {
-        "strategy_id":    strategy_id,
-        "email":          email,
-        "symbol":         symbol_clean,
-        "underlying":     underlying,
-        "strategy_type":  strategy_type,
-        "target_dte":     target_dte,
-        "strike_method":  config.get("strike_method", "DELTA"),
-        "broker":         "longport",
-        "bot_type":       "lp_options",
-        "enabled":        True,
-        "dry_run":        dry_run,
-        "script_path":    str(script_path.resolve()),
-        "created_at":     datetime.utcnow().isoformat(),
-        "status":         "pending",
-        "pid":            None,
-        "last_heartbeat": None,
-    }
-    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
-    return str(script_path.resolve())

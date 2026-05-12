@@ -1,3 +1,5 @@
+# DEPRECATED: IBKR support removed. This file is kept for reference only.
+# QuantX Deployer now supports LongPort only.
 """QuantX — IBKR bot template string for code generation."""
 
 IBKR_BOT_TEMPLATE = r'''#!/usr/bin/env python3
