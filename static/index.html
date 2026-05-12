@@ -3159,6 +3159,7 @@ async function createBot(andDeploy = false) {
       is_dry_run: isDryRun,
     };
     // Phase 1: Save strategy
+    if (andDeploy) { showDeployOverlay(0, 10, 'Saving strategy...'); }
     btns.forEach(b => { if (andDeploy) b.textContent = '⏳ Saving...'; });
     const r = await fetch(API + '/api/strategy', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -3169,24 +3170,32 @@ async function createBot(andDeploy = false) {
     if (andDeploy) {
       try {
         // Phase 2: Activate
+        showDeployOverlay(1, 35, 'Activating strategy...');
         btns.forEach(b => { b.textContent = '⏳ Activating...'; });
         await fetch(API + '/api/strategy/' + encodeURIComponent(sid) + '/toggle?active=true', { method: 'PUT' });
 
         // Phase 3: Deploy (the slow part ~8-10s)
+        showDeployOverlay(2, 65, 'Generating bot script...');
         btns.forEach(b => { b.textContent = '⏳ Deploying bot...'; });
         const dr = await fetch(API + '/api/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL }) });
         const dd = await dr.json();
 
         closeModal('newbot-modal');
         if (!dr.ok) {
+          hideDeployOverlay();
           showToast('Created but deploy failed: ' + (dd.detail || ''), 'error');
         } else {
+          showDeployOverlay(3, 100, 'Bot is live!');
           BOT_RUNNING = true;
-          showToast('✅ Bot deployed: ' + name, 'success');
+          setTimeout(() => {
+            hideDeployOverlay();
+            showToast('✅ Bot deployed: ' + name, 'success');
+          }, 1200);
         }
         navigate('bots');
         setTimeout(loadBots, 2000);
       } catch (de) {
+        hideDeployOverlay();
         closeModal('newbot-modal');
         showToast('Created but deploy failed: ' + de.message, 'error');
         navigate('bots');
@@ -8101,6 +8110,80 @@ async function optsClearCache() {
   }
 }
 
+</script>
+
+<div id="deploy-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:var(--color-background-primary);z-index:9999;flex-direction:column;align-items:center;justify-content:center;">
+  <style>
+    @keyframes qx-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+    @keyframes qx-pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+    @keyframes qx-glow{0%,100%{box-shadow:0 0 8px #378ADD44}50%{box-shadow:0 0 20px #378ADD88}}
+    @keyframes qx-slideup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes qx-spark{0%,100%{opacity:0;transform:scale(0)}50%{opacity:1;transform:scale(1)}}
+    .qx-stage{display:flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);font-size:12px;color:var(--color-text-secondary);transition:all 0.4s}
+    .qx-stage.done{border-color:#1D9E75;color:#0F6E56;background:#E1F5EE}
+    .qx-stage.active{border-color:#378ADD;color:#185FA5;background:#E6F1FB;animation:qx-pulse 1s infinite}
+  </style>
+  <div style="animation:qx-float 2.5s ease-in-out infinite;margin-bottom:1.5rem">
+    <svg width="120" height="140" viewBox="0 0 120 140">
+      <rect x="30" y="10" width="60" height="50" rx="8" fill="#B5D4F4" stroke="#378ADD" stroke-width="1.5"/>
+      <rect x="38" y="18" width="18" height="12" rx="3" fill="#378ADD" opacity="0.7"/>
+      <rect x="64" y="18" width="18" height="12" rx="3" fill="#378ADD" opacity="0.7"/>
+      <rect x="20" y="22" width="10" height="30" rx="4" fill="#85B7EB" stroke="#378ADD" stroke-width="1"/>
+      <rect x="90" y="22" width="10" height="30" rx="4" fill="#85B7EB" stroke="#378ADD" stroke-width="1"/>
+      <rect x="25" y="60" width="70" height="55" rx="6" fill="#B5D4F4" stroke="#378ADD" stroke-width="1.5"/>
+      <rect x="15" y="62" width="12" height="40" rx="5" fill="#85B7EB" stroke="#378ADD" stroke-width="1"/>
+      <rect x="93" y="62" width="12" height="40" rx="5" fill="#85B7EB" stroke="#378ADD" stroke-width="1"/>
+      <rect x="33" y="115" width="20" height="22" rx="4" fill="#85B7EB" stroke="#378ADD" stroke-width="1"/>
+      <rect x="67" y="115" width="20" height="22" rx="4" fill="#85B7EB" stroke="#378ADD" stroke-width="1"/>
+      <circle cx="60" cy="37" r="8" fill="#E6F1FB" stroke="#378ADD" stroke-width="1.5"/>
+      <circle cx="60" cy="37" r="4" fill="#378ADD" id="qx-arc"/>
+      <text x="60" y="100" text-anchor="middle" font-size="8" fill="#185FA5" font-weight="500">QUANT-X</text>
+    </svg>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:1rem" id="qx-stages">
+    <div class="qx-stage" id="qxs1">Strategy saved</div>
+    <div class="qx-stage" id="qxs2">Generating script</div>
+    <div class="qx-stage" id="qxs3">Launching bot</div>
+    <div class="qx-stage" id="qxs4">Going live</div>
+  </div>
+  <div style="width:240px;height:5px;background:var(--color-background-secondary);border-radius:3px;overflow:hidden;border:0.5px solid var(--color-border-tertiary)">
+    <div id="qx-pbar" style="height:100%;background:#378ADD;border-radius:3px;transition:width 0.5s ease;width:0%"></div>
+  </div>
+  <div id="qx-msg" style="font-size:13px;color:var(--color-text-secondary);margin-top:0.8rem">Preparing bot...</div>
+</div>
+
+<script>
+(function(){
+  let _qxAngle=0;
+  function _qxArc(){
+    const d=document.getElementById("qx-arc");
+    if(!d)return;
+    _qxAngle=(_qxAngle+8)%360;
+    const x=60+4*Math.cos(_qxAngle*Math.PI/180),y=37+4*Math.sin(_qxAngle*Math.PI/180);
+    d.setAttribute("cx",x);d.setAttribute("cy",y);
+  }
+  window._qxArcInt=null;
+  window.showDeployOverlay=function(stage,pct,msg){
+    const o=document.getElementById("deploy-overlay");
+    if(!o)return;
+    o.style.display="flex";
+    if(!window._qxArcInt)window._qxArcInt=setInterval(_qxArc,40);
+    ["qxs1","qxs2","qxs3","qxs4"].forEach((id,i)=>{
+      const el=document.getElementById(id);
+      if(!el)return;
+      el.className="qx-stage"+(i<stage?" done":i===stage?" active":"");
+    });
+    const pb=document.getElementById("qx-pbar");
+    if(pb)pb.style.width=pct+"%";
+    const pm=document.getElementById("qx-msg");
+    if(pm)pm.textContent=msg||"";
+  };
+  window.hideDeployOverlay=function(){
+    const o=document.getElementById("deploy-overlay");
+    if(o)o.style.display="none";
+    if(window._qxArcInt){clearInterval(window._qxArcInt);window._qxArcInt=null;}
+  };
+})();
 </script>
 </body>
 </html>
