@@ -39,7 +39,7 @@ from api.database import (
     update_broker_account_status, delete_broker_account, get_broker_credentials,
 )
 # Dual-mode init: PostgreSQL when DATABASE_URL is set, SQLite otherwise.
-from api.db_postgres import init_db, USE_POSTGRES
+from api.database import init_db
 from api.generate import (generate_master_bot, generate_simple_lp_bot,
                           generate_lp_master_bot, library_id_to_conditions)
 
@@ -392,7 +392,7 @@ async def lifespan(app: FastAPI):
     if HOSTING == "railway":
         threading.Thread(target=_orchestrator_loop, daemon=True, name="orchestrator").start()
         _log.info("[ORCH] Orchestrator thread started (Railway mode)")
-        yield
+    yield  # Always yield — required by FastAPI lifespan context manager
     for email, proc in _running_processes.items():
         try:
             proc.terminate()
@@ -404,6 +404,9 @@ async def lifespan(app: FastAPI):
                 pass
 
 app = FastAPI(title="QuantX Deployer", lifespan=lifespan)
+
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # ── Symbol cache ────────────────────────────────────────────────────────────
 _symbol_cache: dict[str, dict] = {
@@ -427,7 +430,7 @@ _symbol_cache: dict[str, dict] = {
     "1299.HK": {"found": True, "symbol": "1299.HK", "name": "AIA Group Limited", "exchange": "HKEX", "lot_size": 200, "currency": "HKD"},
 }
 
-_executor = ThreadPoolExecutor(max_workers=4)
+_executor = ThreadPoolExecutor(max_workers=8)
 
 static_dir = Path(__file__).parent.parent / "static"
 if static_dir.exists():
@@ -448,7 +451,7 @@ async def health():
             "backtest": "railway" if CENTRAL_API_URL else "local",
             "trading": "local",
         },
-        "auth_mode": "postgres" if USE_POSTGRES else "local",
+        "auth_mode": "postgres" if False else "local",
     }
 
 
@@ -468,7 +471,7 @@ _PUBLIC_API_PREFIXES = ("/api/auth/", "/api/health", "/api/debug",
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """Require JWT on /api/* routes when running in PostgreSQL mode."""
-    if not USE_POSTGRES:
+    if not False:
         return await call_next(request)
     path = request.url.path
     if not path.startswith("/api/"):
@@ -499,12 +502,12 @@ class _LoginBody(BaseModel):
 @app.post("/api/auth/register")
 async def auth_register(body: _RegisterBody, response: Response):
     """Create a user + return JWT. PostgreSQL only."""
-    if not USE_POSTGRES:
+    if not False:
         raise HTTPException(400, "Registration requires PostgreSQL (DATABASE_URL unset)")
     if len(body.password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
     from api.auth import hash_password, create_token, COOKIE_NAME
-    from api.db_postgres import get_conn
+    from api.database import get_db as get_conn
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -531,10 +534,10 @@ async def auth_register(body: _RegisterBody, response: Response):
 
 @app.post("/api/auth/login")
 async def auth_login(body: _LoginBody, response: Response):
-    if not USE_POSTGRES:
+    if not False:
         raise HTTPException(400, "Login requires PostgreSQL (DATABASE_URL unset)")
     from api.auth import verify_password, create_token, COOKIE_NAME
-    from api.db_postgres import get_conn
+    from api.database import get_db as get_conn
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
@@ -569,7 +572,7 @@ async def auth_me(request: Request):
     user = get_current_user(request)
     if not user:
         # In SQLite mode there's no user; return a synthetic "local" identity
-        if not USE_POSTGRES:
+        if not False:
             return {"user": None, "mode": "local"}
         raise HTTPException(401, "Not authenticated")
     return {"user": {k: user.get(k) for k in ("user_id", "email", "name", "role")},
@@ -582,7 +585,7 @@ async def auth_me(request: Request):
 @app.get("/api/auth/longport/start")
 async def longport_start(request: Request):
     """Begin OAuth2 flow: return the LongPort authorize URL for the frontend to open."""
-    if not USE_POSTGRES:
+    if not False:
         raise HTTPException(400, "LongPort OAuth requires PostgreSQL")
     from api.auth import get_current_user
     from api.longport_oauth import generate_pkce, get_authorize_url, save_oauth_state
@@ -605,7 +608,7 @@ async def longport_callback(code: Optional[str] = None, state: Optional[str] = N
         return RedirectResponse(url=f"/#/brokers?oauth_error={error}")
     if not code or not state:
         return RedirectResponse(url="/#/brokers?oauth_error=missing_code_or_state")
-    if not USE_POSTGRES:
+    if not False:
         return RedirectResponse(url="/#/brokers?oauth_error=postgres_required")
     from api.longport_oauth import consume_oauth_state, exchange_code_for_tokens, store_tokens
     row = consume_oauth_state(state)
@@ -1536,8 +1539,8 @@ async def get_results_index():
 
 def _ensure_options_shares_table():
     """Create the options_shares table on first use. Idempotent."""
-    if USE_POSTGRES:
-        from api.db_postgres import get_conn
+    if False:
+        from api.database import get_db as get_conn
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
@@ -1664,8 +1667,8 @@ async def options_share_create(request: Request):
     email = (body.get("email") or "").strip()
     created = datetime.utcnow().isoformat()
 
-    if USE_POSTGRES:
-        from api.db_postgres import get_conn
+    if False:
+        from api.database import get_db as get_conn
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
@@ -1693,8 +1696,8 @@ async def options_share_create(request: Request):
 async def options_share_get(share_id: str):
     """Retrieve a shared backtest. Public -- no auth required."""
     _ensure_options_shares_table()
-    if USE_POSTGRES:
-        from api.db_postgres import get_conn
+    if False:
+        from api.database import get_db as get_conn
         conn = get_conn()
         cur = conn.cursor()
         cur.execute(
@@ -2611,24 +2614,45 @@ async def test_broker_account(account_id: int):
     broker = acct.get("broker", "")
     def _test():
         if broker == "longport":
+            from longport.openapi import QuoteContext
+            ctx = None
             try:
-                ctx = get_lp_quote_ctx(acct["app_key"], acct["app_secret"], acct["access_token"])
+                # Build a FRESH context (don't use pool) so we actually verify creds
+                cfg = _lp_build_config(acct["app_key"], acct["app_secret"], acct["access_token"])
+                ctx = QuoteContext(cfg)
                 quotes = ctx.quote(["700.HK"])
                 if quotes:
                     price = float(quotes[0].last_done)
                     update_broker_account_status(account_id, True)
-                    return {"ok": True, "message": f"Connected -- 700.HK: ${price:.2f}"}
+                    return {"ok": True, "message": f"Connected — 700.HK: HK${price:.2f}"}
                 update_broker_account_status(account_id, True)
                 return {"ok": True, "message": "Connected (no quote data)"}
             except Exception as e:
                 update_broker_account_status(account_id, False, str(e))
                 return {"ok": False, "message": str(e)}
+            finally:
+                if ctx is not None:
+                    try:
+                        del ctx
+                    except Exception:
+                        pass
         return {"ok": False, "message": f"Unknown broker: {broker}"}
+    # Use a dedicated single-thread executor with a 15s timeout so this never
+    # blocks the shared _executor (4 workers) or hangs indefinitely.
+    _test_executor = ThreadPoolExecutor(max_workers=1)
     try:
-        result = await asyncio.get_event_loop().run_in_executor(_executor, _test)
+        result = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(_test_executor, _test),
+            timeout=15.0
+        )
         return result
+    except asyncio.TimeoutError:
+        update_broker_account_status(account_id, False, "Connection timed out after 15s")
+        return {"ok": False, "message": "Connection timed out after 15s — check your App Key / Secret / Token"}
     except Exception as e:
         return {"ok": False, "message": f"Test error: {e}"}
+    finally:
+        _test_executor.shutdown(wait=False)
 
 
 # ── Data cache endpoints ─────────────────────────────────────────────────────
@@ -2699,10 +2723,16 @@ async def list_indicators(category: str = Query(""), created_by: str = Query("")
 @app.get("/api/indicators/custom")
 async def indicators_custom(email: str = Query("", description="Unused, kept for frontend compat")):
     """List custom (non-builtin) indicators. Must be before /{indicator_id} route."""
-    from api.database import get_custom_indicators
     conn = get_db()
     try:
-        indicators = get_custom_indicators(conn)
+        import json as _j
+        rows = conn.execute("SELECT * FROM indicators WHERE is_builtin=0 ORDER BY name").fetchall()
+        indicators = []
+        for r in rows:
+            d = dict(r)
+            d["output_labels"] = _j.loads(d.get("output_labels") or "[]")
+            d["params"] = _j.loads(d.get("params") or "[]")
+            indicators.append(d)
         return {"indicators": indicators, "count": len(indicators)}
     finally:
         conn.close()
