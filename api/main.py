@@ -2053,30 +2053,8 @@ async def get_config():
 
 @app.get("/api/strategies-library")
 async def strategies_library():
-    """Serve strategy library — try central first, fallback to local copy."""
-    # Try fetching from central
+    """Serve strategy library from local copy — no central roundtrip on page load."""
     students_dir = Path(__file__).parent.parent
-    # Check if any student is registered to get their central URL
-    conn = get_db()
-    try:
-        row = conn.execute("SELECT central_api_url FROM students LIMIT 1").fetchone()
-        central_url = row["central_api_url"] if row and row["central_api_url"] else ""
-    finally:
-        conn.close()
-
-    if not central_url:
-        central_url = os.getenv("CENTRAL_API_URL", "")
-
-    if central_url:
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(f"{central_url.rstrip('/')}/api/strategies-library")
-                if resp.status_code == 200:
-                    return resp.json()
-        except Exception:
-            pass  # Fall through to local copy
-
-    # Fallback: read local copy
     local_path = students_dir / "strategies_library.json"
     if local_path.exists():
         return json.loads(local_path.read_text(encoding="utf-8"))
@@ -2699,11 +2677,7 @@ async def list_indicators(category: str = Query(""), created_by: str = Query("")
 @app.get("/api/indicators/custom")
 async def indicators_custom(email: str = Query("", description="Unused, kept for frontend compat")):
     """List custom (non-builtin) indicators. Must be before /{indicator_id} route."""
-    try:
-        from api.database import get_custom_indicators
-    except ImportError:
-        # database.py doesn't have get_custom_indicators yet — return empty list gracefully
-        return {"indicators": [], "count": 0}
+    from api.database import get_custom_indicators
     conn = get_db()
     try:
         indicators = get_custom_indicators(conn)

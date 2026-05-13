@@ -338,6 +338,15 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 </style>
 </head>
 <body>
+<script>
+// Guard: sidebar onclicks fire during HTML parse before main script loads.
+// This stub prevents ReferenceError — real navigate() replaces it at line ~2039.
+window.navigate = function(p) {
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof window._navigate === 'function') window._navigate(p);
+  }, {once: true});
+};
+</script>
 
 <!-- Toast Container -->
 <div id="toast-container"></div>
@@ -2037,6 +2046,7 @@ function activateLicense() {
 
 /* ── Navigation ────────────────────────────────────────────────────── */
 function navigate(page) {
+  window._navigate = navigate;  // allow stub to hand off
   // Redirect studio → backtester in builder mode
   if (page === 'studio') {
     navigate('backtester');
@@ -2099,13 +2109,12 @@ async function loadConfig() {
 
 async function loadLibrary() {
   try {
-    // Try central server first (has full library), fall back to local
-    const base = getBacktestBaseUrl();
-    const r = await fetch(base + '/api/strategies-library');
+    // Always use local API — central is dead, backend serves local copy directly
+    const r = await fetch(API + '/api/strategies-library');
     const d = await r.json();
     LIB_CACHE = d.strategies || d || [];
     ALL_STRATEGIES = Array.isArray(LIB_CACHE) ? LIB_CACHE : [];
-    console.log('[LIB] Loaded', ALL_STRATEGIES.length, 'strategies from', base);
+    console.log('[LIB] Loaded', ALL_STRATEGIES.length, 'strategies');
     populateStrategySelects();
   } catch (e) {
     console.warn('Library load from central failed, trying local:', e);
