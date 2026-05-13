@@ -392,7 +392,7 @@ async def lifespan(app: FastAPI):
     if HOSTING == "railway":
         threading.Thread(target=_orchestrator_loop, daemon=True, name="orchestrator").start()
         _log.info("[ORCH] Orchestrator thread started (Railway mode)")
-        yield
+    yield  # Always yield — required by FastAPI lifespan context manager
     for email, proc in _running_processes.items():
         try:
             proc.terminate()
