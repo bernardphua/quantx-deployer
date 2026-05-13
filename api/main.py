@@ -2699,10 +2699,16 @@ async def list_indicators(category: str = Query(""), created_by: str = Query("")
 @app.get("/api/indicators/custom")
 async def indicators_custom(email: str = Query("", description="Unused, kept for frontend compat")):
     """List custom (non-builtin) indicators. Must be before /{indicator_id} route."""
-    from api.database import get_custom_indicators
     conn = get_db()
     try:
-        indicators = get_custom_indicators(conn)
+        import json as _j
+        rows = conn.execute("SELECT * FROM indicators WHERE is_builtin=0 ORDER BY name").fetchall()
+        indicators = []
+        for r in rows:
+            d = dict(r)
+            d["output_labels"] = _j.loads(d.get("output_labels") or "[]")
+            d["params"] = _j.loads(d.get("params") or "[]")
+            indicators.append(d)
         return {"indicators": indicators, "count": len(indicators)}
     finally:
         conn.close()
