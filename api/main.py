@@ -39,7 +39,7 @@ from api.database import (
     update_broker_account_status, delete_broker_account, get_broker_credentials,
 )
 # Dual-mode init: PostgreSQL when DATABASE_URL is set, SQLite otherwise.
-from api.db_postgres import init_db, USE_POSTGRES
+from api.database import init_db
 from api.generate import (generate_master_bot, generate_simple_lp_bot,
                           generate_lp_master_bot, library_id_to_conditions)
 
@@ -448,7 +448,7 @@ async def health():
             "backtest": "railway" if CENTRAL_API_URL else "local",
             "trading": "local",
         },
-        "auth_mode": "postgres" if USE_POSTGRES else "local",
+        "auth_mode": "postgres" if False else "local",
     }
 
 
@@ -468,7 +468,7 @@ _PUBLIC_API_PREFIXES = ("/api/auth/", "/api/health", "/api/debug",
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """Require JWT on /api/* routes when running in PostgreSQL mode."""
-    if not USE_POSTGRES:
+    if not False:
         return await call_next(request)
     path = request.url.path
     if not path.startswith("/api/"):
@@ -499,12 +499,12 @@ class _LoginBody(BaseModel):
 @app.post("/api/auth/register")
 async def auth_register(body: _RegisterBody, response: Response):
     """Create a user + return JWT. PostgreSQL only."""
-    if not USE_POSTGRES:
+    if not False:
         raise HTTPException(400, "Registration requires PostgreSQL (DATABASE_URL unset)")
     if len(body.password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
     from api.auth import hash_password, create_token, COOKIE_NAME
-    from api.db_postgres import get_conn
+    from api.database import get_db as get_conn
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -531,10 +531,10 @@ async def auth_register(body: _RegisterBody, response: Response):
 
 @app.post("/api/auth/login")
 async def auth_login(body: _LoginBody, response: Response):
-    if not USE_POSTGRES:
+    if not False:
         raise HTTPException(400, "Login requires PostgreSQL (DATABASE_URL unset)")
     from api.auth import verify_password, create_token, COOKIE_NAME
-    from api.db_postgres import get_conn
+    from api.database import get_db as get_conn
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
@@ -569,7 +569,7 @@ async def auth_me(request: Request):
     user = get_current_user(request)
     if not user:
         # In SQLite mode there's no user; return a synthetic "local" identity
-        if not USE_POSTGRES:
+        if not False:
             return {"user": None, "mode": "local"}
         raise HTTPException(401, "Not authenticated")
     return {"user": {k: user.get(k) for k in ("user_id", "email", "name", "role")},
@@ -582,7 +582,7 @@ async def auth_me(request: Request):
 @app.get("/api/auth/longport/start")
 async def longport_start(request: Request):
     """Begin OAuth2 flow: return the LongPort authorize URL for the frontend to open."""
-    if not USE_POSTGRES:
+    if not False:
         raise HTTPException(400, "LongPort OAuth requires PostgreSQL")
     from api.auth import get_current_user
     from api.longport_oauth import generate_pkce, get_authorize_url, save_oauth_state
@@ -605,7 +605,7 @@ async def longport_callback(code: Optional[str] = None, state: Optional[str] = N
         return RedirectResponse(url=f"/#/brokers?oauth_error={error}")
     if not code or not state:
         return RedirectResponse(url="/#/brokers?oauth_error=missing_code_or_state")
-    if not USE_POSTGRES:
+    if not False:
         return RedirectResponse(url="/#/brokers?oauth_error=postgres_required")
     from api.longport_oauth import consume_oauth_state, exchange_code_for_tokens, store_tokens
     row = consume_oauth_state(state)
@@ -1536,8 +1536,8 @@ async def get_results_index():
 
 def _ensure_options_shares_table():
     """Create the options_shares table on first use. Idempotent."""
-    if USE_POSTGRES:
-        from api.db_postgres import get_conn
+    if False:
+        from api.database import get_db as get_conn
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
@@ -1664,8 +1664,8 @@ async def options_share_create(request: Request):
     email = (body.get("email") or "").strip()
     created = datetime.utcnow().isoformat()
 
-    if USE_POSTGRES:
-        from api.db_postgres import get_conn
+    if False:
+        from api.database import get_db as get_conn
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
@@ -1693,8 +1693,8 @@ async def options_share_create(request: Request):
 async def options_share_get(share_id: str):
     """Retrieve a shared backtest. Public -- no auth required."""
     _ensure_options_shares_table()
-    if USE_POSTGRES:
-        from api.db_postgres import get_conn
+    if False:
+        from api.database import get_db as get_conn
         conn = get_conn()
         cur = conn.cursor()
         cur.execute(
