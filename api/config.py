@@ -42,7 +42,7 @@ STATE_DIR = DATA_DIR / "state"
 
 # ── Architecture split ──────────────────────────────────────────────────────
 # Railway (remote) — backtesting only
-CENTRAL_API_URL = os.environ.get("CENTRAL_API_URL", "")
+CENTRAL_API_URL = ""  # dead central server disabled — backtests always run locally
 BACKTEST_URL = CENTRAL_API_URL  # all backtest calls route here when set
 
 # Local — everything else (deploy, stop, strategies, trades, logs, brokers)

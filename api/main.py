@@ -405,6 +405,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="QuantX Deployer", lifespan=lifespan)
 
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # ── Symbol cache ────────────────────────────────────────────────────────────
 _symbol_cache: dict[str, dict] = {
     "SPY.US": {"found": True, "symbol": "SPY.US", "name": "SPDR S&P 500 ETF Trust", "exchange": "AMEX", "lot_size": 1, "currency": "USD"},
