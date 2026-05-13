@@ -338,15 +338,6 @@ label { display:block; font-size:12px; font-weight:600; color:var(--text-seconda
 </style>
 </head>
 <body>
-<script>
-// Guard: sidebar onclicks fire during HTML parse before main script loads.
-// This stub prevents ReferenceError — real navigate() replaces it at line ~2039.
-window.navigate = function(p) {
-  document.addEventListener('DOMContentLoaded', function() {
-    if (typeof window._navigate === 'function') window._navigate(p);
-  }, {once: true});
-};
-</script>
 
 <!-- Toast Container -->
 <div id="toast-container"></div>
@@ -1878,7 +1869,7 @@ async function validateAndSetCentral(url) {
   }
   try {
     const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), 500);  // 500ms max — don't block page load
+    setTimeout(() => ctrl.abort(), 3000);
     const r = await fetch(url.replace(/\/$/, '') + '/api/health', { signal: ctrl.signal });
     if (r.ok) {
       CENTRAL = url.replace(/\/$/, '');
@@ -1992,7 +1983,7 @@ let _savedBacktests = JSON.parse(localStorage.getItem('qx_backtests') || '[]');
   }
 
   await loadConfig();  // Must complete before loadLibrary — sets CENTRAL
-  checkLpCredentials();  // Non-blocking — just updates _hasLpCreds flag in background
+  await checkLpCredentials();
   initBtBroker();
   loadLibrary();
   checkArchStatus();
@@ -2046,7 +2037,6 @@ function activateLicense() {
 
 /* ── Navigation ────────────────────────────────────────────────────── */
 function navigate(page) {
-  window._navigate = navigate;  // allow stub to hand off
   // Redirect studio → backtester in builder mode
   if (page === 'studio') {
     navigate('backtester');
@@ -2088,14 +2078,11 @@ async function loadConfig() {
     const d = await r.json();
     document.getElementById('set-central').value = d.central_api_url || '';
     document.getElementById('set-version').value = 'v' + (d.version || '1.0.0');
-    // Validate central URL in background — never block page load for this
+    // Validate central URL before trusting it
     const candidateUrl = d.central_api_url || '';
     if (candidateUrl && candidateUrl.startsWith('http') && !candidateUrl.includes('localhost')) {
-      // Fire-and-forget: don't await — worst case it times out in 500ms quietly in background
-      validateAndSetCentral(candidateUrl).then(ok => {
-        console.log('[CONFIG] Central API:', candidateUrl, ok ? '(reachable)' : '(unreachable, using local)');
-        updateBacktestBadge();
-      });
+      const ok = await validateAndSetCentral(candidateUrl);
+      console.log('[CONFIG] Central API:', candidateUrl, ok ? '(reachable)' : '(unreachable, using local)');
     } else {
       // No central configured on backend — clear any stale localStorage
       CENTRAL = '';
@@ -2109,12 +2096,13 @@ async function loadConfig() {
 
 async function loadLibrary() {
   try {
-    // Always use local API — central is dead, backend serves local copy directly
-    const r = await fetch(API + '/api/strategies-library');
+    // Try central server first (has full library), fall back to local
+    const base = getBacktestBaseUrl();
+    const r = await fetch(base + '/api/strategies-library');
     const d = await r.json();
     LIB_CACHE = d.strategies || d || [];
     ALL_STRATEGIES = Array.isArray(LIB_CACHE) ? LIB_CACHE : [];
-    console.log('[LIB] Loaded', ALL_STRATEGIES.length, 'strategies');
+    console.log('[LIB] Loaded', ALL_STRATEGIES.length, 'strategies from', base);
     populateStrategySelects();
   } catch (e) {
     console.warn('Library load from central failed, trying local:', e);
