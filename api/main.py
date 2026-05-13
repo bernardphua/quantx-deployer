@@ -427,7 +427,7 @@ _symbol_cache: dict[str, dict] = {
     "1299.HK": {"found": True, "symbol": "1299.HK", "name": "AIA Group Limited", "exchange": "HKEX", "lot_size": 200, "currency": "HKD"},
 }
 
-_executor = ThreadPoolExecutor(max_workers=4)
+_executor = ThreadPoolExecutor(max_workers=8)
 
 static_dir = Path(__file__).parent.parent / "static"
 if static_dir.exists():
@@ -2611,24 +2611,45 @@ async def test_broker_account(account_id: int):
     broker = acct.get("broker", "")
     def _test():
         if broker == "longport":
+            from longport.openapi import QuoteContext
+            ctx = None
             try:
-                ctx = get_lp_quote_ctx(acct["app_key"], acct["app_secret"], acct["access_token"])
+                # Build a FRESH context (don't use pool) so we actually verify creds
+                cfg = _lp_build_config(acct["app_key"], acct["app_secret"], acct["access_token"])
+                ctx = QuoteContext(cfg)
                 quotes = ctx.quote(["700.HK"])
                 if quotes:
                     price = float(quotes[0].last_done)
                     update_broker_account_status(account_id, True)
-                    return {"ok": True, "message": f"Connected -- 700.HK: ${price:.2f}"}
+                    return {"ok": True, "message": f"Connected — 700.HK: HK${price:.2f}"}
                 update_broker_account_status(account_id, True)
                 return {"ok": True, "message": "Connected (no quote data)"}
             except Exception as e:
                 update_broker_account_status(account_id, False, str(e))
                 return {"ok": False, "message": str(e)}
+            finally:
+                if ctx is not None:
+                    try:
+                        del ctx
+                    except Exception:
+                        pass
         return {"ok": False, "message": f"Unknown broker: {broker}"}
+    # Use a dedicated single-thread executor with a 15s timeout so this never
+    # blocks the shared _executor (4 workers) or hangs indefinitely.
+    _test_executor = ThreadPoolExecutor(max_workers=1)
     try:
-        result = await asyncio.get_event_loop().run_in_executor(_executor, _test)
+        result = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(_test_executor, _test),
+            timeout=15.0
+        )
         return result
+    except asyncio.TimeoutError:
+        update_broker_account_status(account_id, False, "Connection timed out after 15s")
+        return {"ok": False, "message": "Connection timed out after 15s — check your App Key / Secret / Token"}
     except Exception as e:
         return {"ok": False, "message": f"Test error: {e}"}
+    finally:
+        _test_executor.shutdown(wait=False)
 
 
 # ── Data cache endpoints ─────────────────────────────────────────────────────
